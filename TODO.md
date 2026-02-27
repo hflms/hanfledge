@@ -12,13 +12,13 @@
 |---|---|---|---|
 | Phase 0: 项目骨架 | ✅ 已完成 | 100% | `67ed390` |
 | Phase 1: 用户与权限系统 | ✅ 已完成 | 100% | `490e294` |
-| Phase 2: 课程与知识引擎 | 🔧 进行中 | 60% | `dfc176a` |
+| Phase 2: 课程与知识引擎 | 🔧 进行中 | 75% | `dfc176a` |
 | Phase 3: 技能系统 | ⬜ 未开始 | 0% | — |
 | Phase 4: AI 对话引擎 | ⬜ 未开始 | 0% | — |
 | Phase 5: 学情仪表盘 | ⬜ 未开始 | 0% | — |
 | Phase 6: 集成联调与部署 | ⬜ 未开始 | 0% | — |
 
-**总进度: 28 / 73 tasks (38%)**
+**总进度: 31 / 73 tasks (42%)**
 
 ---
 
@@ -74,15 +74,15 @@
 - [x] T-2.11: `GET /api/v1/courses/:id/documents` — 文档处理状态查询
 
 ### 后端 — 待完成
-- [ ] T-2.12: **Embedding 向量生成 + pgvector 写入**
+- [x] T-2.12: **Embedding 向量生成 + pgvector 写入**
   - 在 KA-RAG pipeline 中调用 Ollama `/api/embed`
   - 为每个 DocumentChunk 生成 1024 维向量
   - 写入 `document_chunks.embedding` (pgvector)
-- [ ] T-2.13: **语义检索 API** `POST /api/v1/courses/:id/search`
+- [x] T-2.13: **语义检索 API** `POST /api/v1/courses/:id/search`
   - 接收查询文本 → 生成 query embedding
   - pgvector 余弦相似度检索 Top-K chunks
   - 返回匹配的文档切片和相似度分数
-- [ ] T-2.14: **Course Model 时间字段修复**
+- [x] T-2.14: **Course Model 时间字段修复**
   - `CreatedAt`/`UpdatedAt` 从 `string` 改为 `time.Time`
 
 ### 前端 — 待完成

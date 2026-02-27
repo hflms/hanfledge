@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // ============================
 // 课程与知识模型
 // ============================
@@ -23,8 +25,8 @@ type Course struct {
 	GradeLevel  int          `gorm:"not null" json:"grade_level"`
 	Description *string      `gorm:"type:text" json:"description,omitempty"`
 	Status      CourseStatus `gorm:"size:20;default:draft" json:"status"`
-	CreatedAt   string       `json:"created_at"`
-	UpdatedAt   string       `json:"updated_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 
 	School   School    `gorm:"foreignKey:SchoolID" json:"-"`
 	Teacher  User      `gorm:"foreignKey:TeacherID" json:"-"`

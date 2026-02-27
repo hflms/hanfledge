@@ -80,6 +80,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine) *gin
 				courses.POST("/:id/materials", courseHandler.UploadMaterial)
 				courses.GET("/:id/outline", courseHandler.GetOutline)
 				courses.GET("/:id/documents", courseHandler.GetDocumentStatus)
+				courses.POST("/:id/search", courseHandler.SearchCourse)
 			}
 		}
 

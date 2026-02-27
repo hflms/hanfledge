@@ -28,7 +28,7 @@ func NewKARAGEngine(db *gorm.DB, neo4j *neo4jRepo.Client, llmClient *llm.OllamaC
 }
 
 // ProcessDocument runs the full KA-RAG pipeline for an uploaded document.
-// 1. Extract text → 2. Hybrid Slicing → 3. Store chunks → 4. Build graph
+// 1. Extract text → 2. Hybrid Slicing → 3. Store chunks → 4. Embed → 5. Build graph
 func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, rawText string) error {
 	// Update status to processing
 	e.DB.Model(doc).Update("status", model.DocStatusProcessing)
@@ -38,7 +38,8 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 	chunks := e.hybridSlice(rawText)
 	log.Printf("   → Generated %d chunks", len(chunks))
 
-	// Step 2: Store chunks in PostgreSQL (embedding is done async/on-demand)
+	// Step 2: Store chunks in PostgreSQL
+	var chunkIDs []uint
 	for i, content := range chunks {
 		chunk := model.DocumentChunk{
 			DocumentID: doc.ID,
@@ -50,19 +51,85 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 		if err := e.DB.Create(&chunk).Error; err != nil {
 			return fmt.Errorf("store chunk %d failed: %w", i, err)
 		}
+		chunkIDs = append(chunkIDs, chunk.ID)
 	}
 
-	// Step 3: Use LLM to extract knowledge structure and build graph
-	log.Printf("🧠 [KA-RAG] Extracting knowledge structure via LLM...")
-	if err := e.buildKnowledgeGraph(ctx, doc.CourseID, chunks); err != nil {
-		log.Printf("⚠️  [KA-RAG] Graph building partial failure: %v", err)
-		// Don't fail the whole process for graph building errors
+	// Step 3: Generate embeddings and store in pgvector
+	log.Printf("🔢 [KA-RAG] Generating embeddings for %d chunks...", len(chunks))
+	e.generateEmbeddings(ctx, chunks, chunkIDs)
+
+	// Step 4: Use LLM to extract knowledge structure and build graph
+	if e.Neo4j != nil {
+		log.Printf("🧠 [KA-RAG] Extracting knowledge structure via LLM...")
+		if err := e.buildKnowledgeGraph(ctx, doc.CourseID, chunks); err != nil {
+			log.Printf("⚠️  [KA-RAG] Graph building partial failure: %v", err)
+		}
 	}
 
 	// Mark as completed
 	e.DB.Model(doc).Update("status", model.DocStatusCompleted)
 	log.Printf("✅ [KA-RAG] Document processing complete: %s", doc.FileName)
 	return nil
+}
+
+// generateEmbeddings calls the embedding model for each chunk and stores vectors.
+func (e *KARAGEngine) generateEmbeddings(ctx context.Context, chunks []string, chunkIDs []uint) {
+	for i, content := range chunks {
+		vec, err := e.LLM.Embed(ctx, content)
+		if err != nil {
+			log.Printf("⚠️  Embedding chunk %d failed: %v", i, err)
+			continue
+		}
+
+		// Format as pgvector string: [0.1,0.2,0.3,...]
+		vecStr := formatVector(vec)
+		e.DB.Exec("UPDATE document_chunks SET embedding = ? WHERE id = ?", vecStr, chunkIDs[i])
+	}
+	log.Printf("   → Embedded %d chunks", len(chunks))
+}
+
+// formatVector converts a float64 slice to pgvector format string.
+func formatVector(vec []float64) string {
+	parts := make([]string, len(vec))
+	for i, v := range vec {
+		parts[i] = fmt.Sprintf("%f", v)
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
+// SemanticSearch performs cosine similarity search on document chunks.
+// Returns the top-K most relevant chunks for the given query.
+func (e *KARAGEngine) SemanticSearch(ctx context.Context, courseID uint, query string, topK int) ([]SearchResult, error) {
+	// Generate query embedding
+	queryVec, err := e.LLM.Embed(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query embedding failed: %w", err)
+	}
+	vecStr := formatVector(queryVec)
+
+	// Cosine similarity search via pgvector
+	var results []SearchResult
+	err = e.DB.Raw(`
+		SELECT id, content, chunk_index, 
+		       1 - (embedding <=> ?::vector) AS similarity
+		FROM document_chunks
+		WHERE course_id = ? AND embedding IS NOT NULL
+		ORDER BY embedding <=> ?::vector
+		LIMIT ?
+	`, vecStr, courseID, vecStr, topK).Scan(&results).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("semantic search failed: %w", err)
+	}
+	return results, nil
+}
+
+// SearchResult represents a single search result with similarity score.
+type SearchResult struct {
+	ID         uint    `json:"id"`
+	Content    string  `json:"content"`
+	ChunkIndex int     `json:"chunk_index"`
+	Similarity float64 `json:"similarity"`
 }
 
 // hybridSlice splits text into logical chunks using paragraph-based splitting.

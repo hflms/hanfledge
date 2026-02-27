@@ -207,6 +207,47 @@ func (h *CourseHandler) GetDocumentStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, docs)
 }
 
+// SearchRequest represents the semantic search request body.
+type SearchRequest struct {
+	Query string `json:"query" binding:"required"`
+	TopK  int    `json:"top_k"`
+}
+
+// SearchCourse performs semantic search on course documents.
+// POST /api/v1/courses/:id/search
+func (h *CourseHandler) SearchCourse(c *gin.Context) {
+	courseID := c.Param("id")
+
+	var req SearchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供查询内容"})
+		return
+	}
+
+	if req.TopK <= 0 || req.TopK > 20 {
+		req.TopK = 5
+	}
+
+	// Verify course exists
+	var course model.Course
+	if err := h.DB.First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
+		return
+	}
+
+	results, err := h.KARAG.SemanticSearch(c.Request.Context(), course.ID, req.Query, req.TopK)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "检索失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"query":   req.Query,
+		"results": results,
+		"count":   len(results),
+	})
+}
+
 // extractPDFText extracts all text content from a PDF file.
 func extractPDFText(filePath string) (string, int, error) {
 	f, r, err := pdf.Open(filePath)
