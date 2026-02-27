@@ -1,0 +1,47 @@
+# deployments/docker-compose.yml
+# Hanfledge 本地开发环境
+# Usage: docker-compose -f deployments/docker-compose.yml up -d
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: hanfledge-postgres
+    environment:
+      POSTGRES_USER: hanfledge
+      POSTGRES_PASSWORD: hanfledge_secret
+      POSTGRES_DB: hanfledge
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U hanfledge" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: hanfledge-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/neo4j_secret
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7475:7474" # Web UI
+      - "7688:7687" # Bolt protocol
+    volumes:
+      - neo4jdata:/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: hanfledge-redis
+    ports:
+      - "6381:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  neo4jdata:
+  redisdata:
