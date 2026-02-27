@@ -36,7 +36,7 @@ func main() {
 	// redisClient, err := redis.NewConnection(&cfg.Redis)
 
 	// ── Router Setup ────────────────────────────────────
-	router := delivery.NewRouter(db)
+	router := delivery.NewRouter(db, cfg)
 
 	// ── Start Server ────────────────────────────────────
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)

@@ -2,12 +2,15 @@ package http
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/hflms/hanfledge/internal/config"
 	"github.com/hflms/hanfledge/internal/delivery/http/handler"
+	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
+	"github.com/hflms/hanfledge/internal/domain/model"
 	"gorm.io/gorm"
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(db *gorm.DB) *gin.Engine {
+func NewRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 
 	// Global middleware
@@ -17,18 +20,56 @@ func NewRouter(db *gorm.DB) *gin.Engine {
 	// Health check
 	r.GET("/health", handler.HealthCheck)
 
+	// Initialize handlers
+	authHandler := handler.NewAuthHandler(db, cfg.JWT.Secret, cfg.JWT.ExpiryHours)
+	userHandler := handler.NewUserHandler(db)
+
 	// API v1 group
 	v1 := r.Group("/api/v1")
 	{
-		// Auth routes (public)
+		// ── Auth (Public) ────────────────────────────────
 		auth := v1.Group("/auth")
 		{
-			_ = auth
-			// TODO Phase 1: auth.POST("/login", handler.Login)
-			// TODO Phase 1: auth.GET("/me", authMiddleware(), handler.GetMe)
+			auth.POST("/login", authHandler.Login)
 		}
 
-		// TODO Phase 1: Protected routes with JWT + RBAC middleware
+		// ── Auth (Protected) ─────────────────────────────
+		authProtected := v1.Group("/auth")
+		authProtected.Use(middleware.JWTAuth(cfg.JWT.Secret))
+		{
+			authProtected.GET("/me", authHandler.GetMe)
+		}
+
+		// ── Protected Routes ─────────────────────────────
+		protected := v1.Group("")
+		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
+		{
+			// School management (SYS_ADMIN only)
+			schools := protected.Group("/schools")
+			schools.Use(middleware.RBAC(db, model.RoleSysAdmin))
+			{
+				schools.GET("", userHandler.ListSchools)
+				schools.POST("", userHandler.CreateSchool)
+			}
+
+			// Class management (SYS_ADMIN or SCHOOL_ADMIN)
+			classes := protected.Group("/classes")
+			classes.Use(middleware.RBAC(db, model.RoleSysAdmin, model.RoleSchoolAdmin))
+			{
+				classes.GET("", userHandler.ListClasses)
+				classes.POST("", userHandler.CreateClass)
+			}
+
+			// User management (SYS_ADMIN or SCHOOL_ADMIN)
+			users := protected.Group("/users")
+			users.Use(middleware.RBAC(db, model.RoleSysAdmin, model.RoleSchoolAdmin))
+			{
+				users.GET("", userHandler.ListUsers)
+				users.POST("", userHandler.CreateUser)
+				users.POST("/batch", userHandler.BatchCreateUsers)
+			}
+		}
+
 		// TODO Phase 2: Course routes
 		// TODO Phase 3: Skill routes
 		// TODO Phase 4: Session WebSocket routes
