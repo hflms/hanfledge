@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/config"
 	delivery "github.com/hflms/hanfledge/internal/delivery/http"
+	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/repository/postgres"
+	"github.com/hflms/hanfledge/internal/usecase"
 )
 
 func main() {
@@ -29,14 +33,30 @@ func main() {
 		log.Fatalf("❌ Migration failed: %v", err)
 	}
 
-	// ── TODO: Neo4j Connection ──────────────────────────
-	// neo4jDriver, err := neo4j.NewConnection(&cfg.Neo4j)
+	// ── Neo4j Connection ────────────────────────────────
+	neo4jClient, err := neo4jRepo.NewClient(&cfg.Neo4j)
+	if err != nil {
+		log.Printf("⚠️  Neo4j connection failed (non-fatal): %v", err)
+		neo4jClient = nil
+	} else {
+		defer neo4jClient.Close(context.Background())
+		if err := neo4jClient.InitSchema(context.Background()); err != nil {
+			log.Printf("⚠️  Neo4j schema init failed: %v", err)
+		}
+	}
 
-	// ── TODO: Redis Connection ──────────────────────────
-	// redisClient, err := redis.NewConnection(&cfg.Redis)
+	// ── LLM Client ──────────────────────────────────────
+	llmClient := llm.NewOllamaClient(
+		cfg.LLM.OllamaHost,
+		cfg.LLM.OllamaModel,
+		cfg.LLM.EmbeddingModel,
+	)
+
+	// ── Use Cases ───────────────────────────────────────
+	karagEngine := usecase.NewKARAGEngine(db, neo4jClient, llmClient)
 
 	// ── Router Setup ────────────────────────────────────
-	router := delivery.NewRouter(db, cfg)
+	router := delivery.NewRouter(db, cfg, karagEngine)
 
 	// ── Start Server ────────────────────────────────────
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)

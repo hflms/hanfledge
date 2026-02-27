@@ -6,11 +6,12 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/handler"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/usecase"
 	"gorm.io/gorm"
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
+func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine) *gin.Engine {
 	r := gin.Default()
 
 	// Global middleware
@@ -23,6 +24,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(db, cfg.JWT.Secret, cfg.JWT.ExpiryHours)
 	userHandler := handler.NewUserHandler(db)
+	courseHandler := handler.NewCourseHandler(db, karag)
 
 	// API v1 group
 	v1 := r.Group("/api/v1")
@@ -68,9 +70,19 @@ func NewRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				users.POST("", userHandler.CreateUser)
 				users.POST("/batch", userHandler.BatchCreateUsers)
 			}
+
+			// Course management (TEACHER)
+			courses := protected.Group("/courses")
+			courses.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+			{
+				courses.GET("", courseHandler.ListCourses)
+				courses.POST("", courseHandler.CreateCourse)
+				courses.POST("/:id/materials", courseHandler.UploadMaterial)
+				courses.GET("/:id/outline", courseHandler.GetOutline)
+				courses.GET("/:id/documents", courseHandler.GetDocumentStatus)
+			}
 		}
 
-		// TODO Phase 2: Course routes
 		// TODO Phase 3: Skill routes
 		// TODO Phase 4: Session WebSocket routes
 		// TODO Phase 5: Dashboard routes

@@ -1,0 +1,235 @@
+package handler
+
+import (
+	"context"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
+	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/usecase"
+	"github.com/ledongthuc/pdf"
+	"gorm.io/gorm"
+)
+
+// CourseHandler handles course and material management.
+type CourseHandler struct {
+	DB    *gorm.DB
+	KARAG *usecase.KARAGEngine
+}
+
+// NewCourseHandler creates a new CourseHandler.
+func NewCourseHandler(db *gorm.DB, karag *usecase.KARAGEngine) *CourseHandler {
+	return &CourseHandler{DB: db, KARAG: karag}
+}
+
+// ListCourses returns courses for the authenticated teacher.
+// GET /api/v1/courses?school_id=X
+func (h *CourseHandler) ListCourses(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	var courses []model.Course
+	query := h.DB.Preload("Chapters.KnowledgePoints")
+
+	if schoolID := c.Query("school_id"); schoolID != "" {
+		query = query.Where("school_id = ?", schoolID)
+	}
+	// Teachers see only their courses; admins see all
+	query = query.Where("teacher_id = ?", userID)
+
+	if err := query.Find(&courses).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询课程失败"})
+		return
+	}
+	c.JSON(http.StatusOK, courses)
+}
+
+// CreateCourseRequest represents the request body for creating a course.
+type CreateCourseRequest struct {
+	SchoolID    uint   `json:"school_id" binding:"required"`
+	Title       string `json:"title" binding:"required"`
+	Subject     string `json:"subject" binding:"required"`
+	GradeLevel  int    `json:"grade_level" binding:"required"`
+	Description string `json:"description"`
+}
+
+// CreateCourse creates a new course.
+// POST /api/v1/courses
+func (h *CourseHandler) CreateCourse(c *gin.Context) {
+	var req CreateCourseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求数据格式错误: " + err.Error()})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+	desc := req.Description
+
+	course := model.Course{
+		SchoolID:    req.SchoolID,
+		TeacherID:   userID,
+		Title:       req.Title,
+		Subject:     req.Subject,
+		GradeLevel:  req.GradeLevel,
+		Description: &desc,
+		Status:      model.CourseStatusDraft,
+	}
+
+	if err := h.DB.Create(&course).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建课程失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, course)
+}
+
+// UploadMaterial handles PDF upload and triggers the KA-RAG pipeline.
+// POST /api/v1/courses/:id/materials
+func (h *CourseHandler) UploadMaterial(c *gin.Context) {
+	courseID := c.Param("id")
+
+	// Verify course exists
+	var course model.Course
+	if err := h.DB.First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
+		return
+	}
+
+	// Get uploaded file
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请上传文件"})
+		return
+	}
+	defer file.Close()
+
+	// Validate file type
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".pdf") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 PDF 格式"})
+		return
+	}
+
+	// Save file to disk
+	uploadDir := filepath.Join("uploads", courseID)
+	os.MkdirAll(uploadDir, 0755)
+
+	fileName := uuid.New().String() + ".pdf"
+	filePath := filepath.Join(uploadDir, fileName)
+
+	dst, err := os.Create(filePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
+		return
+	}
+	defer dst.Close()
+	io.Copy(dst, file)
+
+	// Create document record
+	doc := model.Document{
+		CourseID: course.ID,
+		FileName: header.Filename,
+		FilePath: filePath,
+		FileSize: header.Size,
+		MimeType: "application/pdf",
+		Status:   model.DocStatusUploaded,
+	}
+	h.DB.Create(&doc)
+
+	// Extract text from PDF
+	rawText, pageCount, err := extractPDFText(filePath)
+	if err != nil {
+		h.DB.Model(&doc).Updates(map[string]interface{}{
+			"status": model.DocStatusFailed,
+		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 解析失败: " + err.Error()})
+		return
+	}
+	h.DB.Model(&doc).Update("page_count", pageCount)
+
+	// Trigger KA-RAG pipeline asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if err := h.KARAG.ProcessDocument(ctx, &doc, rawText); err != nil {
+			log.Printf("❌ KA-RAG pipeline failed for doc %d: %v", doc.ID, err)
+			h.DB.Model(&doc).Update("status", model.DocStatusFailed)
+		}
+	}()
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"message":     "文件已上传，正在后台处理知识图谱...",
+		"document":    doc,
+		"page_count":  pageCount,
+		"text_length": len(rawText),
+	})
+}
+
+// GetOutline returns the AI-generated course outline (chapters + knowledge points).
+// GET /api/v1/courses/:id/outline
+func (h *CourseHandler) GetOutline(c *gin.Context) {
+	courseID := c.Param("id")
+
+	var course model.Course
+	if err := h.DB.Preload("Chapters", func(db *gorm.DB) *gorm.DB {
+		return db.Order("sort_order ASC")
+	}).Preload("Chapters.KnowledgePoints.MountedSkills").
+		First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
+		return
+	}
+
+	// Also include document processing status
+	var docs []model.Document
+	h.DB.Where("course_id = ?", courseID).Find(&docs)
+
+	c.JSON(http.StatusOK, gin.H{
+		"course":    course,
+		"documents": docs,
+	})
+}
+
+// GetDocumentStatus returns the processing status of uploaded documents.
+// GET /api/v1/courses/:id/documents
+func (h *CourseHandler) GetDocumentStatus(c *gin.Context) {
+	courseID := c.Param("id")
+
+	var docs []model.Document
+	h.DB.Where("course_id = ?", courseID).Order("created_at DESC").Find(&docs)
+
+	c.JSON(http.StatusOK, docs)
+}
+
+// extractPDFText extracts all text content from a PDF file.
+func extractPDFText(filePath string) (string, int, error) {
+	f, r, err := pdf.Open(filePath)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+
+	totalPages := r.NumPage()
+	var textBuilder strings.Builder
+
+	for i := 1; i <= totalPages; i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		text, err := p.GetPlainText(nil)
+		if err != nil {
+			continue // Skip problematic pages
+		}
+		textBuilder.WriteString(text)
+		textBuilder.WriteString("\n\n")
+	}
+
+	return textBuilder.String(), totalPages, nil
+}

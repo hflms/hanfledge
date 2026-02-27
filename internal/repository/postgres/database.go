@@ -34,6 +34,9 @@ func NewConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 func AutoMigrate(db *gorm.DB) error {
 	log.Println("🔄 Running database auto-migration...")
 
+	// Enable pgvector extension
+	db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
+
 	err := db.AutoMigrate(
 		// 用户与权限
 		&model.User{},
@@ -55,6 +58,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.StudentSession{},
 		&model.Interaction{},
 		&model.StudentKPMastery{},
+		// 文档与向量
+		&model.Document{},
+		&model.DocumentChunk{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)
