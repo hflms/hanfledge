@@ -1,0 +1,188 @@
+/* ── Markdown Renderer ──────────────────────────────────── */
+
+.markdown {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+/* -- Block Elements ------------------------------------- */
+
+.paragraph {
+    margin: 0 0 8px 0;
+}
+
+.paragraph:last-child {
+    margin-bottom: 0;
+}
+
+.heading {
+    font-weight: 700;
+    margin: 12px 0 6px 0;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+h1.heading { font-size: 18px; }
+h2.heading { font-size: 16px; }
+h3.heading { font-size: 15px; }
+
+.list {
+    margin: 4px 0 8px 0;
+    padding-left: 20px;
+}
+
+.listItem {
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+
+.listItem::marker {
+    color: var(--accent-light);
+}
+
+.blockquote {
+    margin: 8px 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--accent);
+    background: rgba(108, 92, 231, 0.06);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    color: var(--text-secondary);
+}
+
+.hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 12px 0;
+}
+
+.strong {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.link {
+    color: var(--accent-light);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s;
+}
+
+.link:hover {
+    border-bottom-color: var(--accent-light);
+}
+
+/* -- Code ----------------------------------------------- */
+
+.codeBlock {
+    margin: 8px 0;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border);
+}
+
+.codeBlockHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+}
+
+.codeLanguage {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.copyBtn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--font-sans);
+}
+
+.copyBtn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.1);
+}
+
+.pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.code {
+    font-family: 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+.inlineCode {
+    font-family: 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 0.9em;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(108, 92, 231, 0.12);
+    color: var(--accent-light);
+}
+
+/* -- Table ---------------------------------------------- */
+
+.tableWrapper {
+    margin: 8px 0;
+    overflow-x: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.th {
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* -- Streaming Cursor ----------------------------------- */
+
+.cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent-light);
+    margin-left: 1px;
+    vertical-align: text-bottom;
+    animation: cursorBlink 0.8s step-end infinite;
+}
+
+@keyframes cursorBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}

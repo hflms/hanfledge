@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
@@ -40,10 +41,11 @@ type AgentOrchestrator struct {
 
 	// 依赖
 	db       *gorm.DB
-	llm      *llm.OllamaClient
+	llm      llm.LLMProvider
 	neo4j    *neo4jRepo.Client
 	karag    *usecase.KARAGEngine
 	registry *plugin.Registry
+	cache    *cache.RedisCache // nil if Redis unavailable
 
 	// Actor-Critic 最大重试轮数
 	maxCriticRetries int
@@ -52,11 +54,12 @@ type AgentOrchestrator struct {
 // NewAgentOrchestrator 创建一个新的 Agent 编排引擎。
 func NewAgentOrchestrator(
 	db *gorm.DB,
-	llmClient *llm.OllamaClient,
+	llmClient llm.LLMProvider,
 	neo4jClient *neo4jRepo.Client,
 	karag *usecase.KARAGEngine,
 	registry *plugin.Registry,
 	piiRedactor *safety.PIIRedactor,
+	redisCache *cache.RedisCache,
 ) *AgentOrchestrator {
 	o := &AgentOrchestrator{
 		// 通道初始化（缓冲为 1，防止阻塞）
@@ -71,6 +74,7 @@ func NewAgentOrchestrator(
 		neo4j:    neo4jClient,
 		karag:    karag,
 		registry: registry,
+		cache:    redisCache,
 
 		maxCriticRetries: 2,
 	}
@@ -78,7 +82,7 @@ func NewAgentOrchestrator(
 	// 初始化各 Agent
 	o.strategist = NewStrategistAgent(db, neo4jClient)
 	o.designer = NewDesignerAgent(db, llmClient, neo4jClient, karag)
-	o.coach = NewCoachAgent(db, llmClient, registry, piiRedactor)
+	o.coach = NewCoachAgent(db, llmClient, registry, piiRedactor, redisCache)
 	o.critic = NewCriticAgent(llmClient)
 	o.bkt = NewBKTService(db)
 
@@ -154,23 +158,33 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	return nil
 }
 
-// actorCriticLoop 执行 Coach-Critic 的 Actor-Critic 循环。
-// Coach 生成初稿 → Critic 审查 → 不通过则 Coach 修订 → 最多重试 maxCriticRetries 次。
+// actorCriticLoop 执行 Coach-Critic 的 Actor-Critic 循环（支持流式输出）。
+// 策略：非最终尝试静默缓冲，最终尝试流式输出到前端。
+// - 非最终尝试（可能被 Critic 驳回）：onToken=nil，仅累积全文
+// - 最终尝试（maxCriticRetries 或 Critic 通过）：通过 OnTokenDelta 实时流式输出
+// - 如果非最终尝试被 Critic 通过，将缓冲的全文一次性发送给前端
 func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material PersonalizedMaterial) (*DraftResponse, error) {
 	var draft DraftResponse
 	var err error
 
 	for attempt := 0; attempt <= o.maxCriticRetries; attempt++ {
+		// 决定是否流式输出：仅最终尝试（maxCriticRetries）流式输出
+		isLastAttempt := attempt == o.maxCriticRetries
+		var onToken func(string)
+		if isLastAttempt && tc.OnTokenDelta != nil {
+			onToken = tc.OnTokenDelta
+		}
+
 		// Coach 生成回复
 		if attempt == 0 {
-			draft, err = o.coach.GenerateResponse(tc, material)
+			draft, err = o.coach.GenerateResponse(tc, material, onToken)
 		} else {
 			// 基于 Critic 反馈修订
 			review := tc.Review
 			if tc.OnThinking != nil {
 				tc.OnThinking(fmt.Sprintf("Coach 正在根据审查反馈修订 (第%d次)...", attempt))
 			}
-			draft, err = o.coach.ReviseResponse(tc, material, review)
+			draft, err = o.coach.ReviseResponse(tc, material, review, onToken)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("coach attempt %d failed: %w", attempt, err)
@@ -178,8 +192,8 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 
 		tc.Draft = &draft
 
-		// 最后一轮不再审查，直接采用
-		if attempt == o.maxCriticRetries {
+		// 最后一轮不再审查，直接采用（已通过流式输出）
+		if isLastAttempt {
 			log.Printf("   → Actor-Critic: max retries reached, accepting draft")
 			break
 		}
@@ -192,7 +206,11 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 		review, err := o.critic.Review(tc.Ctx, draft, material)
 		if err != nil {
 			log.Printf("⚠️  [Agent] Critic failed, accepting draft: %v", err)
-			break // Critic 失败时 fallback 到当前草稿
+			// Critic 失败 → 接受当前草稿，需要补发缓冲内容
+			if tc.OnTokenDelta != nil {
+				tc.OnTokenDelta(draft.Content)
+			}
+			break
 		}
 
 		tc.Review = &review
@@ -201,6 +219,10 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 			review.Approved, review.LeakageScore, review.DepthScore, attempt+1)
 
 		if review.Approved {
+			// Critic 通过 → 将缓冲的全文一次性发送给前端
+			if tc.OnTokenDelta != nil {
+				tc.OnTokenDelta(draft.Content)
+			}
 			break
 		}
 	}
@@ -208,7 +230,7 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 	return &draft, nil
 }
 
-// saveInteraction 持久化学生输入和 AI 回复到 interactions 表。
+// saveInteraction 持久化学生输入和 AI 回复到 interactions 表，并更新缓存。
 func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResponse) error {
 	now := time.Now()
 
@@ -234,6 +256,16 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 	}
 	if err := o.db.Create(&coachMsg).Error; err != nil {
 		return fmt.Errorf("save coach interaction: %w", err)
+	}
+
+	// 更新 Redis 缓存中的会话历史
+	if o.cache != nil {
+		if err := o.cache.AppendSessionHistory(tc.Ctx, tc.SessionID,
+			cache.CachedMessage{Role: "user", Content: tc.UserInput},
+			cache.CachedMessage{Role: "assistant", Content: response.Content},
+		); err != nil {
+			log.Printf("⚠️  [Cache] Append history session=%d failed: %v", tc.SessionID, err)
+		}
 	}
 
 	return nil

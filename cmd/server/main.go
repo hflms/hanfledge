@@ -9,6 +9,7 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/config"
 	delivery "github.com/hflms/hanfledge/internal/delivery/http"
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
@@ -48,15 +49,37 @@ func main() {
 		}
 	}
 
-	// ── LLM Client ──────────────────────────────────────
-	llmClient := llm.NewOllamaClient(
-		cfg.LLM.OllamaHost,
-		cfg.LLM.OllamaModel,
-		cfg.LLM.EmbeddingModel,
-	)
+	// ── LLM Provider ───────────────────────────────────────
+	var llmProvider llm.LLMProvider
+
+	switch cfg.LLM.Provider {
+	case "dashscope":
+		if cfg.LLM.DashScopeKey == "" {
+			log.Fatalf("❌ DASHSCOPE_API_KEY is required when LLM_PROVIDER=dashscope")
+		}
+		embModel := cfg.LLM.EmbeddingModel
+		if embModel == "" {
+			embModel = "text-embedding-v3"
+		}
+		llmProvider = llm.NewDashScopeClient(llm.DashScopeConfig{
+			APIKey:         cfg.LLM.DashScopeKey,
+			ChatModel:      cfg.LLM.DashScopeModel,
+			EmbeddingModel: embModel,
+		})
+		log.Printf("🤖 [LLM] Using DashScope provider: chat=%s embed=%s",
+			cfg.LLM.DashScopeModel, embModel)
+	default: // "ollama"
+		llmProvider = llm.NewOllamaClient(
+			cfg.LLM.OllamaHost,
+			cfg.LLM.OllamaModel,
+			cfg.LLM.EmbeddingModel,
+		)
+		log.Printf("🤖 [LLM] Using Ollama provider: chat=%s embed=%s host=%s",
+			cfg.LLM.OllamaModel, cfg.LLM.EmbeddingModel, cfg.LLM.OllamaHost)
+	}
 
 	// ── Use Cases ───────────────────────────────────────
-	karagEngine := usecase.NewKARAGEngine(db, neo4jClient, llmClient)
+	karagEngine := usecase.NewKARAGEngine(db, neo4jClient, llmProvider)
 
 	// ── Plugin Registry ─────────────────────────────────
 	registry := plugin.NewRegistry()
@@ -68,8 +91,20 @@ func main() {
 	injectionGuard := safety.NewInjectionGuard()
 	piiRedactor := safety.NewPIIRedactor(db)
 
+	// ── Redis Cache ────────────────────────────────────
+	var redisCache *cache.RedisCache
+	if cfg.Redis.URL != "" {
+		rc, err := cache.NewRedisCache(cfg.Redis.URL)
+		if err != nil {
+			log.Printf("⚠️  Redis connection failed (non-fatal): %v", err)
+		} else {
+			redisCache = rc
+			defer redisCache.Close()
+		}
+	}
+
 	// ── Agent Orchestrator ──────────────────────────────
-	orchestrator := agent.NewAgentOrchestrator(db, llmClient, neo4jClient, karagEngine, registry, piiRedactor)
+	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, piiRedactor, redisCache)
 
 	// ── Router Setup ────────────────────────────────────
 	router := delivery.NewRouter(db, cfg, karagEngine, registry, orchestrator, injectionGuard)

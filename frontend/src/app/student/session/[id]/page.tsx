@@ -10,6 +10,7 @@ import {
     type StudentSession,
     type WSEvent,
 } from '@/lib/api';
+import MarkdownRenderer from '@/components/MarkdownRenderer';
 import styles from './page.module.css';
 
 // -- Types -------------------------------------------------------
@@ -272,6 +273,11 @@ export default function SessionPage() {
         setInput('');
         setSending(true);
         setStreamingContent('');
+
+        // Reset textarea height after send
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto';
+        }
     }, [input, sending]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -280,6 +286,15 @@ export default function SessionPage() {
             handleSend();
         }
     };
+
+    // -- Auto-resize Textarea ------------------------------------
+
+    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInput(e.target.value);
+        const textarea = e.target;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    }, []);
 
     // -- Render Scaffold UI (T-4.13) -----------------------------
 
@@ -415,14 +430,38 @@ export default function SessionPage() {
                                 styles.messageSystem
                             }`}
                         >
-                            {msg.content}
+                            {msg.role !== 'system' && (
+                                <div className={styles.messageHeader}>
+                                    <span className={`${styles.roleIcon} ${
+                                        msg.role === 'student' ? styles.roleStudent : styles.roleCoach
+                                    }`}>
+                                        {msg.role === 'student' ? 'S' : 'AI'}
+                                    </span>
+                                    <span className={styles.roleLabel}>
+                                        {msg.role === 'student' ? '我' : 'AI 导师'}
+                                    </span>
+                                </div>
+                            )}
+                            <div className={styles.messageContent}>
+                                {msg.role === 'coach' ? (
+                                    <MarkdownRenderer content={msg.content} />
+                                ) : (
+                                    msg.content
+                                )}
+                            </div>
                         </div>
                     ))}
 
                     {/* Streaming content (partial coach response) */}
                     {streamingContent && (
                         <div className={`${styles.messageBubble} ${styles.messageCoach}`}>
-                            {streamingContent}
+                            <div className={styles.messageHeader}>
+                                <span className={`${styles.roleIcon} ${styles.roleCoach}`}>AI</span>
+                                <span className={styles.roleLabel}>AI 导师</span>
+                            </div>
+                            <div className={styles.messageContent}>
+                                <MarkdownRenderer content={streamingContent} isStreaming />
+                            </div>
                         </div>
                     )}
 
@@ -441,7 +480,7 @@ export default function SessionPage() {
                         ref={inputRef}
                         className={styles.chatInput}
                         value={input}
-                        onChange={e => setInput(e.target.value)}
+                        onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
                         placeholder={
                             session.status !== 'active'

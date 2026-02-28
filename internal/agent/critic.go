@@ -24,11 +24,11 @@ import (
 
 // CriticAgent 审查者 Agent。
 type CriticAgent struct {
-	llm *llm.OllamaClient
+	llm llm.LLMProvider
 }
 
 // NewCriticAgent 创建审查者 Agent。
-func NewCriticAgent(llmClient *llm.OllamaClient) *CriticAgent {
+func NewCriticAgent(llmClient llm.LLMProvider) *CriticAgent {
 	return &CriticAgent{llm: llmClient}
 }
 

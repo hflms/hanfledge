@@ -1,6 +1,6 @@
 # Hanfledge MVP V1.0 — TODO Tasks
 
-**Last Updated:** 2026-02-28 11:45
+**Last Updated:** 2026-02-28 14:00
 **Tech Stack:** Go (Gin+GORM) / Next.js / PostgreSQL (pgvector) / Neo4j / Redis
 **Reference:** [design.md](./design.md)
 
@@ -17,8 +17,14 @@
 | Phase 4: AI 对话引擎 | ✅ 已完成 | 100% | — |
 | Phase 5: 学情仪表盘 | ✅ 已完成 | 100% | — |
 | Phase 6: 集成联调与部署 | ✅ 已完成 | 100% | — |
+| **Post-MVP: LLM 真流式输出** | **✅ 已完成** | **100%** | — |
+| **Post-MVP: Redis 缓存集成** | **✅ 已完成** | **100%** | — |
+| **Post-MVP: 完善插件系统** | **✅ 已完成** | **100%** | — |
+| **Post-MVP: 多 LLM Provider** | **✅ 已完成** | **100%** | — |
+| **Post-MVP: 前端 UI 优化** | **✅ 已完成** | **100%** | — |
+| Post-MVP: 单元测试补全 | ⏳ 待开始 | 0% | — |
 
-**总进度: 73 / 73 tasks (100%)**
+**MVP 总进度: 73 / 73 tasks (100%)**
 
 ---
 
@@ -281,3 +287,133 @@
   - WebSocket 协议文档: 客户端/服务端事件格式
   - 开发指南: 构建/测试/Lint 命令
   - 性能基准数据: 4 个 Benchmark + 并发压力测试结果
+
+---
+
+## Post-MVP: LLM 真流式输出 ✅
+
+- [x] PM-1.1: **OllamaClient.StreamChat()** — NDJSON 流式读取
+  - `doPostStream()` 返回 raw `*http.Response`，无 HTTP 超时（context 控制取消）
+  - `StreamChat()` 使用 `bufio.Scanner` 逐行解析 Ollama NDJSON 响应
+  - 每个 token 通过 `onToken` 回调实时推送，同时累积完整响应文本
+  - 支持 context 取消（每行之间检查 `ctx.Done()`）
+- [x] PM-1.2: **CoachAgent 流式化** — GenerateResponse/ReviseResponse 签名升级
+  - 新增 `onToken func(string)` 参数，由编排器控制何时流式输出
+  - 内部调用 `llm.StreamChat()` 替代 `llm.Chat()`
+  - `onToken=nil` 时静默缓冲（用于可能被 Critic 驳回的非最终尝试）
+- [x] PM-1.3: **Orchestrator Actor-Critic 流式策略**
+  - 非最终尝试（attempt 0~1）：`onToken=nil`，静默缓冲
+  - 最终尝试（maxCriticRetries）：`onToken=tc.OnTokenDelta`，实时流式输出
+  - Critic 通过非最终尝试时：将缓冲全文一次性发送给前端
+  - Critic 失败 fallback 时：同样补发缓冲内容
+- [x] PM-1.4: **前端兼容性验证** — 无需修改
+  - `token_delta` 事件处理逻辑 (`prev + payload.text`) 同时兼容单 token 和批量文本
+  - `turn_complete` 事件正确刷新 `streamingContent` 到消息列表
+
+---
+
+## Post-MVP: Redis 缓存集成 ✅
+
+- [x] PM-2.1: **Redis 连接池初始化** — `internal/infrastructure/cache/redis.go`
+  - `NewRedisCache(redisURL)` — 解析 URL, 配置连接池 (pool=20, idle=5)
+  - 集成到 `main.go` 启动链路，连接失败非致命（nil 检查贯穿全链路）
+- [x] PM-2.2: **会话历史缓存** — 热会话的对话历史缓存
+  - Key: `session:{id}:history`，TTL: 30min，List 类型 (RPUSH/LTRIM)
+  - `GetSessionHistory` / `AppendSessionHistory` / `InvalidateSessionHistory`
+  - Coach.loadHistory() 实现缓存优先 + DB 回填策略
+  - Orchestrator.saveInteraction() 在 DB 写入后同步追加 Redis 缓存
+- [x] PM-2.3: **会话状态缓存** — 减少 scaffold/当前知识点的 DB 查询
+  - Key: `session:{id}:state`，TTL: 30min，String 类型
+  - `GetSessionState` / `SetSessionState` / `InvalidateSessionState`
+  - 缓存 scaffold、current_kp、student_id 等元数据
+
+---
+
+## Post-MVP: 完善插件系统 ✅
+
+- [x] PM-3.1: **Plugin/SkillPlugin 接口契约** — `internal/plugin/types.go`
+  - `Plugin` 接口: PluginMetadata/Init/HealthCheck/Shutdown 生命周期管理
+  - `SkillPlugin` 接口: Match/LoadConstraints/LoadTemplates/Evaluate 教学技能契约
+  - 完整类型系统: PluginState(6态), TrustLevel(3级), PluginType(4类), PluginMeta
+  - StudentIntent, InteractionData, SkillEvalResult 等领域类型
+- [x] PM-3.2: **EventBus 事件总线** — `internal/plugin/eventbus.go`
+  - 13 个 HookPoint 常量 (知识工程4 + 学生交互5 + 评估2 + 系统2)
+  - Subscribe/Unsubscribe 订阅管理，pluginID 标识来源
+  - Publish: 同步执行所有 handler，记录错误但不中断
+  - PublishAbortable: "before" 钩子，任一 handler 出错即中止后续
+  - RWMutex 线程安全，copy-on-read 防止锁竞争
+- [x] PM-3.3: **Registry 生命周期管理** — `internal/plugin/registry.go`
+  - 声明式技能: Discovered → Validated → Running (文件系统加载)
+  - 编程式技能: RegisterSkillPlugin() — Init 注入 PluginDeps + EventBus
+  - ShutdownAll: 优雅关停所有编程式插件
+  - HealthCheckAll: 健康检查 + 自动 Running↔Degraded 状态切换
+  - LoadConstraints/LoadTemplates: 编程式插件委托，声明式文件系统读取
+
+---
+
+## Post-MVP: 多 LLM Provider ✅
+
+- [x] PM-4.1: **LLMProvider 抽象接口** — `internal/infrastructure/llm/provider.go`
+  - `LLMProvider` interface: Name/Chat/StreamChat/Embed/EmbedBatch 统一签名
+  - `ChatMessage`, `ChatOptions` 等类型已为 provider 无关设计
+  - 编译期接口检查 (`var _ LLMProvider = (*XxxClient)(nil)`)
+- [x] PM-4.2: **OllamaClient 适配** — 添加 `Name()` 方法，满足 `LLMProvider` 接口
+  - 零破坏性重构：现有方法签名完全兼容
+- [x] PM-4.3: **DashScope Provider** — `internal/infrastructure/llm/dashscope.go`
+  - `DashScopeClient` 实现 `LLMProvider` 接口
+  - Chat: 非流式调用 DashScope `/services/aigc/text-generation/generation`
+  - StreamChat: SSE 流式输出，自动提取增量 delta（DashScope 返回累计内容）
+  - Embed/EmbedBatch: 原生批量嵌入 (每批最多 25 条)
+  - 支持 `qwen-max`, `qwen-plus`, `qwen-turbo` 等模型
+- [x] PM-4.4: **ModelRouter 分级路由** — `internal/infrastructure/llm/router.go`
+  - 三级模型: Tier1(本地小模型) / Tier2(中等) / Tier3(旗舰)
+  - 实现 `LLMProvider` 接口（默认委托 Fallback）
+  - `Route(complexity)` / `ChatRouted()` / `StreamChatRouted()` 支持显式路由
+  - 任一 Tier 为 nil 时自动降级到 Fallback
+- [x] PM-4.5: **全链路消费者重构** — 6 个文件从 `*llm.OllamaClient` 改为 `llm.LLMProvider`
+  - `coach.go`, `critic.go`, `designer.go`, `orchestrator.go`, `karag.go`, `main.go`
+- [x] PM-4.6: **main.go Provider 初始化** — 基于 `LLM_PROVIDER` 环境变量切换
+  - `ollama` (默认): 使用 `OLLAMA_HOST`/`OLLAMA_MODEL`
+  - `dashscope`: 使用 `DASHSCOPE_API_KEY`/`DASHSCOPE_MODEL`
+  - 缺少 API Key 时 fatal，确保明确配置
+
+---
+
+## Post-MVP: 前端 UI 优化 ✅
+
+- [x] PM-5.1: **Markdown 渲染引擎** — `MarkdownRenderer` 组件
+  - 安装 `react-markdown` + `remark-gfm` (GFM 表格/删除线/任务列表支持)
+  - 自定义渲染: 段落、标题 (h1-h3)、有序/无序列表、引用块、表格、链接、加粗
+  - 代码块: 暗色背景容器 + 语言标签 + 一键复制按钮
+  - 行内代码: 紫色高亮样式，与设计系统一致
+  - Coach 消息和流式内容均通过 MarkdownRenderer 渲染
+- [x] PM-5.2: **流式打字机光标** — 闪烁光标视觉反馈
+  - `isStreaming` prop 控制光标显示
+  - CSS `step-end` 动画实现经典闪烁效果 (0.8s 周期)
+  - 光标样式: 2px 宽，accent-light 色，text-bottom 对齐
+- [x] PM-5.3: **消息角色标识** — 头像 + 标签
+  - 学生消息: 「S」图标 + 「我」标签
+  - Coach 消息: 「AI」图标 + 「AI 导师」标签
+  - 系统消息: 无标识 (居中纯文本)
+  - 图标样式: 22px 圆角方块，颜色区分 (学生白/Coach 紫)
+- [x] PM-5.4: **输入框自动伸缩** — 多行内容自适应高度
+  - `handleInputChange` 自动计算 scrollHeight
+  - 最大高度 120px，超出后滚动
+  - 发送消息后重置高度
+- [x] PM-5.5: **移动端响应式** — 768px / 480px 断点适配
+  - 768px: 头部纵向布局, 气泡宽度 90%, 支架面板缩小
+  - 480px: 气泡宽度 95%, 字号缩小, 支架描述隐藏
+  - 输入区域间距调整, 发送按钮紧凑化
+- [x] PM-5.6: **代码块样式** — 深色编辑器风格
+  - 半透明黑色背景 (rgba(0,0,0,0.35))
+  - 顶部语言标签栏 (大写, muted 色)
+  - 等宽字体 (Menlo/Monaco/Consolas)
+  - 横向溢出滚动, 边框圆角
+
+---
+
+## Post-MVP: 单元测试补全 ⏳
+
+- [ ] PM-6.1: **Agent 层单元测试** — Coach/Critic/Strategist/Designer mock 测试
+- [ ] PM-6.2: **UseCase 层单元测试** — KA-RAG pipeline 测试
+- [ ] PM-6.3: **Repository 层单元测试** — GORM/Neo4j mock 测试

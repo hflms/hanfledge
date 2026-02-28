@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,7 +11,10 @@ import (
 	"time"
 )
 
-// OllamaClient implements LLM and Embedding calls via Ollama REST API.
+// Compile-time check: OllamaClient implements LLMProvider.
+var _ LLMProvider = (*OllamaClient)(nil)
+
+// OllamaClient implements LLMProvider via Ollama REST API.
 type OllamaClient struct {
 	BaseURL        string
 	ChatModel      string
@@ -27,6 +31,9 @@ func NewOllamaClient(baseURL, chatModel, embeddingModel string) *OllamaClient {
 		HTTPClient:     &http.Client{Timeout: 120 * time.Second},
 	}
 }
+
+// Name returns the provider identifier.
+func (c *OllamaClient) Name() string { return "ollama" }
 
 // ── Chat API ────────────────────────────────────────────────
 
@@ -55,6 +62,79 @@ type ChatOptions struct {
 type ChatResponse struct {
 	Model   string      `json:"model"`
 	Message ChatMessage `json:"message"`
+}
+
+// StreamChatResponse represents a single chunk in the Ollama streaming response (NDJSON).
+type StreamChatResponse struct {
+	Model   string      `json:"model"`
+	Message ChatMessage `json:"message"`
+	Done    bool        `json:"done"`
+}
+
+// StreamChat sends a streaming chat request and invokes onToken for each token delta.
+// It also accumulates and returns the full response text.
+// The onToken callback may be nil (in which case tokens are accumulated silently).
+func (c *OllamaClient) StreamChat(ctx context.Context, messages []ChatMessage, opts *ChatOptions, onToken func(token string)) (string, error) {
+	reqBody := ChatRequest{
+		Model:    c.ChatModel,
+		Messages: messages,
+		Stream:   true,
+		Options:  opts,
+	}
+
+	resp, err := c.doPostStream(ctx, "/api/chat", reqBody)
+	if err != nil {
+		return "", fmt.Errorf("ollama stream chat failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("ollama API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var fullResponse string
+	scanner := bufio.NewScanner(resp.Body)
+	// Increase scanner buffer for potentially large JSON lines
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		// Check context cancellation between lines
+		select {
+		case <-ctx.Done():
+			return fullResponse, ctx.Err()
+		default:
+		}
+
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var chunk StreamChatResponse
+		if err := json.Unmarshal(line, &chunk); err != nil {
+			// Skip malformed lines
+			continue
+		}
+
+		token := chunk.Message.Content
+		if token != "" {
+			fullResponse += token
+			if onToken != nil {
+				onToken(token)
+			}
+		}
+
+		if chunk.Done {
+			break
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fullResponse, fmt.Errorf("ollama stream read error: %w", err)
+	}
+
+	return fullResponse, nil
 }
 
 // Chat sends a non-streaming chat request and returns the full response.
@@ -130,6 +210,30 @@ func (c *OllamaClient) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 }
 
 // ── HTTP Helper ─────────────────────────────────────────────
+
+// doPostStream sends a POST request and returns the raw *http.Response for streaming reads.
+// The caller is responsible for closing resp.Body.
+func (c *OllamaClient) doPostStream(ctx context.Context, path string, payload interface{}) (*http.Response, error) {
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+path, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Use a client without timeout for streaming — context handles cancellation
+	streamClient := &http.Client{}
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
 
 func (c *OllamaClient) doPost(ctx context.Context, path string, payload interface{}) ([]byte, error) {
 	jsonData, err := json.Marshal(payload)

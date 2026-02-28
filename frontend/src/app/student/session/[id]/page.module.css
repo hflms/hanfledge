@@ -66,8 +66,48 @@
     border-radius: var(--radius-md);
     font-size: 14px;
     line-height: 1.6;
-    white-space: pre-wrap;
     word-break: break-word;
+}
+
+/* -- Message Header (role labels) ----------------------- */
+
+.messageHeader {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.roleIcon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.roleStudent {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.roleCoach {
+    background: rgba(108, 92, 231, 0.2);
+    color: var(--accent-light);
+}
+
+.roleLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.messageContent {
+    /* Container for markdown or plain text */
 }
 
 .messageStudent {
@@ -285,4 +325,58 @@
 
 .backLink:hover {
     color: var(--text-primary);
+}
+
+/* -- Mobile Responsive ---------------------------------- */
+
+@media (max-width: 768px) {
+    .chatContainer {
+        height: calc(100vh - var(--header-height) - 32px);
+        max-height: calc(100vh - var(--header-height) - 32px);
+    }
+
+    .chatHeader {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding-bottom: 12px;
+    }
+
+    .scaffoldBadge {
+        align-self: flex-start;
+    }
+
+    .messageBubble {
+        max-width: 90%;
+    }
+
+    .scaffoldSteps {
+        max-height: 80px;
+    }
+
+    .inputArea {
+        gap: 8px;
+        padding-top: 12px;
+    }
+
+    .sendBtn {
+        padding: 0 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .messageBubble {
+        max-width: 95%;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .chatInput {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .scaffoldBadge span {
+        display: none;
+    }
 }

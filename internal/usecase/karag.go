@@ -19,11 +19,11 @@ import (
 type KARAGEngine struct {
 	DB    *gorm.DB
 	Neo4j *neo4jRepo.Client
-	LLM   *llm.OllamaClient
+	LLM   llm.LLMProvider
 }
 
 // NewKARAGEngine creates a new KA-RAG engine.
-func NewKARAGEngine(db *gorm.DB, neo4j *neo4jRepo.Client, llmClient *llm.OllamaClient) *KARAGEngine {
+func NewKARAGEngine(db *gorm.DB, neo4j *neo4jRepo.Client, llmClient llm.LLMProvider) *KARAGEngine {
 	return &KARAGEngine{DB: db, Neo4j: neo4j, LLM: llmClient}
 }
 

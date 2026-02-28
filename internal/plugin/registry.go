@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,27 +11,46 @@ import (
 	"sync"
 )
 
-// Registry 是技能插件的注册中心。
-// 启动时扫描 /plugins/skills/ 目录，将所有合法技能加载到内存 Map。
+// ============================
+// Plugin Registry & Discovery
+// ============================
+//
+// Lifecycle state machine (design.md section 7.4):
+//   Discovered -> Validated -> Initialized -> Running -> Degraded / Stopped
+//
+// The Registry manages plugin discovery, validation, initialization,
+// and provides an EventBus for hook-based communication.
+
+// Registry is the central plugin registry and lifecycle manager.
 type Registry struct {
-	mu     sync.RWMutex
-	skills map[string]*RegisteredSkill // key: skill ID
+	mu       sync.RWMutex
+	skills   map[string]*RegisteredSkill // key: skill ID
+	eventBus *EventBus
 }
 
-// NewRegistry creates an empty plugin registry.
+// NewRegistry creates an empty plugin registry with an EventBus.
 func NewRegistry() *Registry {
 	return &Registry{
-		skills: make(map[string]*RegisteredSkill),
+		skills:   make(map[string]*RegisteredSkill),
+		eventBus: NewEventBus(),
 	}
 }
 
+// EventBus returns the registry's event bus for hook subscriptions.
+func (r *Registry) EventBus() *EventBus {
+	return r.eventBus
+}
+
+// -- Plugin Loading & Lifecycle ----------------------------------
+
 // LoadSkills scans the given directory for skill plugins and registers them.
 // Each subdirectory is expected to contain backend/metadata.json.
+// Lifecycle: Discovered -> Validated -> Running (for declarative skills).
 func (r *Registry) LoadSkills(skillsDir string) error {
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("⚠️  [Plugin] Skills directory not found: %s", skillsDir)
+			log.Printf("[Plugin] Skills directory not found: %s", skillsDir)
 			return nil
 		}
 		return fmt.Errorf("read skills directory failed: %w", err)
@@ -43,28 +63,117 @@ func (r *Registry) LoadSkills(skillsDir string) error {
 		}
 
 		skillDir := filepath.Join(skillsDir, entry.Name())
-		skill, err := r.loadSkill(skillDir)
+
+		// Phase 1: Discover
+		skill, err := r.discoverSkill(skillDir)
 		if err != nil {
-			log.Printf("⚠️  [Plugin] Skip skill %s: %v", entry.Name(), err)
+			log.Printf("[Plugin] Skip skill %s: %v", entry.Name(), err)
 			continue
 		}
 
+		// Phase 2: Validate
+		if err := r.validateSkill(skill); err != nil {
+			log.Printf("[Plugin] Validation failed for %s: %v", skill.Metadata.ID, err)
+			continue
+		}
+
+		// Phase 3: Register (declarative skills go straight to Running)
 		r.mu.Lock()
+		skill.State = PluginStateRunning
 		r.skills[skill.Metadata.ID] = skill
 		r.mu.Unlock()
 		loaded++
 
-		log.Printf("   ✅ Loaded skill: %s (%s) v%s",
-			skill.Metadata.Name, skill.Metadata.ID, skill.Metadata.Version)
+		log.Printf("   Loaded skill: %s (%s) v%s [%s]",
+			skill.Metadata.Name, skill.Metadata.ID, skill.Metadata.Version, skill.State)
 	}
 
-	log.Printf("🧩 [Plugin] Loaded %d skill(s) from %s", loaded, skillsDir)
+	log.Printf("[Plugin] Loaded %d skill(s) from %s", loaded, skillsDir)
 	return nil
 }
 
-// loadSkill reads a single skill plugin from a directory.
-func (r *Registry) loadSkill(skillDir string) (*RegisteredSkill, error) {
-	// Read metadata.json from backend/
+// RegisterSkillPlugin registers a programmatic SkillPlugin implementation.
+// This is used for core/domain plugins that implement the SkillPlugin interface.
+func (r *Registry) RegisterSkillPlugin(impl SkillPlugin) error {
+	meta := impl.PluginMetadata()
+
+	// Initialize the plugin
+	deps := PluginDeps{
+		EventBus: r.eventBus,
+	}
+	if err := impl.Init(context.Background(), deps); err != nil {
+		return fmt.Errorf("init plugin %s failed: %w", meta.ID, err)
+	}
+
+	// Subscribe to declared hooks
+	for _, hook := range meta.Hooks {
+		// Plugins register their own handlers during Init via EventBus
+		log.Printf("[Plugin] %s declares hook: %s", meta.ID, hook)
+	}
+
+	r.mu.Lock()
+	r.skills[meta.ID] = &RegisteredSkill{
+		Metadata: SkillMetadata{
+			ID:       meta.ID,
+			Name:     meta.Name,
+			Version:  meta.Version,
+			Category: string(meta.Type),
+		},
+		State: PluginStateRunning,
+		Impl:  impl,
+	}
+	r.mu.Unlock()
+
+	log.Printf("[Plugin] Registered programmatic skill: %s v%s", meta.Name, meta.Version)
+	return nil
+}
+
+// ShutdownAll gracefully shuts down all programmatic plugins.
+func (r *Registry) ShutdownAll(ctx context.Context) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for id, skill := range r.skills {
+		if skill.Impl != nil {
+			if err := skill.Impl.Shutdown(ctx); err != nil {
+				log.Printf("[Plugin] Shutdown %s failed: %v", id, err)
+			} else {
+				skill.State = PluginStateStopped
+			}
+		}
+	}
+}
+
+// HealthCheckAll runs health checks on all programmatic plugins.
+// Marks unhealthy plugins as Degraded.
+func (r *Registry) HealthCheckAll(ctx context.Context) map[string]HealthStatus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	results := make(map[string]HealthStatus)
+	for id, skill := range r.skills {
+		if skill.Impl != nil {
+			status := skill.Impl.HealthCheck(ctx)
+			results[id] = status
+			if !status.Healthy && skill.State == PluginStateRunning {
+				skill.State = PluginStateDegraded
+				log.Printf("[Plugin] %s degraded: %s", id, status.Message)
+			} else if status.Healthy && skill.State == PluginStateDegraded {
+				skill.State = PluginStateRunning
+				log.Printf("[Plugin] %s recovered", id)
+			}
+		} else {
+			// Declarative plugins are always healthy
+			results[id] = HealthStatus{Healthy: true, Message: "declarative"}
+		}
+	}
+	return results
+}
+
+// -- Internal Discovery & Validation -----------------------------
+
+// discoverSkill reads a single skill plugin from a directory (Discovered state).
+func (r *Registry) discoverSkill(skillDir string) (*RegisteredSkill, error) {
 	metadataPath := filepath.Join(skillDir, "backend", "metadata.json")
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
@@ -76,20 +185,36 @@ func (r *Registry) loadSkill(skillDir string) (*RegisteredSkill, error) {
 		return nil, fmt.Errorf("parse metadata.json failed: %w", err)
 	}
 
-	// Validate required fields
-	if meta.ID == "" || meta.Name == "" {
-		return nil, fmt.Errorf("metadata.json missing required fields (id, name)")
-	}
-
 	skill := &RegisteredSkill{
 		Metadata:      meta,
 		BasePath:      skillDir,
 		SkillMDPath:   filepath.Join(skillDir, "backend", "SKILL.md"),
 		TemplatesPath: filepath.Join(skillDir, "backend", "templates"),
+		State:         PluginStateDiscovered,
 	}
 
 	return skill, nil
 }
+
+// validateSkill checks required fields and file existence (Validated state).
+func (r *Registry) validateSkill(skill *RegisteredSkill) error {
+	if skill.Metadata.ID == "" {
+		return fmt.Errorf("missing required field: id")
+	}
+	if skill.Metadata.Name == "" {
+		return fmt.Errorf("missing required field: name")
+	}
+
+	// Check that SKILL.md exists
+	if _, err := os.Stat(skill.SkillMDPath); err != nil {
+		return fmt.Errorf("SKILL.md not found at %s", skill.SkillMDPath)
+	}
+
+	skill.State = PluginStateValidated
+	return nil
+}
+
+// -- Query Methods -----------------------------------------------
 
 // GetSkill returns a registered skill by ID.
 func (r *Registry) GetSkill(id string) (*RegisteredSkill, bool) {
@@ -118,12 +243,19 @@ func (r *Registry) ListSkills(subject, category string) []*RegisteredSkill {
 }
 
 // LoadConstraints reads the SKILL.md file for a given skill (lazy loading).
+// For programmatic plugins, delegates to the SkillPlugin.LoadConstraints method.
 func (r *Registry) LoadConstraints(skillID string) (*SkillConstraints, error) {
 	skill, ok := r.GetSkill(skillID)
 	if !ok {
 		return nil, fmt.Errorf("skill not found: %s", skillID)
 	}
 
+	// If the skill has a programmatic implementation, use it
+	if skill.Impl != nil {
+		return skill.Impl.LoadConstraints(context.Background())
+	}
+
+	// Declarative: read from filesystem
 	data, err := os.ReadFile(skill.SkillMDPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -139,13 +271,19 @@ func (r *Registry) LoadConstraints(skillID string) (*SkillConstraints, error) {
 }
 
 // LoadTemplates reads template files from the templates/ directory for a given skill.
+// For programmatic plugins, delegates to the SkillPlugin.LoadTemplates method.
 func (r *Registry) LoadTemplates(skillID string, templateIDs []string) ([]SkillTemplate, error) {
 	skill, ok := r.GetSkill(skillID)
 	if !ok {
 		return nil, fmt.Errorf("skill not found: %s", skillID)
 	}
 
-	// If no specific templates requested, load all
+	// If the skill has a programmatic implementation, use it
+	if skill.Impl != nil {
+		return skill.Impl.LoadTemplates(context.Background(), templateIDs)
+	}
+
+	// Declarative: read from filesystem
 	if len(templateIDs) == 0 {
 		return r.loadAllTemplates(skill)
 	}
@@ -155,7 +293,7 @@ func (r *Registry) LoadTemplates(skillID string, templateIDs []string) ([]SkillT
 		tmplPath := filepath.Join(skill.TemplatesPath, tid)
 		data, err := os.ReadFile(tmplPath)
 		if err != nil {
-			log.Printf("⚠️  [Plugin] Template %s not found for skill %s", tid, skillID)
+			log.Printf("[Plugin] Template %s not found for skill %s", tid, skillID)
 			continue
 		}
 		templates = append(templates, SkillTemplate{
@@ -194,6 +332,8 @@ func (r *Registry) loadAllTemplates(skill *RegisteredSkill) ([]SkillTemplate, er
 	}
 	return templates, nil
 }
+
+// -- Helpers ------------------------------------------------------
 
 // containsIgnoreCase checks if a string slice contains a target (case-insensitive).
 func containsIgnoreCase(slice []string, target string) bool {

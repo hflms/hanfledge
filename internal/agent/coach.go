@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
@@ -26,30 +27,30 @@ import (
 // CoachAgent 教练 Agent。
 type CoachAgent struct {
 	db          *gorm.DB
-	llm         *llm.OllamaClient
+	llm         llm.LLMProvider
 	registry    *plugin.Registry
 	piiRedactor *safety.PIIRedactor
+	cache       *cache.RedisCache // nil if Redis unavailable
 }
 
 // NewCoachAgent 创建教练 Agent。
-func NewCoachAgent(db *gorm.DB, llmClient *llm.OllamaClient, registry *plugin.Registry, piiRedactor *safety.PIIRedactor) *CoachAgent {
+func NewCoachAgent(db *gorm.DB, llmClient llm.LLMProvider, registry *plugin.Registry, piiRedactor *safety.PIIRedactor, redisCache *cache.RedisCache) *CoachAgent {
 	return &CoachAgent{
 		db:          db,
 		llm:         llmClient,
 		registry:    registry,
 		piiRedactor: piiRedactor,
+		cache:       redisCache,
 	}
 }
 
 // Name 返回 Agent 名称。
 func (a *CoachAgent) Name() string { return "Coach" }
 
-// GenerateResponse 根据个性化材料生成初稿回复。
-// 1. 加载 SKILL.md 约束
-// 2. 构建对话历史
-// 3. 调用 LLM 生成回复
-// 4. 流式输出 token（当前为非流式，T-4.4 将升级）
-func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMaterial) (DraftResponse, error) {
+// GenerateResponse 根据个性化材料生成初稿回复（流式）。
+// onToken 回调用于逐 token 发送给前端。如果 onToken 为 nil，则仅静默累积。
+// 这使得编排器可以控制何时流式输出（仅在最终被采纳的草稿时）。
+func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMaterial, onToken func(string)) (DraftResponse, error) {
 	log.Printf("🎓 [Coach] Generating response for session=%d", tc.SessionID)
 
 	// Step 1: 加载技能约束
@@ -62,20 +63,15 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 	// Step 2.5: PII 脱敏 — 在发送给 LLM 前替换用户消息中的个人信息
 	messages = a.redactPII(messages, tc.SessionID)
 
-	// Step 3: 调用 LLM（非流式 — T-4.4 将添加 ChatStream）
+	// Step 3: 调用 LLM（流式）
 	ctx := tc.Ctx
-	response, err := a.llm.Chat(ctx, messages, &llm.ChatOptions{
+	response, err := a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
 		Temperature: 0.7,
 		TopP:        0.9,
 		MaxTokens:   1024,
-	})
+	}, onToken)
 	if err != nil {
 		return DraftResponse{}, fmt.Errorf("coach LLM call failed: %w", err)
-	}
-
-	// Step 4: 通过回调发送 token（非流式模式下一次性发送）
-	if tc.OnTokenDelta != nil {
-		tc.OnTokenDelta(response)
 	}
 
 	// 估算 token 数（粗略：中文约 1 字 = 1 token）
@@ -93,8 +89,9 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 	return draft, nil
 }
 
-// ReviseResponse 根据 Critic 反馈修订回复。
-func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMaterial, review *ReviewResult) (DraftResponse, error) {
+// ReviseResponse 根据 Critic 反馈修订回复（流式）。
+// onToken 回调用于逐 token 发送给前端。如果 onToken 为 nil，则仅静默累积。
+func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMaterial, review *ReviewResult, onToken func(string)) (DraftResponse, error) {
 	log.Printf("🎓 [Coach] Revising response based on Critic feedback (session=%d)", tc.SessionID)
 
 	// 在原始消息后追加 Critic 反馈
@@ -124,17 +121,13 @@ func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMateri
 	messages = a.redactPII(messages, tc.SessionID)
 
 	ctx := tc.Ctx
-	response, err := a.llm.Chat(ctx, messages, &llm.ChatOptions{
+	response, err := a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
 		Temperature: 0.7,
 		TopP:        0.9,
 		MaxTokens:   1024,
-	})
+	}, onToken)
 	if err != nil {
 		return DraftResponse{}, fmt.Errorf("coach revision LLM call failed: %w", err)
-	}
-
-	if tc.OnTokenDelta != nil {
-		tc.OnTokenDelta(response)
 	}
 
 	tokensUsed := estimateTokens(response)
@@ -219,8 +212,27 @@ func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMateria
 	return messages
 }
 
-// loadHistory 加载会话历史交互记录。
-func (a *CoachAgent) loadHistory(_ context.Context, sessionID uint, limit int) []llm.ChatMessage {
+// loadHistory 加载会话历史交互记录（cache-first, DB fallback）。
+func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, limit int) []llm.ChatMessage {
+	// 尝试从 Redis 缓存读取
+	if a.cache != nil {
+		cached, err := a.cache.GetSessionHistory(ctx, sessionID)
+		if err != nil {
+			log.Printf("⚠️  [Cache] Get history session=%d failed: %v", sessionID, err)
+		} else if cached != nil && len(cached) > 0 {
+			messages := make([]llm.ChatMessage, 0, len(cached))
+			for _, cm := range cached {
+				messages = append(messages, llm.ChatMessage{
+					Role:    cm.Role,
+					Content: cm.Content,
+				})
+			}
+			log.Printf("📦 [Cache] HIT session=%d history (%d messages)", sessionID, len(messages))
+			return messages
+		}
+	}
+
+	// Cache miss → 从数据库加载
 	type interaction struct {
 		Role    string
 		Content string
@@ -246,6 +258,17 @@ func (a *CoachAgent) loadHistory(_ context.Context, sessionID uint, limit int) [
 			Role:    role,
 			Content: inter.Content,
 		})
+	}
+
+	// 回填缓存
+	if a.cache != nil && len(messages) > 0 {
+		cached := make([]cache.CachedMessage, len(messages))
+		for i, m := range messages {
+			cached[i] = cache.CachedMessage{Role: m.Role, Content: m.Content}
+		}
+		if err := a.cache.AppendSessionHistory(ctx, sessionID, cached...); err != nil {
+			log.Printf("⚠️  [Cache] Backfill history session=%d failed: %v", sessionID, err)
+		}
 	}
 
 	return messages

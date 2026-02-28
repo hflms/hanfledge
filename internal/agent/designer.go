@@ -24,13 +24,13 @@ import (
 // DesignerAgent 设计师 Agent。
 type DesignerAgent struct {
 	db    *gorm.DB
-	llm   *llm.OllamaClient
+	llm   llm.LLMProvider
 	neo4j *neo4jRepo.Client
 	karag *usecase.KARAGEngine
 }
 
 // NewDesignerAgent 创建设计师 Agent。
-func NewDesignerAgent(db *gorm.DB, llmClient *llm.OllamaClient, neo4jClient *neo4jRepo.Client, karag *usecase.KARAGEngine) *DesignerAgent {
+func NewDesignerAgent(db *gorm.DB, llmClient llm.LLMProvider, neo4jClient *neo4jRepo.Client, karag *usecase.KARAGEngine) *DesignerAgent {
 	return &DesignerAgent{
 		db:    db,
 		llm:   llmClient,
