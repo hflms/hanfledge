@@ -14,6 +14,11 @@ import {
 import { usePluginRegistry } from '@/lib/plugin/PluginRegistry';
 import { useBuiltinSkillRenderers } from '@/lib/plugin/SkillRendererPlugins';
 import type { AgentWebSocketChannel, SkillRendererProps, InteractionEvent } from '@/lib/plugin/types';
+import {
+    getCachedResponse,
+    setCachedResponse,
+    purgeExpiredEntries,
+} from '@/lib/cache/indexedDBCache';
 import { useToast } from '@/components/Toast';
 import styles from './page.module.css';
 
@@ -99,6 +104,9 @@ export default function SessionPage() {
     const reconnectCountRef = useRef(0);
     const intentionalCloseRef = useRef(false);
 
+    // L1 cache: track pending question for caching the response on turn_complete
+    const pendingQuestionRef = useRef<string | null>(null);
+
     // -- Plugin System: find matching skill renderer -------------
 
     const plugins = usePluginRegistry('student.interaction.main');
@@ -148,6 +156,16 @@ export default function SessionPage() {
     useEffect(() => {
         scrollToBottom();
     }, [messages, streamingContent, thinkingStatus, scrollToBottom]);
+
+    // -- L1 Cache: purge expired entries on mount ----------------
+
+    useEffect(() => {
+        purgeExpiredEntries().then(purged => {
+            if (purged > 0) {
+                console.log(`[L1 Cache] Purged ${purged} expired entries`);
+            }
+        });
+    }, []);
 
     // -- Load session data ---------------------------------------
 
@@ -343,7 +361,7 @@ export default function SessionPage() {
                 setThinkingStatus(null);
                 setSending(false);
 
-                // Flush streaming content to a message
+                // Flush streaming content to a message + cache response
                 setStreamingContent(prev => {
                     if (prev) {
                         setMessages(msgs => [
@@ -355,6 +373,13 @@ export default function SessionPage() {
                                 timestamp: Date.now(),
                             },
                         ]);
+
+                        // L1 Cache: store question→response pair
+                        const pendingQ = pendingQuestionRef.current;
+                        if (pendingQ) {
+                            setCachedResponse(sessionId, pendingQ, prev);
+                            pendingQuestionRef.current = null;
+                        }
                     }
                     return '';
                 });
@@ -375,7 +400,7 @@ export default function SessionPage() {
 
     // -- Send Message (fallback mode) ----------------------------
 
-    const handleSend = useCallback(() => {
+    const handleSend = useCallback(async () => {
         const text = input.trim();
         if (!text || sending || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
@@ -390,23 +415,41 @@ export default function SessionPage() {
             },
         ]);
 
-        // Send via WebSocket
+        setInput('');
+
+        // Reset textarea height after send
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto';
+        }
+
+        // L1 Cache: check for cached response before sending to server
+        const cached = await getCachedResponse(sessionId, text);
+        if (cached) {
+            console.log('[L1 Cache] Hit — returning cached response');
+            setMessages(prev => [
+                ...prev,
+                {
+                    id: `coach-cache-${Date.now()}`,
+                    role: 'coach',
+                    content: cached,
+                    timestamp: Date.now(),
+                },
+            ]);
+            return;
+        }
+
+        // Cache miss — send via WebSocket
+        pendingQuestionRef.current = text;
+        setSending(true);
+        setStreamingContent('');
+
         const event: WSEvent = {
             event: 'user_message',
             payload: { text },
             timestamp: Math.floor(Date.now() / 1000),
         };
         wsRef.current.send(JSON.stringify(event));
-
-        setInput('');
-        setSending(true);
-        setStreamingContent('');
-
-        // Reset textarea height after send
-        if (inputRef.current) {
-            inputRef.current.style.height = 'auto';
-        }
-    }, [input, sending]);
+    }, [input, sending, sessionId]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
