@@ -7,6 +7,7 @@ import (
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
@@ -55,6 +56,7 @@ func NewAgentOrchestrator(
 	neo4jClient *neo4jRepo.Client,
 	karag *usecase.KARAGEngine,
 	registry *plugin.Registry,
+	piiRedactor *safety.PIIRedactor,
 ) *AgentOrchestrator {
 	o := &AgentOrchestrator{
 		// 通道初始化（缓冲为 1，防止阻塞）
@@ -76,7 +78,7 @@ func NewAgentOrchestrator(
 	// 初始化各 Agent
 	o.strategist = NewStrategistAgent(db, neo4jClient)
 	o.designer = NewDesignerAgent(db, llmClient, neo4jClient, karag)
-	o.coach = NewCoachAgent(db, llmClient, registry)
+	o.coach = NewCoachAgent(db, llmClient, registry, piiRedactor)
 	o.critic = NewCriticAgent(llmClient)
 	o.bkt = NewBKTService(db)
 

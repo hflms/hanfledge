@@ -7,13 +7,14 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/handler"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"gorm.io/gorm"
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, registry *plugin.Registry, orchestrator *agent.AgentOrchestrator) *gin.Engine {
+func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, registry *plugin.Registry, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard) *gin.Engine {
 	r := gin.Default()
 
 	// Global middleware
@@ -29,7 +30,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 	courseHandler := handler.NewCourseHandler(db, karag)
 	skillHandler := handler.NewSkillHandler(db, registry)
 	activityHandler := handler.NewActivityHandler(db, orchestrator)
-	sessionHandler := handler.NewSessionHandler(db, orchestrator)
+	sessionHandler := handler.NewSessionHandler(db, orchestrator, injectionGuard)
 	dashboardHandler := handler.NewDashboardHandler(db)
 
 	// API v1 group

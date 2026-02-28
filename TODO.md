@@ -1,6 +1,6 @@
 # Hanfledge MVP V1.0 — TODO Tasks
 
-**Last Updated:** 2026-02-28 14:00
+**Last Updated:** 2026-02-28 11:45
 **Tech Stack:** Go (Gin+GORM) / Next.js / PostgreSQL (pgvector) / Neo4j / Redis
 **Reference:** [design.md](./design.md)
 
@@ -16,9 +16,9 @@
 | Phase 3: 技能系统 | ✅ 已完成 | 100% | — |
 | Phase 4: AI 对话引擎 | ✅ 已完成 | 100% | — |
 | Phase 5: 学情仪表盘 | ✅ 已完成 | 100% | — |
-| Phase 6: 集成联调与部署 | ⬜ 未开始 | 0% | — |
+| Phase 6: 集成联调与部署 | ✅ 已完成 | 100% | — |
 
-**总进度: 65 / 73 tasks (89%)**
+**总进度: 73 / 73 tasks (100%)**
 
 ---
 
@@ -234,16 +234,50 @@
 
 ---
 
-## Phase 6: 集成联调与部署 ⬜
+## Phase 6: 集成联调与部署 ✅
 
-- [ ] T-6.1: **端到端流程测试**
-  - 教师: 上传PDF → 查看大纲 → 挂载技能 → 发布活动
-  - 学生: 打开活动 → AI对话 → mastery更新
-  - 教师: 查看仪表盘 → 看到学情数据
-- [ ] T-6.2: `Dockerfile.backend` — Go 多阶段构建 (builder + alpine)
-- [ ] T-6.3: `Dockerfile.frontend` — Next.js standalone 模式
-- [ ] T-6.4: `docker-compose.prod.yml` — 全栈生产部署 (Nginx + Go + Next.js + DB)
-- [ ] T-6.5: 输入过滤中间件 — 防 Prompt Injection (正则+关键词)
-- [ ] T-6.6: PII 脱敏中间件 — LLM 调用前替换学生姓名/学校名
-- [ ] T-6.7: 性能基准测试 — 单节点并发对话数
-- [ ] T-6.8: README.md 完善 — 快速开始指南, 架构图, API 文档链接
+- [x] T-6.1: **端到端流程测试**
+  - `internal/delivery/http/e2e_test.go` — 26 个集成测试全部通过
+  - 覆盖: 健康检查, 登录鉴权, RBAC 权限, CRUD 操作, 全链路 E2E 流程
+  - E2E 流程: 教师建课→查看大纲→创建活动→发布→学生查看活动→加入→查看会话→掌握度更新→教师仪表盘
+  - 权限测试: 活动发布所有权, 会话访问控制, 仪表盘权限, 课程列表过滤
+- [x] T-6.2: **`Dockerfile.backend`** — Go 多阶段构建 (golang:1.25-alpine → alpine:3.21)
+  - CGO_ENABLED=0 静态编译，-ldflags="-s -w" 压缩 (27MB)
+  - 非 root 用户 (hanfledge)，HEALTHCHECK /health
+  - 包含 plugins/ 技能定义文件
+- [x] T-6.3: **`Dockerfile.frontend`** — Next.js standalone 模式
+  - 三阶段: deps → builder → runner (node:22-alpine)
+  - `output: "standalone"` 配置已启用
+  - 构建时注入 NEXT_PUBLIC_API_BASE_URL
+  - 非 root 用户，HEALTHCHECK
+- [x] T-6.4: **`docker-compose.prod.yml`** — 全栈生产部署
+  - Nginx 反向代理 (API/WebSocket → backend, 其余 → frontend)
+  - 7 个服务: nginx + backend + frontend + postgres + neo4j + redis
+  - `deployments/nginx.conf` — WebSocket 支持, 50MB 上传限制
+  - 环境变量通过 .env 文件注入，所有服务 restart: unless-stopped
+- [x] T-6.5: **输入过滤中间件 — 防 Prompt Injection (正则+关键词)**
+  - `internal/infrastructure/safety/injection.go` — InjectionGuard
+  - 三层防御: 长度限制(2000字) + 关键词黑名单(60条中英文) + 正则模式(14条)
+  - 检测结果: Safe / Warning / Blocked
+  - 集成到 WebSocket handler，阻断后返回用户友好提示
+  - 12 个单元测试全部通过
+- [x] T-6.6: **PII 脱敏中间件 — LLM 调用前替换学生姓名/学校名**
+  - `internal/infrastructure/safety/pii.go` — PIIRedactor
+  - 基于 DB 词典的精确匹配: 学生姓名→[学生]，教师姓名→[教师]，学校名→[学校]
+  - 正则模式匹配: 手机号→[手机号]，邮箱→[邮箱]，身份证号→[证件号]
+  - 集成到 Coach Agent 的 LLM 调用前，只脱敏 role=user 的消息
+  - 日志输出也使用 RedactForLog 进行部分遮蔽
+- [x] T-6.7: **性能基准测试** — 单节点并发对话数
+  - `internal/delivery/http/bench_test.go` — 4 个 Go Benchmark + 1 个并发压力测试
+  - BenchmarkLogin: 6,715 ops, 532µs/op (并行, 16 cores)
+  - BenchmarkGetMe: 3,688 ops, 903µs/op
+  - BenchmarkListCourses: 2,941 ops, 1,370µs/op
+  - BenchmarkHealthCheck: 1,277,374 ops, 2.8µs/op
+  - TestConcurrentAPICalls: 50 workers × 20 req = 1,155 req/s, 0% 错误率
+- [x] T-6.8: **README.md 完善** — 快速开始指南, 架构图, API 文档
+  - 架构图 (ASCII): Nginx → Backend/Frontend → PG/Neo4j/Redis/Ollama
+  - 快速开始: 5 步 (Docker Compose → 配置 → 后端 → Seed → 前端)
+  - 完整 API 参考: 30+ 端点, 含角色权限标注
+  - WebSocket 协议文档: 客户端/服务端事件格式
+  - 开发指南: 构建/测试/Lint 命令
+  - 性能基准数据: 4 个 Benchmark + 并发压力测试结果

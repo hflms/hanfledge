@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
 	"gorm.io/gorm"
 )
@@ -24,17 +25,19 @@ import (
 
 // CoachAgent 教练 Agent。
 type CoachAgent struct {
-	db       *gorm.DB
-	llm      *llm.OllamaClient
-	registry *plugin.Registry
+	db          *gorm.DB
+	llm         *llm.OllamaClient
+	registry    *plugin.Registry
+	piiRedactor *safety.PIIRedactor
 }
 
 // NewCoachAgent 创建教练 Agent。
-func NewCoachAgent(db *gorm.DB, llmClient *llm.OllamaClient, registry *plugin.Registry) *CoachAgent {
+func NewCoachAgent(db *gorm.DB, llmClient *llm.OllamaClient, registry *plugin.Registry, piiRedactor *safety.PIIRedactor) *CoachAgent {
 	return &CoachAgent{
-		db:       db,
-		llm:      llmClient,
-		registry: registry,
+		db:          db,
+		llm:         llmClient,
+		registry:    registry,
+		piiRedactor: piiRedactor,
 	}
 }
 
@@ -55,6 +58,9 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 
 	// Step 2: 构建消息列表
 	messages := a.buildMessages(tc, material, skillPrompt)
+
+	// Step 2.5: PII 脱敏 — 在发送给 LLM 前替换用户消息中的个人信息
+	messages = a.redactPII(messages, tc.SessionID)
 
 	// Step 3: 调用 LLM（非流式 — T-4.4 将添加 ChatStream）
 	ctx := tc.Ctx
@@ -114,6 +120,9 @@ func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMateri
 		),
 	})
 
+	// PII 脱敏
+	messages = a.redactPII(messages, tc.SessionID)
+
 	ctx := tc.Ctx
 	response, err := a.llm.Chat(ctx, messages, &llm.ChatOptions{
 		Temperature: 0.7,
@@ -140,6 +149,35 @@ func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMateri
 }
 
 // ── Internal Helpers ────────────────────────────────────────
+
+// redactPII 对发送给 LLM 的消息进行 PII 脱敏。
+// 只脱敏 role=user 的消息内容，system 和 assistant 消息保持不变。
+func (a *CoachAgent) redactPII(messages []llm.ChatMessage, sessionID uint) []llm.ChatMessage {
+	if a.piiRedactor == nil {
+		return messages
+	}
+
+	result := make([]llm.ChatMessage, len(messages))
+	totalRedacted := 0
+
+	for i, msg := range messages {
+		result[i] = msg
+		if msg.Role == "user" {
+			redacted, count := a.piiRedactor.Redact(msg.Content)
+			if count > 0 {
+				result[i].Content = redacted
+				totalRedacted += count
+			}
+		}
+	}
+
+	if totalRedacted > 0 {
+		log.Printf("🛡️  [PII] Redacted %d PII items in session=%d before LLM call",
+			totalRedacted, sessionID)
+	}
+
+	return result
+}
 
 // loadSkillConstraints 加载 SKILL.md 约束（注入到系统 Prompt）。
 func (a *CoachAgent) loadSkillConstraints(skillID string) string {

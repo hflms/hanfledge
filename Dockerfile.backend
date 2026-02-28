@@ -1,0 +1,50 @@
+# Dockerfile.backend
+# Hanfledge Go Backend — Multi-stage build
+# Usage: docker build -f Dockerfile.backend -t hanfledge-backend .
+
+# -- Stage 1: Build ------------------------------------------------
+
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /src
+
+# Cache dependencies first
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY scripts/ scripts/
+
+# Build static binary
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w" -o /out/hanfledge cmd/server/main.go
+
+# -- Stage 2: Runtime ----------------------------------------------
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S hanfledge && adduser -S hanfledge -G hanfledge
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /out/hanfledge .
+
+# Copy plugin skill definitions (metadata.json, SKILL.md, templates)
+COPY plugins/ plugins/
+
+# Use non-root user
+USER hanfledge
+
+EXPOSE 8080
+
+# Health check against /health endpoint
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["./hanfledge"]

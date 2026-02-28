@@ -13,6 +13,7 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"gorm.io/gorm"
 )
 
@@ -28,13 +29,14 @@ import (
 
 // SessionHandler handles WebSocket session streaming.
 type SessionHandler struct {
-	DB           *gorm.DB
-	Orchestrator *agent.AgentOrchestrator
+	DB             *gorm.DB
+	Orchestrator   *agent.AgentOrchestrator
+	InjectionGuard *safety.InjectionGuard
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator) *SessionHandler {
-	return &SessionHandler{DB: db, Orchestrator: orchestrator}
+func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard) *SessionHandler {
+	return &SessionHandler{DB: db, Orchestrator: orchestrator, InjectionGuard: injectionGuard}
 }
 
 // WebSocket upgrader
@@ -122,8 +124,23 @@ func (h *SessionHandler) handleUserMessage(ws *websocket.Conn, session *model.St
 		return
 	}
 
-	log.Printf("💬 [WebSocket] User message: session=%d text=%q",
-		session.ID, truncateStr(payload.Text, 50))
+	// ── Prompt Injection 检测 ─────────────────────────────
+	if h.InjectionGuard != nil {
+		check := h.InjectionGuard.Check(payload.Text)
+		if check.Risk == safety.RiskBlocked {
+			log.Printf("🛡️  [Safety] Injection BLOCKED: session=%d reason=%s matched=%s",
+				session.ID, check.Reason, check.Matched)
+			h.sendError(ws, "您的输入包含不允许的内容，请修改后重试")
+			return
+		}
+		if check.Risk == safety.RiskWarning {
+			log.Printf("🛡️  [Safety] Injection WARNING: session=%d reason=%s",
+				session.ID, check.Reason)
+		}
+	}
+
+	log.Printf("💬 [WebSocket] User message: session=%d text=%s",
+		session.ID, safety.RedactForLog(payload.Text, 50))
 
 	// Build TurnContext with WebSocket callbacks
 	tc := &agent.TurnContext{

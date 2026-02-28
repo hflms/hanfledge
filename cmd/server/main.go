@@ -10,6 +10,7 @@ import (
 	"github.com/hflms/hanfledge/internal/config"
 	delivery "github.com/hflms/hanfledge/internal/delivery/http"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/repository/postgres"
@@ -63,11 +64,15 @@ func main() {
 		log.Printf("⚠️  Plugin loading failed (non-fatal): %v", err)
 	}
 
+	// ── Safety Components ──────────────────────────────
+	injectionGuard := safety.NewInjectionGuard()
+	piiRedactor := safety.NewPIIRedactor(db)
+
 	// ── Agent Orchestrator ──────────────────────────────
-	orchestrator := agent.NewAgentOrchestrator(db, llmClient, neo4jClient, karagEngine, registry)
+	orchestrator := agent.NewAgentOrchestrator(db, llmClient, neo4jClient, karagEngine, registry, piiRedactor)
 
 	// ── Router Setup ────────────────────────────────────
-	router := delivery.NewRouter(db, cfg, karagEngine, registry, orchestrator)
+	router := delivery.NewRouter(db, cfg, karagEngine, registry, orchestrator, injectionGuard)
 
 	// ── Start Server ────────────────────────────────────
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
