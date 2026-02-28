@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/plugin"
 	"gorm.io/gorm"
 )
 
@@ -21,11 +23,20 @@ import (
 type ActivityHandler struct {
 	DB           *gorm.DB
 	Orchestrator *agent.AgentOrchestrator
+	EventBus     *plugin.EventBus
 }
 
 // NewActivityHandler creates a new ActivityHandler.
-func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator) *ActivityHandler {
-	return &ActivityHandler{DB: db, Orchestrator: orchestrator}
+func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus) *ActivityHandler {
+	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus}
+}
+
+// publishEvent fires an EventBus event if the bus is available (nil-safe).
+func (h *ActivityHandler) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
+	if h.EventBus == nil {
+		return
+	}
+	h.EventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
 }
 
 // ── Teacher: Activity CRUD ──────────────────────────────────
@@ -150,6 +161,14 @@ func (h *ActivityHandler) PublishActivity(c *gin.Context) {
 	h.DB.Model(&activity).Updates(map[string]interface{}{
 		"status":       model.ActivityStatusPublished,
 		"published_at": now,
+	})
+
+	// Hook: on activity publish
+	h.publishEvent(c.Request.Context(), plugin.HookOnActivityPublish, map[string]interface{}{
+		"activity_id": activity.ID,
+		"teacher_id":  teacherID,
+		"course_id":   activity.CourseID,
+		"title":       activity.Title,
 	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "活动已发布"})

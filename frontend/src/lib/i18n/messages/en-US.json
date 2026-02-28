@@ -1,0 +1,38 @@
+{
+  "nav.dashboard": "Dashboard",
+  "nav.courses": "Courses",
+  "nav.sessions": "Sessions",
+  "nav.skills": "Skill Store",
+  "nav.settings": "Settings",
+  "nav.logout": "Sign Out",
+
+  "course.title": "Course Management",
+  "course.create": "Create Course",
+  "course.upload": "Upload Material",
+  "course.no_courses": "No courses yet",
+  "course.not_found": "Course not found",
+
+  "session.title": "Learning Sessions",
+  "session.new": "New Session",
+  "session.placeholder": "Type your question...",
+
+  "auth.login": "Sign In",
+  "auth.register": "Sign Up",
+  "auth.phone": "Phone Number",
+  "auth.password": "Password",
+  "auth.name": "Name",
+
+  "common.loading": "Loading...",
+  "common.save": "Save",
+  "common.cancel": "Cancel",
+  "common.delete": "Delete",
+  "common.confirm": "Confirm",
+  "common.search": "Search",
+  "common.back": "Back",
+  "common.retry": "Retry",
+  "common.error": "Something went wrong",
+
+  "locale.switch": "Switch Language",
+  "locale.zh-CN": "简体中文",
+  "locale.en-US": "English"
+}

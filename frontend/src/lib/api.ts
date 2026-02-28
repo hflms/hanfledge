@@ -845,3 +845,73 @@ export async function archiveCustomSkill(id: number): Promise<{ message: string;
 export async function listCustomSkillVersions(id: number): Promise<CustomSkillVersion[]> {
   return apiFetch<CustomSkillVersion[]>(`/custom-skills/${id}/versions`);
 }
+
+// -- Marketplace API -----------------------------------------------
+
+export interface MarketplacePlugin {
+  id: number;
+  plugin_id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  type: string;
+  trust_level: string;
+  category: string;
+  tags: string;
+  icon_url?: string;
+  downloads: number;
+  rating: number;
+  rating_count: number;
+  status: string;
+}
+
+export interface InstalledPlugin {
+  id: number;
+  school_id: number;
+  plugin_id: string;
+  version: string;
+  enabled: boolean;
+}
+
+export async function listMarketplacePlugins(params?: {
+  type?: string;
+  category?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ plugins: MarketplacePlugin[]; total: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.type) searchParams.set('type', params.type);
+  if (params?.category) searchParams.set('category', params.category);
+  if (params?.q) searchParams.set('q', params.q);
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  return apiFetch(`/marketplace/plugins?${searchParams.toString()}`);
+}
+
+export async function getMarketplacePlugin(pluginId: string): Promise<{ plugin: MarketplacePlugin }> {
+  return apiFetch(`/marketplace/plugins/${pluginId}`);
+}
+
+export async function submitMarketplacePlugin(plugin: Partial<MarketplacePlugin>): Promise<{ plugin: MarketplacePlugin }> {
+  return apiFetch('/marketplace/plugins', {
+    method: 'POST',
+    body: JSON.stringify(plugin),
+  });
+}
+
+export async function installPlugin(schoolId: number, pluginId: string): Promise<{ installed: InstalledPlugin }> {
+  return apiFetch('/marketplace/install', {
+    method: 'POST',
+    body: JSON.stringify({ school_id: schoolId, plugin_id: pluginId }),
+  });
+}
+
+export async function uninstallPlugin(id: number): Promise<void> {
+  return apiFetch(`/marketplace/installed/${id}`, { method: 'DELETE' });
+}
+
+export async function listInstalledPlugins(schoolId: number): Promise<InstalledPlugin[]> {
+  return apiFetch(`/marketplace/installed?school_id=${schoolId}`);
+}

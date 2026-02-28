@@ -10,7 +10,9 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
+	"github.com/hflms/hanfledge/internal/infrastructure/i18n"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
+	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
@@ -28,6 +30,9 @@ type RouterDeps struct {
 	Neo4jClient    *neo4jRepo.Client
 	RedisCache     *cache.RedisCache
 	PIIRedactor    *safety.PIIRedactor
+	FileStorage    storage.FileStorage
+	Translator     *i18n.Translator
+	EventBus       *plugin.EventBus
 }
 
 // NewRouter creates and configures the Gin router with all routes.
@@ -37,15 +42,20 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware(deps.Cfg.Server.CORSOrigins))
 
+	// i18n locale detection
+	if deps.Translator != nil {
+		r.Use(i18n.Middleware(deps.Translator))
+	}
+
 	// Health check
 	r.GET("/health", handler.HealthCheck)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(deps.DB, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours)
+	authHandler := handler.NewAuthHandler(deps.DB, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours, deps.EventBus)
 	userHandler := handler.NewUserHandler(deps.DB)
-	courseHandler := handler.NewCourseHandler(deps.DB, deps.KARAG, deps.RedisCache)
+	courseHandler := handler.NewCourseHandler(deps.DB, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry)
-	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator)
+	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus)
 	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard)
 	dashboardHandler := handler.NewDashboardHandler(deps.DB)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
@@ -53,6 +63,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	exportHandler := handler.NewExportHandler(deps.DB)
 	achievementHandler := handler.NewAchievementHandler(deps.DB)
 	customSkillHandler := handler.NewCustomSkillHandler(deps.DB, deps.Registry)
+	marketplaceHandler := handler.NewMarketplaceHandler(deps.DB)
 
 	// API v1 group
 	v1 := r.Group("/api/v1")
@@ -227,6 +238,17 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 
 		// ── WebSocket Session Stream — Phase 4 ──────────
 		protected.GET("/sessions/:id/stream", sessionHandler.StreamSession)
+
+		// ── Plugin Marketplace ──────────────────────────
+		marketplace := protected.Group("/marketplace")
+		{
+			marketplace.GET("/plugins", marketplaceHandler.ListPlugins)
+			marketplace.GET("/plugins/:plugin_id", marketplaceHandler.GetPlugin)
+			marketplace.POST("/plugins", marketplaceHandler.SubmitPlugin)
+			marketplace.POST("/install", marketplaceHandler.InstallPlugin)
+			marketplace.DELETE("/installed/:id", marketplaceHandler.UninstallPlugin)
+			marketplace.GET("/installed", marketplaceHandler.ListInstalled)
+		}
 	}
 
 	return r

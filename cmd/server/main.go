@@ -15,8 +15,10 @@ import (
 	"github.com/hflms/hanfledge/internal/config"
 	delivery "github.com/hflms/hanfledge/internal/delivery/http"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
+	"github.com/hflms/hanfledge/internal/infrastructure/i18n"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
+	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/repository/postgres"
@@ -120,7 +122,8 @@ func main() {
 	}
 
 	// ── Use Cases ───────────────────────────────────────
-	karagEngine := usecase.NewKARAGEngine(db, neo4jClient, llmProvider)
+	eventBus := plugin.NewEventBus()
+	karagEngine := usecase.NewKARAGEngine(db, neo4jClient, llmProvider, eventBus)
 
 	// ── Plugin Registry ─────────────────────────────────
 	registry := plugin.NewRegistry()
@@ -145,8 +148,28 @@ func main() {
 		}
 	}
 
+	// ── File Storage (§11) ─────────────────────────────
+	fileStorage, err := storage.New(storage.StorageConfig{
+		Backend:      cfg.Storage.Backend,
+		LocalRoot:    cfg.Storage.LocalRoot,
+		OSSEndpoint:  cfg.Storage.OSSEndpoint,
+		OSSBucket:    cfg.Storage.OSSBucket,
+		OSSAccessKey: cfg.Storage.OSSAccessKey,
+		OSSSecretKey: cfg.Storage.OSSSecretKey,
+	})
+	if err != nil {
+		log.Fatalf("❌ Storage initialization failed: %v", err)
+	}
+	log.Printf("📦 [Storage] Backend: %s", cfg.Storage.Backend)
+
+	// ── Internationalization (i18n) ────────────────────
+	translator := i18n.NewTranslator(i18n.Locale(cfg.I18n.DefaultLocale))
+	if err := translator.LoadDirectory(cfg.I18n.LocaleDir); err != nil {
+		log.Printf("⚠️  i18n loading failed (non-fatal): %v", err)
+	}
+
 	// ── Agent Orchestrator ──────────────────────────────
-	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, piiRedactor, redisCache, outputGuard)
+	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, eventBus, piiRedactor, redisCache, outputGuard)
 
 	// ── RAGAS Evaluator (§4.2 Background Quality Evaluation) ──
 	evaluator := agent.NewRAGASEvaluator(db, llmProvider, agent.DefaultEvalConfig())
@@ -165,6 +188,9 @@ func main() {
 		Neo4jClient:    neo4jClient,
 		RedisCache:     redisCache,
 		PIIRedactor:    piiRedactor,
+		FileStorage:    fileStorage,
+		Translator:     translator,
+		EventBus:       eventBus,
 	})
 
 	// ── Start Server (Graceful Shutdown) ───────────────

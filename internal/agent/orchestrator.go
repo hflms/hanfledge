@@ -36,6 +36,7 @@ type AgentOrchestrator struct {
 	neo4j       *neo4jRepo.Client
 	karag       *usecase.KARAGEngine
 	registry    *plugin.Registry
+	eventBus    *plugin.EventBus    // Plugin event bus (nil-safe)
 	cache       *cache.RedisCache   // nil if Redis unavailable
 	outputGuard *safety.OutputGuard // 输出安全审核器
 
@@ -50,6 +51,7 @@ func NewAgentOrchestrator(
 	neo4jClient *neo4jRepo.Client,
 	karag *usecase.KARAGEngine,
 	registry *plugin.Registry,
+	eventBus *plugin.EventBus,
 	piiRedactor *safety.PIIRedactor,
 	redisCache *cache.RedisCache,
 	outputGuard *safety.OutputGuard,
@@ -60,6 +62,7 @@ func NewAgentOrchestrator(
 		neo4j:       neo4jClient,
 		karag:       karag,
 		registry:    registry,
+		eventBus:    eventBus,
 		cache:       redisCache,
 		outputGuard: outputGuard,
 
@@ -94,6 +97,13 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	log.Printf("🎯 [Agent] HandleTurn: session=%d student=%d input=%q",
 		tc.SessionID, tc.StudentID, truncate(tc.UserInput, 50))
 
+	// Hook: before student query
+	o.publishEvent(ctx, plugin.HookBeforeStudentQuery, map[string]interface{}{
+		"session_id":    tc.SessionID,
+		"student_input": tc.UserInput,
+		"user_id":       tc.StudentID,
+	})
+
 	// ── Pre-Stage: L2 Semantic Cache Check (§8.1.3) ─────
 	if hit, err := o.checkSemanticCache(tc); err != nil {
 		log.Printf("⚠️  [L2-Cache] Check failed: %v", err)
@@ -118,6 +128,13 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	log.Printf("   → Strategist: %d KP targets, scaffold=%s, skill=%s",
 		len(prescription.TargetKPSequence), prescription.InitialScaffold, prescription.RecommendedSkill)
 
+	// Hook: after skill match
+	o.publishEvent(ctx, plugin.HookAfterSkillMatch, map[string]interface{}{
+		"session_id": tc.SessionID,
+		"skill_id":   prescription.RecommendedSkill,
+		"confidence": 1.0, // strategist rule-based, confidence=1
+	})
+
 	// ── Stage 2: Designer — 检索 + 组装个性化材料 ───────
 	if tc.OnThinking != nil {
 		tc.OnThinking("Designer 正在检索知识图谱...")
@@ -140,10 +157,25 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		tc.OnThinking("Coach 正在组织回复...")
 	}
 
+	// Hook: before LLM call (abortable — plugins may block the call)
+	if err := o.publishAbortable(ctx, plugin.HookBeforeLLMCall, map[string]interface{}{
+		"session_id":    tc.SessionID,
+		"prompt_length": len(material.SystemPrompt) + len(tc.UserInput),
+	}); err != nil {
+		return fmt.Errorf("aborted by HookBeforeLLMCall: %w", err)
+	}
+
 	finalResponse, err := o.actorCriticLoop(tc, material)
 	if err != nil {
 		return fmt.Errorf("actor-critic loop failed: %w", err)
 	}
+
+	// Hook: after LLM response
+	o.publishEvent(ctx, plugin.HookAfterLLMResponse, map[string]interface{}{
+		"session_id":      tc.SessionID,
+		"response_length": len(finalResponse.Content),
+		"model":           "coach",
+	})
 
 	// ── Stage 4.5: Output Safety Guardrail (§4.1 Layer 3) ──
 	finalResponse = o.checkOutputSafety(tc, finalResponse)
@@ -152,6 +184,15 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	if err := o.saveInteraction(tc, finalResponse); err != nil {
 		log.Printf("⚠️  [Agent] Save interaction failed: %v", err)
 	}
+
+	// Hook: after student answer (interaction persisted)
+	o.publishEvent(ctx, plugin.HookAfterStudentAnswer, map[string]interface{}{
+		"session_id":    tc.SessionID,
+		"student_id":    tc.StudentID,
+		"student_input": tc.UserInput,
+		"coach_output":  finalResponse.Content,
+		"skill_id":      finalResponse.SkillID,
+	})
 
 	// ── Stage 5.5: Write L2+L3 Cache ────────────────────
 	o.writeResponseToCache(tc, material, finalResponse)
@@ -335,12 +376,36 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 	// 如果 Critic 审核通过且深度分数较高，视为正确（学生理解了引导）
 	correct := o.inferCorrectness(tc)
 
+	// Capture old mastery for event delta
+	oldMastery := o.bkt.GetMastery(tc.StudentID, kpID)
+
 	// BKT 掌握度更新
 	update, err := o.bkt.UpdateStudentMastery(tc.StudentID, kpID, correct)
 	if err != nil {
 		log.Printf("⚠️  [Scaffold] BKT update failed for student=%d kp=%d: %v",
 			tc.StudentID, kpID, err)
 		return
+	}
+
+	// Hook: after evaluation (correctness inferred + mastery updated)
+	o.publishEvent(tc.Ctx, plugin.HookAfterEvaluation, map[string]interface{}{
+		"session_id":   tc.SessionID,
+		"student_id":   tc.StudentID,
+		"knowledge_id": kpID,
+		"correct":      correct,
+		"old_mastery":  oldMastery,
+		"new_mastery":  update.NewMastery,
+	})
+
+	// Hook: on mastery change
+	if update.NewMastery != oldMastery {
+		o.publishEvent(tc.Ctx, plugin.HookOnMasteryChange, map[string]interface{}{
+			"session_id":   tc.SessionID,
+			"user_id":      tc.StudentID,
+			"knowledge_id": kpID,
+			"old_mastery":  oldMastery,
+			"new_mastery":  update.NewMastery,
+		})
 	}
 
 	// 计算新的支架等级
@@ -554,6 +619,24 @@ func (o *AgentOrchestrator) getCourseIDFromSession(ctx context.Context, sessionI
 }
 
 // ── Helpers ─────────────────────────────────────────────────
+
+// -- EventBus Helpers ----------------------------------------
+
+// publishEvent fires an EventBus event if the bus is available.
+func (o *AgentOrchestrator) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
+	if o.eventBus == nil {
+		return
+	}
+	o.eventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+}
+
+// publishAbortable fires an abortable EventBus event. Returns error if any handler aborts.
+func (o *AgentOrchestrator) publishAbortable(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) error {
+	if o.eventBus == nil {
+		return nil
+	}
+	return o.eventBus.PublishAbortable(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+}
 
 // truncate 截断字符串到指定长度。
 func truncate(s string, maxLen int) string {

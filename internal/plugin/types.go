@@ -35,10 +35,14 @@ const (
 type PluginType string
 
 const (
-	PluginTypeSkill   PluginType = "skill"
-	PluginTypeLLM     PluginType = "llm"
-	PluginTypeStorage PluginType = "storage"
-	PluginTypeAuth    PluginType = "auth"
+	PluginTypeSkill        PluginType = "skill"
+	PluginTypeLLM          PluginType = "llm"
+	PluginTypeStorage      PluginType = "storage"
+	PluginTypeAuth         PluginType = "auth"
+	PluginTypeLMS          PluginType = "lms"
+	PluginTypeNotification PluginType = "notification"
+	PluginTypeEditor       PluginType = "editor"
+	PluginTypeTheme        PluginType = "theme"
 )
 
 // HealthStatus reports plugin health.
@@ -129,14 +133,15 @@ type SkillPlugin interface {
 // SkillMetadata describes a skill plugin's metadata (from metadata.json).
 // Used for Skill Store listing and intent matching routing.
 type SkillMetadata struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Version     string   `json:"version"`
-	Author      string   `json:"author"`
-	Category    string   `json:"category"`
-	Subjects    []string `json:"subjects"`
-	Tags        []string `json:"tags"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Version      string   `json:"version"`
+	Author       string   `json:"author"`
+	Category     string   `json:"category"`
+	Subjects     []string `json:"subjects"`
+	Tags         []string `json:"tags"`
+	Dependencies []string `json:"dependencies,omitempty"` // IDs of required plugins
 
 	ScaffoldingLevels []string               `json:"scaffolding_levels"`
 	Constraints       map[string]interface{} `json:"constraints"`

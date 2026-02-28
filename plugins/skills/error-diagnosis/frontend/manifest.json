@@ -1,0 +1,19 @@
+{
+  "id": "error-diagnosis-renderer",
+  "name": "错误诊断交互渲染器",
+  "version": "1.0.0",
+  "type": "skill_renderer",
+  "skillId": "general_diagnosis_error",
+  "trust_level": "domain",
+  "author": "hanfledge-team",
+  "description": "分析学生错误根因，追踪知识缺口并提供补救路径",
+  "entry": "@/lib/plugin/renderers/ErrorDiagnosisRenderer",
+  "slots": ["student.interaction.main"],
+  "supported_interaction_modes": ["text"],
+  "permissions": [
+    "getStudentContext",
+    "getKnowledgePoint",
+    "sendMessageToAgent",
+    "reportInteractionEvent"
+  ]
+}

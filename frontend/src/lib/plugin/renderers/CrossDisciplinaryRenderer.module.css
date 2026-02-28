@@ -1,0 +1,106 @@
+.container {
+  border: 1px solid var(--border-color, #313244);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-secondary, #1e1e2e);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-tertiary, #2a2a3e);
+  border-bottom: 1px solid var(--border-color, #313244);
+}
+
+.icon { font-size: 1.1em; }
+.title { font-weight: 600; font-size: 0.9rem; color: var(--text-primary, #cdd6f4); }
+
+.section { padding: 12px 14px; }
+.section + .section { border-top: 1px solid var(--border-color, #313244); }
+
+.sectionTitle {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted, #6c7086);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 10px 0;
+}
+
+.linkCard {
+  padding: 10px 12px;
+  background: var(--bg-primary, #11111b);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.disciplines {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.discipline {
+  padding: 2px 8px;
+  background: var(--accent-color, #89b4fa);
+  color: var(--bg-primary, #11111b);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.arrow {
+  color: var(--text-muted, #6c7086);
+  font-size: 1rem;
+}
+
+.concepts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.concept {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary, #cdd6f4);
+}
+
+.connType {
+  font-size: 0.75rem;
+  color: var(--text-muted, #6c7086);
+  padding: 1px 6px;
+  border: 1px solid var(--border-color, #313244);
+  border-radius: 4px;
+}
+
+.explanation {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #bac2de);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.questionList { list-style: none; padding: 0; margin: 0; }
+
+.questionItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  color: var(--text-primary, #cdd6f4);
+}
+
+.qIcon { flex-shrink: 0; }
+
+.empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted, #6c7086);
+  font-size: 0.85rem;
+}

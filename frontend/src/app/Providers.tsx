@@ -1,7 +1,17 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { ToastProvider } from '@/components/Toast';
+import { ThemeProvider } from '@/lib/plugin/themes';
 
-export default function Providers({ children }: { children: React.ReactNode }) {
-  return <ToastProvider>{children}</ToastProvider>;
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        {children}
+      </ToastProvider>
+    </ThemeProvider>
+  );
 }
+
+export default Providers;

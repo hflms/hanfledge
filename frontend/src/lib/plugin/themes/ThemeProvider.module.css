@@ -1,0 +1,6 @@
+.themeRoot {
+  min-height: 100vh;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}

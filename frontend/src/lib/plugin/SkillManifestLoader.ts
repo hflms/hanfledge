@@ -99,12 +99,44 @@ import SocraticRenderer from './renderers/SocraticRenderer';
 import FallacyRenderer from './renderers/FallacyRenderer';
 import RolePlayRenderer from './renderers/RolePlayRenderer';
 import QuizRenderer from './renderers/QuizRenderer';
+import ErrorDiagnosisRenderer from './renderers/ErrorDiagnosisRenderer';
+import CrossDisciplinaryRenderer from './renderers/CrossDisciplinaryRenderer';
 
 const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_concept_socratic: SocraticRenderer,
   general_assessment_fallacy: FallacyRenderer,
   general_review_roleplay: RolePlayRenderer,
   general_assessment_quiz: QuizRenderer,
+  general_diagnosis_error: ErrorDiagnosisRenderer as unknown as FC<SkillRendererProps>,
+  general_synthesis_crosslink: CrossDisciplinaryRenderer as unknown as FC<SkillRendererProps>,
+};
+
+const errorDiagnosisManifest: PluginManifest = {
+  id: 'general_diagnosis_error',
+  name: '错误诊断技能',
+  version: '1.0.0',
+  type: 'skill_renderer',
+  skillId: 'general_diagnosis_error',
+  trust_level: 'core',
+  author: 'hanfledge-team',
+  description: '自动分析学生错误原因，定位知识缺口，生成补救路径',
+  entry: './renderers/ErrorDiagnosisRenderer',
+  slots: ['student.interaction.main'],
+  permissions: ['getStudentContext', 'getKnowledgePoint'],
+};
+
+const crossDisciplinaryManifest: PluginManifest = {
+  id: 'general_synthesis_crosslink',
+  name: '跨学科关联技能',
+  version: '1.0.0',
+  type: 'skill_renderer',
+  skillId: 'general_synthesis_crosslink',
+  trust_level: 'core',
+  author: 'hanfledge-team',
+  description: '发现并展示跨学科概念关联，促进知识迁移',
+  entry: './renderers/CrossDisciplinaryRenderer',
+  slots: ['student.interaction.main'],
+  permissions: ['getStudentContext', 'getKnowledgePoint'],
 };
 
 // -- All Discovered Manifests ----------------------------------------
@@ -118,6 +150,8 @@ export const SKILL_MANIFESTS: PluginManifest[] = [
   fallacyManifest,
   rolePlayManifest,
   quizManifest,
+  errorDiagnosisManifest,
+  crossDisciplinaryManifest,
 ];
 
 // -- Manifest -> SkillUIRenderer Conversion --------------------------

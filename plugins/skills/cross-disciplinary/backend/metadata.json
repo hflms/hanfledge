@@ -1,0 +1,31 @@
+{
+  "id": "general_synthesis_crosslink",
+  "name": "跨学科关联技能",
+  "description": "发现并展示不同学科知识点之间的深层联系，培养学生的综合思维能力和知识迁移能力",
+  "version": "1.0.0",
+  "author": "hanfledge-core",
+  "category": "synthesis",
+  "subjects": ["math", "physics", "chemistry", "biology", "history", "geography", "general"],
+  "tags": ["跨学科", "知识迁移", "综合思维", "关联发现"],
+  "scaffolding_levels": ["explicit_linking", "hint_based_discovery", "autonomous_exploration"],
+  "constraints": {
+    "min_disciplines": 2,
+    "max_disciplines": 4,
+    "require_concrete_example": true
+  },
+  "tools": {
+    "knowledge_graph_cross_query": {
+      "enabled": true,
+      "description": "跨课程知识图谱查询，发现不同学科间的概念关联"
+    },
+    "analogy_generator": {
+      "enabled": true,
+      "description": "生成跨学科类比，帮助学生理解抽象概念"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "mastery >= 0.7 AND cross_topic_question",
+    "deactivate_when": "student_confused OR off_topic"
+  },
+  "evaluation_dimensions": ["link_validity", "depth_of_connection", "student_transfer", "creative_insight"]
+}

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/plugin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -17,15 +19,25 @@ type AuthHandler struct {
 	DB        *gorm.DB
 	JWTSecret string
 	JWTExpiry int // hours
+	EventBus  *plugin.EventBus
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(db *gorm.DB, jwtSecret string, jwtExpiry int) *AuthHandler {
+func NewAuthHandler(db *gorm.DB, jwtSecret string, jwtExpiry int, eventBus *plugin.EventBus) *AuthHandler {
 	return &AuthHandler{
 		DB:        db,
 		JWTSecret: jwtSecret,
 		JWTExpiry: jwtExpiry,
+		EventBus:  eventBus,
 	}
+}
+
+// publishEvent fires an EventBus event if the bus is available (nil-safe).
+func (h *AuthHandler) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
+	if h.EventBus == nil {
+		return
+	}
+	h.EventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
 }
 
 // LoginRequest represents the login request body.
@@ -49,9 +61,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Find user by phone
+	// Find user by phone (preload roles so the response includes role info)
 	var user model.User
-	if err := h.DB.Where("phone = ?", req.Phone).First(&user).Error; err != nil {
+	if err := h.DB.Preload("SchoolRoles.Role").Preload("SchoolRoles.School").
+		Where("phone = ?", req.Phone).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "手机号或密码错误"})
 		return
 	}
@@ -87,6 +100,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
 		return
 	}
+
+	// Hook: on user login
+	h.publishEvent(c.Request.Context(), plugin.HookOnUserLogin, map[string]interface{}{
+		"user_id":      user.ID,
+		"phone":        user.Phone,
+		"display_name": user.DisplayName,
+	})
 
 	c.JSON(http.StatusOK, LoginResponse{
 		Token: tokenStr,

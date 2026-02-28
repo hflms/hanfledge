@@ -2,10 +2,8 @@ package handler
 
 import (
 	"context"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +13,7 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
+	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"github.com/ledongthuc/pdf"
 	"gorm.io/gorm"
@@ -22,14 +21,15 @@ import (
 
 // CourseHandler handles course and material management.
 type CourseHandler struct {
-	DB    *gorm.DB
-	KARAG *usecase.KARAGEngine
-	Cache *cache.RedisCache // nil if Redis unavailable
+	DB      *gorm.DB
+	KARAG   *usecase.KARAGEngine
+	Cache   *cache.RedisCache   // nil if Redis unavailable
+	Storage storage.FileStorage // File storage backend
 }
 
 // NewCourseHandler creates a new CourseHandler.
-func NewCourseHandler(db *gorm.DB, karag *usecase.KARAGEngine, redisCache *cache.RedisCache) *CourseHandler {
-	return &CourseHandler{DB: db, KARAG: karag, Cache: redisCache}
+func NewCourseHandler(db *gorm.DB, karag *usecase.KARAGEngine, redisCache *cache.RedisCache, fs storage.FileStorage) *CourseHandler {
+	return &CourseHandler{DB: db, KARAG: karag, Cache: redisCache, Storage: fs}
 }
 
 // ListCourses returns courses for the authenticated teacher.
@@ -124,26 +124,23 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 		return
 	}
 
-	// Save file to disk
-	uploadDir := filepath.Join("uploads", courseID)
-	os.MkdirAll(uploadDir, 0755)
-
-	fileName := uuid.New().String() + ".pdf"
-	filePath := filepath.Join(uploadDir, fileName)
-
-	dst, err := os.Create(filePath)
-	if err != nil {
+	// Save file via storage backend
+	storageKey := filepath.Join(courseID, uuid.New().String()+".pdf")
+	if err := h.Storage.Upload(c.Request.Context(), storageKey, file, "application/pdf"); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
 		return
 	}
-	defer dst.Close()
-	io.Copy(dst, file)
+
+	// Resolve local path for PDF text extraction
+	// For local storage, URL returns the filesystem path; for OSS, extractPDFText
+	// would need to download first (future enhancement).
+	filePath, _ := h.Storage.URL(c.Request.Context(), storageKey)
 
 	// Create document record
 	doc := model.Document{
 		CourseID: course.ID,
 		FileName: header.Filename,
-		FilePath: filePath,
+		FilePath: storageKey,
 		FileSize: header.Size,
 		MimeType: "application/pdf",
 		Status:   model.DocStatusUploaded,
@@ -291,9 +288,11 @@ func (h *CourseHandler) DeleteDocument(c *gin.Context) {
 	// Delete chunks first (cascade)
 	h.DB.Where("document_id = ?", doc.ID).Delete(&model.DocumentChunk{})
 
-	// Delete the file from disk
+	// Delete the file from storage
 	if doc.FilePath != "" {
-		os.Remove(doc.FilePath)
+		if err := h.Storage.Delete(c.Request.Context(), doc.FilePath); err != nil {
+			log.Printf("⚠️  [Storage] Delete file %s failed: %v", doc.FilePath, err)
+		}
 	}
 
 	// Delete the document record
@@ -327,14 +326,18 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 		return
 	}
 
-	// Verify file still exists on disk
-	if _, err := os.Stat(doc.FilePath); os.IsNotExist(err) {
+	// Verify file still exists in storage
+	exists, err := h.Storage.Exists(c.Request.Context(), doc.FilePath)
+	if err != nil || !exists {
 		c.JSON(http.StatusGone, gin.H{"error": "原始文件已丢失，请重新上传"})
 		return
 	}
 
+	// Resolve local path for PDF text extraction
+	filePath, _ := h.Storage.URL(c.Request.Context(), doc.FilePath)
+
 	// Re-extract text
-	rawText, pageCount, err := extractPDFText(doc.FilePath)
+	rawText, pageCount, err := extractPDFText(filePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 解析失败: " + err.Error()})
 		return

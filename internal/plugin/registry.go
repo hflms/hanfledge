@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -397,6 +398,77 @@ func (r *Registry) loadAllTemplates(skill *RegisteredSkill) ([]SkillTemplate, er
 }
 
 // -- Helpers ------------------------------------------------------
+
+// ResolveDependencies performs topological sort on plugin dependencies.
+// Returns plugin IDs in safe initialization order, or error if circular dependency detected.
+// Reference: design.md §7.4 - Dependency Resolution
+func (r *Registry) ResolveDependencies() ([]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Build adjacency list and in-degree map
+	inDegree := make(map[string]int)
+	dependents := make(map[string][]string) // dep -> plugins that depend on it
+
+	// Initialize all plugins with 0 in-degree
+	for id := range r.skills {
+		inDegree[id] = 0
+	}
+
+	// Build graph
+	for id, skill := range r.skills {
+		for _, dep := range skill.Metadata.Dependencies {
+			if _, exists := r.skills[dep]; !exists {
+				return nil, fmt.Errorf("plugin %q depends on unknown plugin %q", id, dep)
+			}
+			dependents[dep] = append(dependents[dep], id)
+			inDegree[id]++
+		}
+	}
+
+	// Kahn's algorithm
+	var queue []string
+	for id, deg := range inDegree {
+		if deg == 0 {
+			queue = append(queue, id)
+		}
+	}
+
+	// Sort queue for deterministic output
+	sort.Strings(queue)
+
+	var order []string
+	for len(queue) > 0 {
+		// Dequeue
+		node := queue[0]
+		queue = queue[1:]
+		order = append(order, node)
+
+		// Reduce in-degree of dependents
+		deps := dependents[node]
+		sort.Strings(deps)
+		for _, dep := range deps {
+			inDegree[dep]--
+			if inDegree[dep] == 0 {
+				queue = append(queue, dep)
+			}
+		}
+	}
+
+	if len(order) != len(r.skills) {
+		// Find the cycle members
+		var cycled []string
+		for id, deg := range inDegree {
+			if deg > 0 {
+				cycled = append(cycled, id)
+			}
+		}
+		sort.Strings(cycled)
+		return nil, fmt.Errorf("circular dependency detected among plugins: %v", cycled)
+	}
+
+	return order, nil
+}
 
 // containsIgnoreCase checks if a string slice contains a target (case-insensitive).
 func containsIgnoreCase(slice []string, target string) bool {

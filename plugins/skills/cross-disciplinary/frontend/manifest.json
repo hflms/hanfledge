@@ -1,0 +1,19 @@
+{
+  "id": "cross-disciplinary-renderer",
+  "name": "跨学科关联交互渲染器",
+  "version": "1.0.0",
+  "type": "skill_renderer",
+  "skillId": "general_synthesis_crosslink",
+  "trust_level": "domain",
+  "author": "hanfledge-team",
+  "description": "发现并展示不同学科知识点之间的深层联系，培养综合思维",
+  "entry": "@/lib/plugin/renderers/CrossDisciplinaryRenderer",
+  "slots": ["student.interaction.main"],
+  "supported_interaction_modes": ["text"],
+  "permissions": [
+    "getStudentContext",
+    "getKnowledgePoint",
+    "sendMessageToAgent",
+    "reportInteractionEvent"
+  ]
+}

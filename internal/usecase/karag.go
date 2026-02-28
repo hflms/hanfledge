@@ -10,6 +10,7 @@ import (
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"gorm.io/gorm"
 )
@@ -17,14 +18,15 @@ import (
 // KARAGEngine implements the Knowledge-Augmented RAG pipeline.
 // It handles document slicing, embedding, graph building, and outline generation.
 type KARAGEngine struct {
-	DB    *gorm.DB
-	Neo4j *neo4jRepo.Client
-	LLM   llm.LLMProvider
+	DB       *gorm.DB
+	Neo4j    *neo4jRepo.Client
+	LLM      llm.LLMProvider
+	EventBus *plugin.EventBus // Plugin event bus (nil-safe)
 }
 
 // NewKARAGEngine creates a new KA-RAG engine.
-func NewKARAGEngine(db *gorm.DB, neo4j *neo4jRepo.Client, llmClient llm.LLMProvider) *KARAGEngine {
-	return &KARAGEngine{DB: db, Neo4j: neo4j, LLM: llmClient}
+func NewKARAGEngine(db *gorm.DB, neo4j *neo4jRepo.Client, llmClient llm.LLMProvider, eventBus *plugin.EventBus) *KARAGEngine {
+	return &KARAGEngine{DB: db, Neo4j: neo4j, LLM: llmClient, EventBus: eventBus}
 }
 
 // ProcessDocument runs the full KA-RAG pipeline for an uploaded document.
@@ -35,8 +37,23 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 
 	// Step 1: Hybrid Slicing
 	log.Printf("📄 [KA-RAG] Slicing document: %s", doc.FileName)
+
+	// Hook: before slicing (abortable — plugins may reject the document)
+	if err := e.publishAbortable(ctx, plugin.HookBeforeSlicing, map[string]interface{}{
+		"document_id": doc.ID,
+		"file_name":   doc.FileName,
+	}); err != nil {
+		return fmt.Errorf("aborted by HookBeforeSlicing: %w", err)
+	}
+
 	chunks := e.hybridSlice(rawText)
 	log.Printf("   → Generated %d chunks", len(chunks))
+
+	// Hook: after slicing
+	e.publishEvent(ctx, plugin.HookAfterSlicing, map[string]interface{}{
+		"document_id": doc.ID,
+		"chunk_count": len(chunks),
+	})
 
 	// Step 2: Store chunks in PostgreSQL
 	var chunkIDs []uint
@@ -56,6 +73,15 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 
 	// Step 3: Generate embeddings and store in pgvector
 	log.Printf("🔢 [KA-RAG] Generating embeddings for %d chunks...", len(chunks))
+
+	// Hook: before embedding (abortable — plugins may skip embedding)
+	if err := e.publishAbortable(ctx, plugin.HookBeforeEmbedding, map[string]interface{}{
+		"document_id": doc.ID,
+		"chunk_count": len(chunks),
+	}); err != nil {
+		return fmt.Errorf("aborted by HookBeforeEmbedding: %w", err)
+	}
+
 	e.generateEmbeddings(ctx, chunks, chunkIDs)
 
 	// Step 4: Use LLM to extract knowledge structure and build graph
@@ -63,6 +89,12 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 		log.Printf("🧠 [KA-RAG] Extracting knowledge structure via LLM...")
 		if err := e.buildKnowledgeGraph(ctx, doc.CourseID, chunks); err != nil {
 			log.Printf("⚠️  [KA-RAG] Graph building partial failure: %v", err)
+		} else {
+			// Hook: after graph build (only on success)
+			e.publishEvent(ctx, plugin.HookAfterGraphBuild, map[string]interface{}{
+				"course_id":   doc.CourseID,
+				"document_id": doc.ID,
+			})
 		}
 	}
 
@@ -336,4 +368,22 @@ func extractJSON(s string) string {
 // parseJSONSafe parses JSON with error handling.
 func parseJSONSafe(jsonStr string, v interface{}) error {
 	return json.Unmarshal([]byte(jsonStr), v)
+}
+
+// -- EventBus Helpers ----------------------------------------
+
+// publishEvent fires an EventBus event if the bus is available.
+func (e *KARAGEngine) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
+	if e.EventBus == nil {
+		return
+	}
+	e.EventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+}
+
+// publishAbortable fires an abortable EventBus event. Returns error if any handler aborts.
+func (e *KARAGEngine) publishAbortable(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) error {
+	if e.EventBus == nil {
+		return nil
+	}
+	return e.EventBus.PublishAbortable(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
 }

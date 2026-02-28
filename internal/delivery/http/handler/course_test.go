@@ -218,7 +218,7 @@ func TestDocumentChunkModel(t *testing.T) {
 
 func TestNewCourseHandler_NilCache(t *testing.T) {
 	// CourseHandler should work with nil cache (Redis unavailable)
-	h := NewCourseHandler(nil, nil, nil)
+	h := NewCourseHandler(nil, nil, nil, nil)
 	if h == nil {
 		t.Fatal("NewCourseHandler returned nil")
 	}

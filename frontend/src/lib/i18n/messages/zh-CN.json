@@ -1,0 +1,38 @@
+{
+  "nav.dashboard": "仪表盘",
+  "nav.courses": "课程管理",
+  "nav.sessions": "学习会话",
+  "nav.skills": "技能商店",
+  "nav.settings": "设置",
+  "nav.logout": "退出登录",
+
+  "course.title": "课程管理",
+  "course.create": "创建课程",
+  "course.upload": "上传教材",
+  "course.no_courses": "暂无课程",
+  "course.not_found": "课程不存在",
+
+  "session.title": "学习会话",
+  "session.new": "新建会话",
+  "session.placeholder": "输入你的问题...",
+
+  "auth.login": "登录",
+  "auth.register": "注册",
+  "auth.phone": "手机号",
+  "auth.password": "密码",
+  "auth.name": "姓名",
+
+  "common.loading": "加载中...",
+  "common.save": "保存",
+  "common.cancel": "取消",
+  "common.delete": "删除",
+  "common.confirm": "确认",
+  "common.search": "搜索",
+  "common.back": "返回",
+  "common.retry": "重试",
+  "common.error": "出错了",
+
+  "locale.switch": "切换语言",
+  "locale.zh-CN": "简体中文",
+  "locale.en-US": "English"
+}

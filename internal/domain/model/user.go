@@ -103,8 +103,8 @@ type UserSchoolRole struct {
 	RoleID   uint  `gorm:"not null" json:"role_id"`
 
 	User   User    `gorm:"foreignKey:UserID" json:"-"`
-	School *School `gorm:"foreignKey:SchoolID" json:"-"`
-	Role   Role    `gorm:"foreignKey:RoleID" json:"-"`
+	School *School `gorm:"foreignKey:SchoolID" json:"school,omitempty"`
+	Role   Role    `gorm:"foreignKey:RoleID" json:"role,omitempty"`
 }
 
 // ClassStudent 班级-学生关联表。

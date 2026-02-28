@@ -83,6 +83,10 @@ func AutoMigrate(db *gorm.DB) error {
 		// 自定义技能
 		&model.CustomSkill{},
 		&model.CustomSkillVersion{},
+		// 插件市场
+		&model.MarketplacePlugin{},
+		&model.MarketplaceReview{},
+		&model.InstalledPlugin{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

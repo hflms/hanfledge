@@ -1,0 +1,31 @@
+{
+  "id": "general_diagnosis_error",
+  "name": "错误诊断技能",
+  "description": "分析学生错误答案的根因，追踪至具体的知识缺口或思维误区，提供针对性补救路径",
+  "version": "1.0.0",
+  "author": "hanfledge-core",
+  "category": "diagnosis",
+  "subjects": ["math", "physics", "chemistry", "biology", "general"],
+  "tags": ["错误分析", "根因追踪", "知识缺口", "补救教学"],
+  "scaffolding_levels": ["explicit_diagnosis", "guided_self_check", "independent_reflection"],
+  "constraints": {
+    "max_depth": 3,
+    "min_evidence_count": 2,
+    "require_knowledge_link": true
+  },
+  "tools": {
+    "knowledge_graph_lookup": {
+      "enabled": true,
+      "description": "查询知识图谱中的前置知识关系，定位知识缺口"
+    },
+    "error_pattern_db": {
+      "enabled": true,
+      "description": "匹配常见错误模式数据库"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "student_answer_incorrect AND confidence_high",
+    "deactivate_when": "consecutive_correct >= 3"
+  },
+  "evaluation_dimensions": ["diagnosis_accuracy", "root_cause_depth", "remedy_relevance", "student_awareness"]
+}

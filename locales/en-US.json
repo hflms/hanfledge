@@ -1,0 +1,42 @@
+{
+  "error.not_found": "Resource not found",
+  "error.unauthorized": "Unauthorized access",
+  "error.forbidden": "Permission denied",
+  "error.bad_request": "Invalid request format",
+  "error.internal": "Internal server error",
+  "error.conflict": "Resource conflict",
+
+  "course.not_found": "Course not found",
+  "course.create_failed": "Failed to create course",
+  "course.query_failed": "Failed to query courses",
+  "course.delete_success": "Course deleted",
+
+  "document.not_found": "Document not found",
+  "document.upload_required": "Please upload a file",
+  "document.pdf_only": "Only PDF format is supported",
+  "document.size_exceeded": "File size cannot exceed 50 MB",
+  "document.save_failed": "Failed to save file",
+  "document.parse_failed": "PDF parsing failed",
+  "document.processing": "Document is being processed and cannot be deleted",
+  "document.deleted": "Document deleted",
+  "document.uploaded": "File uploaded, processing knowledge graph in background...",
+  "document.retry_failed_only": "Only failed documents can be retried",
+  "document.file_lost": "Original file is lost, please re-upload",
+  "document.retry_started": "Document reprocessing started",
+
+  "auth.login_failed": "Login failed",
+  "auth.invalid_credentials": "Invalid phone number or password",
+  "auth.token_expired": "Session expired, please login again",
+  "auth.register_success": "Registration successful",
+
+  "search.query_required": "Please provide a search query",
+  "search.failed": "Search failed",
+
+  "session.not_found": "Session not found",
+  "session.create_failed": "Failed to create session",
+
+  "skill.not_found": "Skill not found",
+  "skill.create_success": "Skill created successfully",
+  "skill.update_success": "Skill updated successfully",
+  "skill.delete_success": "Skill deleted successfully"
+}

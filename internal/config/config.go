@@ -17,6 +17,8 @@ type Config struct {
 	Redis    RedisConfig
 	JWT      JWTConfig
 	LLM      LLMConfig
+	Storage  StorageConfig
+	I18n     I18nConfig
 }
 
 // ServerConfig holds HTTP server settings.
@@ -79,6 +81,23 @@ type LLMConfig struct {
 	Tier3Model    string // Flagship model (Qwen-Max) — high complexity
 }
 
+// StorageConfig holds file storage settings.
+type StorageConfig struct {
+	Backend   string // "local" or "oss"
+	LocalRoot string // Root directory for local storage (default: "uploads")
+	// OSS settings (for future cloud deployment)
+	OSSEndpoint  string
+	OSSBucket    string
+	OSSAccessKey string
+	OSSSecretKey string
+}
+
+// I18nConfig holds internationalization settings.
+type I18nConfig struct {
+	DefaultLocale string // Default locale (default: "zh-CN")
+	LocaleDir     string // Directory containing locale JSON files (default: "locales")
+}
+
 // Load reads configuration from .env file and environment variables.
 // Environment variables take precedence over .env file values.
 func Load() *Config {
@@ -127,6 +146,18 @@ func Load() *Config {
 			Tier1Model:    getEnv("LLM_TIER1_MODEL", ""), // e.g., "qwen2.5:7b"
 			Tier2Model:    getEnv("LLM_TIER2_MODEL", ""), // e.g., "qwen-plus"
 			Tier3Model:    getEnv("LLM_TIER3_MODEL", ""), // e.g., "qwen-max"
+		},
+		Storage: StorageConfig{
+			Backend:      getEnv("STORAGE_BACKEND", "local"),
+			LocalRoot:    getEnv("STORAGE_LOCAL_ROOT", "uploads"),
+			OSSEndpoint:  getEnv("STORAGE_OSS_ENDPOINT", ""),
+			OSSBucket:    getEnv("STORAGE_OSS_BUCKET", ""),
+			OSSAccessKey: getEnv("STORAGE_OSS_ACCESS_KEY", ""),
+			OSSSecretKey: getEnv("STORAGE_OSS_SECRET_KEY", ""),
+		},
+		I18n: I18nConfig{
+			DefaultLocale: getEnv("I18N_DEFAULT_LOCALE", "zh-CN"),
+			LocaleDir:     getEnv("I18N_LOCALE_DIR", "locales"),
 		},
 	}
 }
