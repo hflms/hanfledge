@@ -86,13 +86,24 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 	// Step 2.5: PII 脱敏 — 在发送给 LLM 前替换用户消息中的个人信息
 	messages = a.redactPII(messages, tc.SessionID)
 
-	// Step 3: 调用 LLM（流式）
+	// Step 3: 调用 LLM（流式），使用 ModelRouter 路由 (§8.3.3)
 	ctx := tc.Ctx
-	response, err := a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
-		Temperature: 0.7,
-		TopP:        0.9,
-		MaxTokens:   1024,
-	}, onToken)
+	var response string
+	var err error
+
+	if router, ok := a.llm.(*llm.ModelRouter); ok && tc.LLMTaskContext != nil {
+		response, err = router.StreamChatWithContext(ctx, tc.LLMTaskContext, messages, &llm.ChatOptions{
+			Temperature: 0.7,
+			TopP:        0.9,
+			MaxTokens:   1024,
+		}, onToken)
+	} else {
+		response, err = a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
+			Temperature: 0.7,
+			TopP:        0.9,
+			MaxTokens:   1024,
+		}, onToken)
+	}
 	if err != nil {
 		return DraftResponse{}, fmt.Errorf("coach LLM call failed: %w", err)
 	}
@@ -150,11 +161,22 @@ func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMateri
 	messages = a.redactPII(messages, tc.SessionID)
 
 	ctx := tc.Ctx
-	response, err := a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
-		Temperature: 0.7,
-		TopP:        0.9,
-		MaxTokens:   1024,
-	}, onToken)
+	var response string
+	var err error
+
+	if router, ok := a.llm.(*llm.ModelRouter); ok && tc.LLMTaskContext != nil {
+		response, err = router.StreamChatWithContext(ctx, tc.LLMTaskContext, messages, &llm.ChatOptions{
+			Temperature: 0.7,
+			TopP:        0.9,
+			MaxTokens:   1024,
+		}, onToken)
+	} else {
+		response, err = a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
+			Temperature: 0.7,
+			TopP:        0.9,
+			MaxTokens:   1024,
+		}, onToken)
+	}
 	if err != nil {
 		return DraftResponse{}, fmt.Errorf("coach revision LLM call failed: %w", err)
 	}

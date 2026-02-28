@@ -131,6 +131,9 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	log.Printf("   → Designer: %d chunks retrieved, %d graph nodes",
 		len(material.RetrievedChunks), len(material.GraphContext))
 
+	// ── Stage 2.5: Build TaskContext for ModelRouter (§8.3.3) ──
+	tc.LLMTaskContext = o.buildTaskContext(tc, material)
+
 	// ── Stage 3+4: Coach + Critic Actor-Critic 循环 ─────
 	if tc.OnThinking != nil {
 		tc.OnThinking("Coach 正在组织回复...")
@@ -547,6 +550,50 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+// buildTaskContext 构建 LLM 路由的 TaskContext (§8.3.3)。
+// 收集当前会话的各种上下文信号用于复杂度评分。
+func (o *AgentOrchestrator) buildTaskContext(tc *TurnContext, material PersonalizedMaterial) *llm.TaskContext {
+	taskCtx := &llm.TaskContext{
+		UserInput:         tc.UserInput,
+		ChunkCount:        len(material.RetrievedChunks),
+		GraphNodeCount:    len(material.GraphContext),
+		HasMisconceptions: len(material.Misconceptions) > 0,
+	}
+
+	// 技能 ID
+	if tc.Prescription != nil {
+		taskCtx.SkillID = tc.Prescription.RecommendedSkill
+	}
+
+	// 掌握度 — 取第一个目标 KP 的掌握度
+	if tc.Prescription != nil && len(tc.Prescription.TargetKPSequence) > 0 {
+		taskCtx.Mastery = tc.Prescription.TargetKPSequence[0].CurrentMastery
+	}
+
+	// 对话轮数 — 从 interactions 表统计
+	var turnCount int64
+	o.db.WithContext(tc.Ctx).Model(&model.Interaction{}).
+		Where("session_id = ? AND role = ?", tc.SessionID, "student").
+		Count(&turnCount)
+	taskCtx.TurnCount = int(turnCount)
+
+	// 跨学科检测 — 检查图谱上下文中是否有不同学科的节点
+	if len(material.GraphContext) > 2 {
+		relations := make(map[string]bool)
+		for _, node := range material.GraphContext {
+			relations[node.Relation] = true
+		}
+		taskCtx.IsCrossDiscipline = len(relations) > 2
+	}
+
+	log.Printf("🔀 [Router] TaskContext: skill=%s mastery=%.2f turns=%d chunks=%d graph=%d complexity=%s(%.2f)",
+		taskCtx.SkillID, taskCtx.Mastery, taskCtx.TurnCount,
+		taskCtx.ChunkCount, taskCtx.GraphNodeCount,
+		taskCtx.EstimateComplexity(), taskCtx.ComplexityScore())
+
+	return taskCtx
 }
 
 // ── Fallacy Detective Phase Management ─────────────────────

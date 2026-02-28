@@ -71,6 +71,12 @@ type LLMConfig struct {
 	DashScopeModel    string
 	EmbeddingProvider string
 	EmbeddingModel    string
+
+	// Multi-tier routing (§8.3.3)
+	RouterEnabled bool   // Enable ModelRouter multi-tier routing
+	Tier1Model    string // Local small model (Ollama 7B) — low complexity
+	Tier2Model    string // Mid-range model (Qwen-Plus) — medium complexity
+	Tier3Model    string // Flagship model (Qwen-Max) — high complexity
 }
 
 // Load reads configuration from .env file and environment variables.
@@ -115,6 +121,12 @@ func Load() *Config {
 			DashScopeModel:    getEnv("DASHSCOPE_MODEL", "qwen-max"),
 			EmbeddingProvider: getEnv("EMBEDDING_PROVIDER", "ollama"),
 			EmbeddingModel:    getEnv("EMBEDDING_MODEL", "bge-m3"),
+
+			// Multi-tier routing
+			RouterEnabled: getEnv("LLM_ROUTER_ENABLED", "false") == "true",
+			Tier1Model:    getEnv("LLM_TIER1_MODEL", ""), // e.g., "qwen2.5:7b"
+			Tier2Model:    getEnv("LLM_TIER2_MODEL", ""), // e.g., "qwen-plus"
+			Tier3Model:    getEnv("LLM_TIER3_MODEL", ""), // e.g., "qwen-max"
 		},
 	}
 }

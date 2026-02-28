@@ -83,6 +83,42 @@ func main() {
 			cfg.LLM.OllamaModel, cfg.LLM.EmbeddingModel, cfg.LLM.OllamaHost)
 	}
 
+	// ── ModelRouter — Multi-Tier Routing (§8.3.3) ──────────
+	if cfg.LLM.RouterEnabled {
+		var tier1, tier2, tier3 llm.LLMProvider
+
+		// Tier1: 本地小模型（Ollama）
+		if cfg.LLM.Tier1Model != "" {
+			tier1 = llm.NewOllamaClient(
+				cfg.LLM.OllamaHost,
+				cfg.LLM.Tier1Model,
+				cfg.LLM.EmbeddingModel,
+			)
+		}
+
+		// Tier2: 中等模型（DashScope Qwen-Plus）
+		if cfg.LLM.Tier2Model != "" && cfg.LLM.DashScopeKey != "" {
+			tier2 = llm.NewDashScopeClient(llm.DashScopeConfig{
+				APIKey:         cfg.LLM.DashScopeKey,
+				ChatModel:      cfg.LLM.Tier2Model,
+				EmbeddingModel: cfg.LLM.EmbeddingModel,
+			})
+		}
+
+		// Tier3: 旗舰模型（DashScope Qwen-Max）
+		if cfg.LLM.Tier3Model != "" && cfg.LLM.DashScopeKey != "" {
+			tier3 = llm.NewDashScopeClient(llm.DashScopeConfig{
+				APIKey:         cfg.LLM.DashScopeKey,
+				ChatModel:      cfg.LLM.Tier3Model,
+				EmbeddingModel: cfg.LLM.EmbeddingModel,
+			})
+		}
+
+		llmProvider = llm.NewModelRouter(tier1, tier2, tier3, llmProvider)
+		log.Printf("🔀 [LLM] ModelRouter enabled: tier1=%s tier2=%s tier3=%s",
+			cfg.LLM.Tier1Model, cfg.LLM.Tier2Model, cfg.LLM.Tier3Model)
+	}
+
 	// ── Use Cases ───────────────────────────────────────
 	karagEngine := usecase.NewKARAGEngine(db, neo4jClient, llmProvider)
 

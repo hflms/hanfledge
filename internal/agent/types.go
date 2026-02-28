@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 )
 
 // ============================
@@ -222,6 +223,9 @@ type TurnContext struct {
 	// L2 缓存中间数据（HandleTurn 内部使用）
 	queryEmbedding []float64 // 查询 embedding，缓存查找时生成，写入时复用
 	queryCourseID  uint      // 从 session 解析的课程 ID
+
+	// ModelRouter 任务上下文 (§8.3.3)
+	LLMTaskContext *llm.TaskContext
 
 	// 流式输出回调
 	OnThinking     func(status string)

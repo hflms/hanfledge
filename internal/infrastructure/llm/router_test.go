@@ -258,3 +258,155 @@ func TestModelRouter_StreamChatRouted(t *testing.T) {
 func TestMockLLMProvider_ImplementsInterface(t *testing.T) {
 	var _ LLMProvider = (*MockLLMProvider)(nil)
 }
+
+// ── TaskContext Complexity Estimation Tests ─────────────────
+
+func TestTaskContext_EstimateComplexity(t *testing.T) {
+	tests := []struct {
+		name     string
+		ctx      TaskContext
+		expected TaskComplexity
+	}{
+		{
+			name:     "简单问答→low",
+			ctx:      TaskContext{UserInput: "光合作用的定义是什么"},
+			expected: TaskComplexityLow,
+		},
+		{
+			name:     "默认中等复杂度→medium",
+			ctx:      TaskContext{UserInput: "请帮我理解这个概念"},
+			expected: TaskComplexityMedium,
+		},
+		{
+			name: "复杂推理关键词+跨学科→high",
+			ctx: TaskContext{
+				UserInput:         "为什么植物在夜晚不进行光合作用？请分析其本质原理并比较动植物代谢差异",
+				SkillID:           "general_assessment_fallacy",
+				IsCrossDiscipline: true,
+			},
+			expected: TaskComplexityHigh,
+		},
+		{
+			name: "跨学科→high",
+			ctx: TaskContext{
+				UserInput:         "请解释一下",
+				IsCrossDiscipline: true,
+				ChunkCount:        8,
+			},
+			expected: TaskComplexityHigh,
+		},
+		{
+			name: "低掌握度+谬误侦探→medium→high",
+			ctx: TaskContext{
+				UserInput:         "我不太确定",
+				Mastery:           0.2,
+				SkillID:           "general_assessment_fallacy",
+				HasMisconceptions: true,
+				TurnCount:         10,
+			},
+			expected: TaskComplexityHigh,
+		},
+		{
+			name: "简单关键词降级",
+			ctx: TaskContext{
+				UserInput: "列举光合作用的公式",
+			},
+			expected: TaskComplexityLow,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.ctx.EstimateComplexity()
+			if result != tc.expected {
+				t.Errorf("EstimateComplexity() = %q (score=%.2f), want %q",
+					result, tc.ctx.ComplexityScore(), tc.expected)
+			}
+		})
+	}
+}
+
+func TestTaskContext_ComplexityScore_Range(t *testing.T) {
+	// 确保分数始终在 [0, 1] 范围内
+	extremeCases := []TaskContext{
+		{}, // 全空
+		{
+			UserInput:         "为什么比较分析推导证明区别联系本质原理矛盾辩证解释" + string(make([]rune, 200)),
+			SkillID:           "general_assessment_fallacy",
+			Mastery:           0.1,
+			TurnCount:         20,
+			ChunkCount:        10,
+			GraphNodeCount:    5,
+			HasMisconceptions: true,
+			IsCrossDiscipline: true,
+		},
+	}
+
+	for i, tc := range extremeCases {
+		score := tc.ComplexityScore()
+		if score < 0 || score > 1 {
+			t.Errorf("case %d: ComplexityScore() = %.2f, want [0, 1]", i, score)
+		}
+	}
+}
+
+// ── ChatWithContext / StreamChatWithContext Tests ────────────
+
+func TestModelRouter_ChatWithContext(t *testing.T) {
+	tier1 := &MockLLMProvider{ProviderName: "tier1", ChatResponse: "简单回复"}
+	tier3 := &MockLLMProvider{ProviderName: "tier3", ChatResponse: "复杂回复"}
+	fb := &MockLLMProvider{ProviderName: "fallback", ChatResponse: "默认"}
+
+	r := NewModelRouter(tier1, nil, tier3, fb)
+
+	// 简单问答 → tier1
+	resp, err := r.ChatWithContext(context.Background(), &TaskContext{
+		UserInput: "列举光合作用的公式",
+	}, []ChatMessage{{Role: "user", Content: "test"}}, nil)
+
+	if err != nil {
+		t.Errorf("ChatWithContext() error: %v", err)
+	}
+	if resp != "简单回复" {
+		t.Errorf("ChatWithContext(simple) = %q, want %q", resp, "简单回复")
+	}
+
+	// 复杂推理 → tier3
+	resp, err = r.ChatWithContext(context.Background(), &TaskContext{
+		UserInput:         "为什么这两个学科之间存在联系？请分析本质原理",
+		IsCrossDiscipline: true,
+		SkillID:           "general_assessment_fallacy",
+	}, []ChatMessage{{Role: "user", Content: "test"}}, nil)
+
+	if err != nil {
+		t.Errorf("ChatWithContext() error: %v", err)
+	}
+	if resp != "复杂回复" {
+		t.Errorf("ChatWithContext(complex) = %q, want %q", resp, "复杂回复")
+	}
+}
+
+func TestModelRouter_StreamChatWithContext(t *testing.T) {
+	tier2 := &MockLLMProvider{
+		ProviderName:    "tier2",
+		StreamResponses: []string{"中", "等"},
+	}
+	fb := &MockLLMProvider{ProviderName: "fallback"}
+	r := NewModelRouter(nil, tier2, nil, fb)
+
+	var tokens []string
+	resp, err := r.StreamChatWithContext(context.Background(), &TaskContext{
+		UserInput: "请帮我理解这个概念的特点",
+	}, []ChatMessage{{Role: "user", Content: "test"}}, nil,
+		func(token string) { tokens = append(tokens, token) })
+
+	if err != nil {
+		t.Errorf("StreamChatWithContext() error: %v", err)
+	}
+	if resp != "中等" {
+		t.Errorf("StreamChatWithContext() = %q, want %q", resp, "中等")
+	}
+	if len(tokens) != 2 {
+		t.Errorf("onToken called %d times, want 2", len(tokens))
+	}
+}
