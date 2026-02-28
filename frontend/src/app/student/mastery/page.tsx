@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { getSelfMastery, type StudentMasteryData } from '@/lib/api';
 import styles from './page.module.css';
-import MasteryTrendChart from './MasteryTrendChart';
+
+const MasteryTrendChart = dynamic(() => import('./MasteryTrendChart'), { ssr: false });
 
 export default function StudentMasteryPage() {
     const [data, setData] = useState<StudentMasteryData | null>(null);

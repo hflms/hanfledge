@@ -160,7 +160,12 @@ func setupTestEnv(t *testing.T) *testEnv {
 	registry := plugin.NewRegistry()
 	guard := safety.NewInjectionGuard()
 	cfg := newTestConfig()
-	router := delivery.NewRouter(db, cfg, nil, registry, nil, guard, nil, nil, nil)
+	router := delivery.NewRouter(delivery.RouterDeps{
+		DB:             db,
+		Cfg:            cfg,
+		Registry:       registry,
+		InjectionGuard: guard,
+	})
 
 	// Generate JWT tokens
 	adminToken := generateToken(t, admin.ID, admin.Phone, admin.DisplayName)
@@ -188,6 +193,9 @@ func newTestConfig() *config.Config {
 		JWT: config.JWTConfig{
 			Secret:      testJWTSecret,
 			ExpiryHours: testJWTExpiry,
+		},
+		Server: config.ServerConfig{
+			CORSOrigins: "http://localhost:3000",
 		},
 	}
 }
@@ -861,7 +869,21 @@ func TestCORSPreflight(t *testing.T) {
 	env.router.ServeHTTP(w, req)
 
 	expectStatus(t, w, http.StatusNoContent)
-	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Error("Expected CORS Allow-Origin header to be *")
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
+		t.Errorf("Expected CORS Allow-Origin 'http://localhost:3000', got %q", got)
+	}
+}
+
+func TestCORSPreflight_DisallowedOrigin(t *testing.T) {
+	env := setupTestEnv(t)
+
+	req := httptest.NewRequest("OPTIONS", "/api/v1/auth/login", nil)
+	req.Header.Set("Origin", "http://evil.example.com")
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+
+	expectStatus(t, w, http.StatusNoContent)
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Expected no CORS Allow-Origin for disallowed origin, got %q", got)
 	}
 }

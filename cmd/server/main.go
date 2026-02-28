@@ -4,6 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/agent"
@@ -114,14 +119,47 @@ func main() {
 	go evaluator.Start(evalCtx)
 
 	// ── Router Setup ────────────────────────────────────
-	router := delivery.NewRouter(db, cfg, karagEngine, registry, orchestrator, injectionGuard, neo4jClient, redisCache, piiRedactor)
+	router := delivery.NewRouter(delivery.RouterDeps{
+		DB:             db,
+		Cfg:            cfg,
+		KARAG:          karagEngine,
+		Registry:       registry,
+		Orchestrator:   orchestrator,
+		InjectionGuard: injectionGuard,
+		Neo4jClient:    neo4jClient,
+		RedisCache:     redisCache,
+		PIIRedactor:    piiRedactor,
+	})
 
-	// ── Start Server ────────────────────────────────────
+	// ── Start Server (Graceful Shutdown) ───────────────
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
-	log.Printf("✅ Server ready at http://localhost%s", addr)
-	log.Printf("   Health check: http://localhost%s/health", addr)
-
-	if err := router.Run(addr); err != nil {
-		log.Fatalf("❌ Server failed to start: %v", err)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
 	}
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("✅ Server ready at http://localhost%s", addr)
+		log.Printf("   Health check: http://localhost%s/health", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("❌ Server failed to start: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal (SIGINT, SIGTERM)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("⏳ Received signal %v, shutting down gracefully...", sig)
+
+	// Give in-flight requests 5 seconds to complete
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("❌ Server forced to shutdown: %v", err)
+	}
+
+	log.Println("✅ Server exited cleanly")
 }

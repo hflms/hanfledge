@@ -1,6 +1,6 @@
 # Hanfledge MVP V1.0 — TODO Tasks
 
-**Last Updated:** 2026-02-28 16:00
+**Last Updated:** 2026-02-28 22:00
 **Tech Stack:** Go (Gin+GORM) / Next.js / PostgreSQL (pgvector) / Neo4j / Redis
 **Reference:** [design.md](./design.md)
 
@@ -23,9 +23,11 @@
 | **Post-MVP: 多 LLM Provider** | **✅ 已完成** | **100%** | — |
 | **Post-MVP: 前端 UI 优化** | **✅ 已完成** | **100%** | — |
 | **Post-MVP: 单元测试补全** | **✅ 已完成** | **100%** | — |
+| **V3.0: 质量与架构治理** | **🔧 进行中** | **0%** | — |
 
 **MVP 总进度: 73 / 73 tasks (100%)**
 **V2.0 进度: Phase A ✅ + Phase B ✅ + Phase C ✅ + Phase D ✅ + Phase E ✅ + Phase F ✅ + Phase G ✅ + Phase H ✅ + Phase I ✅ + WS Robustness ✅**
+**V3.0 进度: 0 / 10 tasks (0%)**
 
 ---
 
@@ -1482,3 +1484,66 @@ After:  RRF Top-20 → Cross-Encoder Top-5 → CRAG → Truncator → Prompt
 | 6 | 前端技能渲染器 | ✅ 完成 |
 | 7 | 技能商店 UX 增强 | ✅ 完成 |
 | 8 | 数据导出 | ✅ 完成 |
+
+---
+
+## V3.0: 质量与架构治理 (Quality & Architecture Governance) 🔧
+
+> **目标:** 修复代码审计中发现的架构缺陷、前端质量问题和安全隐患。
+> **来源:** 基于 design.md 对照审计 + Vercel React Best Practices 评审
+
+### 后端质量修复
+
+- [x] Q-1: **Graceful Shutdown** — `cmd/server/main.go` ✅
+  - 替换 `router.Run(addr)` 为 `http.Server` + `signal.Notify(SIGINT, SIGTERM)`
+  - 5 秒关停超时 (`context.WithTimeout`)
+  - 确保 Neo4j/Redis/RAGAS evaluator 优雅清理
+
+- [x] Q-2: **移除未使用的 Channels** — `internal/agent/orchestrator.go` ✅
+  - 删除 5 个从未读写的 channel 字段 (`prescriptionCh`, `materialCh`, `draftCh`, `reviewCh`, `masteryCh`)
+  - 清理构造函数中的 `make(chan ...)` 初始化代码
+
+- [x] Q-3: **Context 传播修复** — `internal/agent/orchestrator.go` ✅
+  - 8 处 `o.db.` 调用添加 `.WithContext(tc.Ctx)`
+  - 确保客户端断开时数据库操作可取消
+
+- [x] Q-4: **移除重复 gin.Recovery()** — `internal/delivery/http/router.go` ✅
+  - `gin.Default()` → `gin.New()` + 显式 `gin.Logger()` + 单个 `gin.Recovery()`
+
+- [x] Q-5: **环境感知 CORS** — `internal/delivery/http/router.go` ✅
+  - 硬编码 `*` 替换为配置化 `AllowedOrigins`
+  - 从 `config.ServerConfig` 读取 `CORS_ORIGINS` 环境变量
+  - 开发模式默认允许 `localhost`，生产模式严格限制
+
+- [x] Q-6: **NewRouter 参数重构** — `internal/delivery/http/router.go` ✅
+  - 9 参数改为 `RouterDeps` options struct
+  - 同步更新 `main.go`, `e2e_test.go`, `bench_test.go` 调用点
+
+### 前端质量修复
+
+- [x] Q-7: **Error Boundaries** — `frontend/src/app/` ✅
+  - 添加根级 `error.tsx` (全局错误兜底)
+  - 添加 `teacher/error.tsx` 和 `student/error.tsx` (角色路由级)
+
+- [x] Q-8: **Loading 状态** — `frontend/src/app/` ✅
+  - 添加根级 `loading.tsx` (全局加载)
+  - 添加关键路由 `loading.tsx` (dashboard, session)
+
+- [x] Q-9: **Dynamic Import 优化** — 重量级组件动态加载 ✅
+  - ECharts 图表组件 (RadarChart, MasteryBarChart, SkillEffectivenessChart, KnowledgeGraph, MasteryTrendChart)
+  - MarkdownRenderer ×3 (session, skills, plugin renderers)
+  - 使用 `next/dynamic` + `ssr: false` + loading skeleton
+
+- [x] Q-10: **Toast 通知替代 alert()** — 12 处 `alert()` 替换 ✅
+  - 创建 `useToast` hook + `ToastProvider` 组件 + `Providers.tsx` wrapper
+  - 支持 success / error / warning / info 类型
+  - 自动消失 (4 秒) + slide-in/out 动画 + 暗色主题
+
+### 验证结果
+
+| 检查项 | 状态 |
+|--------|------|
+| `go vet ./...` | ✅ 通过 |
+| `go build ./...` | ✅ 通过 |
+| `npm run build` | ✅ 通过 (12 页面编译) |
+| `npm run lint` | ⚠️ 2 个预存错误 + 7 个预存警告 (均非 V3.0 引入) |

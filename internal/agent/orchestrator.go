@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -20,24 +21,13 @@ import (
 // ============================
 
 // AgentOrchestrator 管理多 Agent 的生命周期与通信。
-// 采用 goroutine + channel 管道模式:
-//
-//	Strategist → Designer → Coach → Critic → Coach (retry loop)
-//	                                  ↓
-//	                          MasteryUpdate → Strategist
+// 采用同步管线模式: Strategist → Designer → Coach → Critic → Coach (retry loop)
 type AgentOrchestrator struct {
 	strategist *StrategistAgent
 	designer   *DesignerAgent
 	coach      *CoachAgent
 	critic     *CriticAgent
 	bkt        *BKTService
-
-	// Agent 间通信通道
-	prescriptionCh chan LearningPrescription // Strategist → Designer
-	materialCh     chan PersonalizedMaterial // Designer → Coach
-	draftCh        chan DraftResponse        // Coach → Critic
-	reviewCh       chan ReviewResult         // Critic → Coach
-	masteryCh      chan MasteryUpdate        // Coach → Strategist
 
 	// 依赖
 	db          *gorm.DB
@@ -64,13 +54,6 @@ func NewAgentOrchestrator(
 	outputGuard *safety.OutputGuard,
 ) *AgentOrchestrator {
 	o := &AgentOrchestrator{
-		// 通道初始化（缓冲为 1，防止阻塞）
-		prescriptionCh: make(chan LearningPrescription, 1),
-		materialCh:     make(chan PersonalizedMaterial, 1),
-		draftCh:        make(chan DraftResponse, 1),
-		reviewCh:       make(chan ReviewResult, 1),
-		masteryCh:      make(chan MasteryUpdate, 1),
-
 		db:          db,
 		llm:         llmClient,
 		neo4j:       neo4jClient,
@@ -275,7 +258,7 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 		Content:   tc.UserInput,
 		CreatedAt: now,
 	}
-	if err := o.db.Create(&studentMsg).Error; err != nil {
+	if err := o.db.WithContext(tc.Ctx).Create(&studentMsg).Error; err != nil {
 		return fmt.Errorf("save student interaction: %w", err)
 	}
 
@@ -288,7 +271,7 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 		TokensUsed: response.TokensUsed,
 		CreatedAt:  now,
 	}
-	if err := o.db.Create(&coachMsg).Error; err != nil {
+	if err := o.db.WithContext(tc.Ctx).Create(&coachMsg).Error; err != nil {
 		return fmt.Errorf("save coach interaction: %w", err)
 	}
 
@@ -318,7 +301,7 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 	// 获取当前会话信息
 	var session model.StudentSession
-	if err := o.db.First(&session, tc.SessionID).Error; err != nil {
+	if err := o.db.WithContext(tc.Ctx).First(&session, tc.SessionID).Error; err != nil {
 		log.Printf("⚠️  [Scaffold] Load session %d failed: %v", tc.SessionID, err)
 		return
 	}
@@ -355,7 +338,7 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 			tc.StudentID, kpID, update.NewMastery, oldScaffold, newScaffold)
 
 		// 更新数据库中的会话支架等级
-		if err := o.db.Model(&model.StudentSession{}).Where("id = ?", tc.SessionID).
+		if err := o.db.WithContext(tc.Ctx).Model(&model.StudentSession{}).Where("id = ?", tc.SessionID).
 			Update("scaffold", newScaffold).Error; err != nil {
 			log.Printf("⚠️  [Scaffold] Update session scaffold failed: %v", err)
 			return
@@ -449,7 +432,7 @@ func (o *AgentOrchestrator) checkSemanticCache(tc *TurnContext) (*cache.Semantic
 	}
 
 	// Get courseID for cache scoping
-	courseID, err := o.getCourseIDFromSession(tc.SessionID)
+	courseID, err := o.getCourseIDFromSession(tc.Ctx, tc.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("get course_id for cache: %w", err)
 	}
@@ -539,11 +522,11 @@ func (o *AgentOrchestrator) writeResponseToCache(tc *TurnContext, material Perso
 }
 
 // getCourseIDFromSession queries the course ID from session → activity → course.
-func (o *AgentOrchestrator) getCourseIDFromSession(sessionID uint) (uint, error) {
+func (o *AgentOrchestrator) getCourseIDFromSession(ctx context.Context, sessionID uint) (uint, error) {
 	var result struct {
 		CourseID uint
 	}
-	err := o.db.Raw(`
+	err := o.db.WithContext(ctx).Raw(`
 		SELECT la.course_id
 		FROM student_sessions ss
 		JOIN learning_activities la ON la.id = ss.activity_id
@@ -642,7 +625,7 @@ func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *D
 
 	// 获取当前会话的 KP
 	var session model.StudentSession
-	if err := o.db.First(&session, tc.SessionID).Error; err != nil {
+	if err := o.db.WithContext(tc.Ctx).First(&session, tc.SessionID).Error; err != nil {
 		return
 	}
 
@@ -671,7 +654,7 @@ func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *D
 			ArchivedAt:     time.Now(),
 		}
 
-		if err := o.db.Create(&entry).Error; err != nil {
+		if err := o.db.WithContext(tc.Ctx).Create(&entry).Error; err != nil {
 			log.Printf("⚠️  [ErrorNotebook] Archive failed: student=%d kp=%d: %v",
 				tc.StudentID, kpID, err)
 			return
@@ -685,7 +668,7 @@ func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *D
 	currentMastery := o.bkt.GetMastery(tc.StudentID, kpID)
 	if currentMastery >= 0.8 {
 		now := time.Now()
-		result := o.db.Model(&model.ErrorNotebookEntry{}).
+		result := o.db.WithContext(tc.Ctx).Model(&model.ErrorNotebookEntry{}).
 			Where("student_id = ? AND kp_id = ? AND resolved = ?", tc.StudentID, kpID, false).
 			Updates(map[string]interface{}{
 				"resolved":    true,

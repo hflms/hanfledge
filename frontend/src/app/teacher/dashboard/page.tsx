@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import {
     listCourses,
     listTeacherActivities,
@@ -19,11 +20,13 @@ import {
     type SkillEffectivenessResponse,
 } from '@/lib/api';
 import styles from './page.module.css';
-import RadarChart from './RadarChart';
-import MasteryBarChart from './MasteryBarChart';
-import SkillEffectivenessChart from './SkillEffectivenessChart';
 import PluginSlot from '@/components/PluginSlot';
 import { useBuiltinDashboardPlugins } from '@/lib/plugin/DashboardPlugins';
+import { useToast } from '@/components/Toast';
+
+const RadarChart = dynamic(() => import('./RadarChart'), { ssr: false });
+const MasteryBarChart = dynamic(() => import('./MasteryBarChart'), { ssr: false });
+const SkillEffectivenessChart = dynamic(() => import('./SkillEffectivenessChart'), { ssr: false });
 
 // -- Status Maps ------------------------------------------
 
@@ -46,6 +49,7 @@ const SCAFFOLD_MAP: Record<string, string> = {
 
 export default function TeacherDashboardPage() {
     const router = useRouter();
+    const { toast } = useToast();
     const [courses, setCourses] = useState<Course[]>([]);
     const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
     const [radarData, setRadarData] = useState<KnowledgeRadarData | null>(null);
@@ -115,7 +119,7 @@ export default function TeacherDashboardPage() {
             await fn();
         } catch (err) {
             console.error(`Export ${type} failed`, err);
-            alert(`导出失败: ${err instanceof Error ? err.message : '未知错误'}`);
+            toast(`导出失败: ${err instanceof Error ? err.message : '未知错误'}`, 'error');
         } finally {
             setExporting(null);
         }

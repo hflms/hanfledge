@@ -21,8 +21,9 @@ type Config struct {
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Port    string
-	GinMode string
+	Port        string
+	GinMode     string
+	CORSOrigins string // Comma-separated allowed origins; "*" for dev, explicit for prod
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -63,11 +64,11 @@ type JWTConfig struct {
 
 // LLMConfig holds LLM provider settings.
 type LLMConfig struct {
-	Provider       string // ollama | dashscope | gemini
-	OllamaHost     string
-	OllamaModel    string
-	DashScopeKey   string
-	DashScopeModel string
+	Provider          string // ollama | dashscope | gemini
+	OllamaHost        string
+	OllamaModel       string
+	DashScopeKey      string
+	DashScopeModel    string
 	EmbeddingProvider string
 	EmbeddingModel    string
 }
@@ -82,8 +83,9 @@ func Load() *Config {
 
 	return &Config{
 		Server: ServerConfig{
-			Port:    getEnv("SERVER_PORT", "8080"),
-			GinMode: getEnv("GIN_MODE", "debug"),
+			Port:        getEnv("SERVER_PORT", "8080"),
+			GinMode:     getEnv("GIN_MODE", "debug"),
+			CORSOrigins: getEnv("CORS_ORIGINS", "http://localhost:3000"),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),

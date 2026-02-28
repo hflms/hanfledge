@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { listSkills, getSkillDetail, type SkillMetadata, type SkillConstraints } from '@/lib/api';
-import MarkdownRenderer from '@/components/MarkdownRenderer';
 import styles from './page.module.css';
+
+const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
 // -- Constants ------------------------------------------------
 

@@ -1,6 +1,8 @@
 package http
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/config"
@@ -15,28 +17,40 @@ import (
 	"gorm.io/gorm"
 )
 
-// NewRouter creates and configures the Gin router with all routes.
-func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, registry *plugin.Registry, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard, neo4jClient *neo4jRepo.Client, redisCache *cache.RedisCache, piiRedactor *safety.PIIRedactor) *gin.Engine {
-	r := gin.Default()
+// RouterDeps holds all dependencies needed to construct the router.
+type RouterDeps struct {
+	DB             *gorm.DB
+	Cfg            *config.Config
+	KARAG          *usecase.KARAGEngine
+	Registry       *plugin.Registry
+	Orchestrator   *agent.AgentOrchestrator
+	InjectionGuard *safety.InjectionGuard
+	Neo4jClient    *neo4jRepo.Client
+	RedisCache     *cache.RedisCache
+	PIIRedactor    *safety.PIIRedactor
+}
 
-	// Global middleware
+// NewRouter creates and configures the Gin router with all routes.
+func NewRouter(deps RouterDeps) *gin.Engine {
+	r := gin.New()
+	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
-	r.Use(corsMiddleware())
+	r.Use(corsMiddleware(deps.Cfg.Server.CORSOrigins))
 
 	// Health check
 	r.GET("/health", handler.HealthCheck)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(db, cfg.JWT.Secret, cfg.JWT.ExpiryHours)
-	userHandler := handler.NewUserHandler(db)
-	courseHandler := handler.NewCourseHandler(db, karag, redisCache)
-	skillHandler := handler.NewSkillHandler(db, registry)
-	activityHandler := handler.NewActivityHandler(db, orchestrator)
-	sessionHandler := handler.NewSessionHandler(db, orchestrator, injectionGuard)
-	dashboardHandler := handler.NewDashboardHandler(db)
-	kgHandler := handler.NewKnowledgeGraphHandler(db, neo4jClient)
-	analyticsHandler := handler.NewAnalyticsHandler(db, piiRedactor)
-	exportHandler := handler.NewExportHandler(db)
+	authHandler := handler.NewAuthHandler(deps.DB, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours)
+	userHandler := handler.NewUserHandler(deps.DB)
+	courseHandler := handler.NewCourseHandler(deps.DB, deps.KARAG, deps.RedisCache)
+	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry)
+	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator)
+	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard)
+	dashboardHandler := handler.NewDashboardHandler(deps.DB)
+	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
+	analyticsHandler := handler.NewAnalyticsHandler(deps.DB, deps.PIIRedactor)
+	exportHandler := handler.NewExportHandler(deps.DB)
 
 	// API v1 group
 	v1 := r.Group("/api/v1")
@@ -49,18 +63,18 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// ── Auth (Protected) ─────────────────────────────
 		authProtected := v1.Group("/auth")
-		authProtected.Use(middleware.JWTAuth(cfg.JWT.Secret))
+		authProtected.Use(middleware.JWTAuth(deps.Cfg.JWT.Secret))
 		{
 			authProtected.GET("/me", authHandler.GetMe)
 		}
 
 		// ── Protected Routes ─────────────────────────────
 		protected := v1.Group("")
-		protected.Use(middleware.JWTAuth(cfg.JWT.Secret))
+		protected.Use(middleware.JWTAuth(deps.Cfg.JWT.Secret))
 		{
 			// School management (SYS_ADMIN only)
 			schools := protected.Group("/schools")
-			schools.Use(middleware.RBAC(db, model.RoleSysAdmin))
+			schools.Use(middleware.RBAC(deps.DB, model.RoleSysAdmin))
 			{
 				schools.GET("", userHandler.ListSchools)
 				schools.POST("", userHandler.CreateSchool)
@@ -68,7 +82,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 			// Class management (SYS_ADMIN or SCHOOL_ADMIN)
 			classes := protected.Group("/classes")
-			classes.Use(middleware.RBAC(db, model.RoleSysAdmin, model.RoleSchoolAdmin))
+			classes.Use(middleware.RBAC(deps.DB, model.RoleSysAdmin, model.RoleSchoolAdmin))
 			{
 				classes.GET("", userHandler.ListClasses)
 				classes.POST("", userHandler.CreateClass)
@@ -76,7 +90,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 			// User management (SYS_ADMIN or SCHOOL_ADMIN)
 			users := protected.Group("/users")
-			users.Use(middleware.RBAC(db, model.RoleSysAdmin, model.RoleSchoolAdmin))
+			users.Use(middleware.RBAC(deps.DB, model.RoleSysAdmin, model.RoleSchoolAdmin))
 			{
 				users.GET("", userHandler.ListUsers)
 				users.POST("", userHandler.CreateUser)
@@ -85,7 +99,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 			// Course management (TEACHER)
 			courses := protected.Group("/courses")
-			courses.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+			courses.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 			{
 				courses.GET("", courseHandler.ListCourses)
 				courses.POST("", courseHandler.CreateCourse)
@@ -100,7 +114,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// Skill Store (TEACHER) — Phase 3
 		skills := protected.Group("/skills")
-		skills.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		skills.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			skills.GET("", skillHandler.ListSkills)
 			skills.GET("/:id", skillHandler.GetSkillDetail)
@@ -108,7 +122,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// Skill Mounting (TEACHER) — Phase 3
 		chapters := protected.Group("/chapters")
-		chapters.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		chapters.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			chapters.POST("/:id/skills", skillHandler.MountSkill)
 			chapters.PATCH("/:id/skills/:mount_id", skillHandler.UpdateSkillConfig)
@@ -117,7 +131,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// ── Knowledge Graph Enrichment (TEACHER) — Phase B ─
 		kps := protected.Group("/knowledge-points")
-		kps.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		kps.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			// Misconception CRUD
 			kps.POST("/:id/misconceptions", kgHandler.CreateMisconception)
@@ -136,7 +150,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// ── Dashboard Analytics (TEACHER) — Phase 5 + Phase G ─
 		dashboard := protected.Group("/dashboard")
-		dashboard.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		dashboard.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			dashboard.GET("/knowledge-radar", dashboardHandler.GetKnowledgeRadar)
 			dashboard.GET("/skill-effectiveness", analyticsHandler.GetSkillEffectiveness) // Phase G
@@ -144,14 +158,14 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// ── Student Mastery (TEACHER) — Phase 5 ─────────
 		students := protected.Group("/students")
-		students.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		students.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			students.GET("/:id/mastery", dashboardHandler.GetStudentMastery)
 		}
 
 		// ── Learning Activities (TEACHER) — Phase 4 ──────
 		activities := protected.Group("/activities")
-		activities.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		activities.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			activities.POST("", activityHandler.CreateActivity)
 			activities.GET("", activityHandler.ListActivities)
@@ -161,7 +175,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// ── Student Routes — Phase 4 ────────────────────
 		student := protected.Group("/student")
-		student.Use(middleware.RBAC(db, model.RoleStudent, model.RoleSysAdmin))
+		student.Use(middleware.RBAC(deps.DB, model.RoleStudent, model.RoleSysAdmin))
 		{
 			student.GET("/activities", activityHandler.StudentListActivities)
 			student.GET("/mastery", dashboardHandler.GetSelfMastery)          // Phase 5
@@ -175,7 +189,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// ── Session Analytics (TEACHER) — Phase G ──────
 		sessionAnalytics := protected.Group("/sessions")
-		sessionAnalytics.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		sessionAnalytics.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			sessionAnalytics.GET("/:id/inquiry-tree", analyticsHandler.GetInquiryTree)
 			sessionAnalytics.GET("/:id/interactions", analyticsHandler.GetInteractionLog)
@@ -183,7 +197,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 
 		// ── Data Export (TEACHER) — CSV Downloads ────────
 		export := protected.Group("/export")
-		export.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		export.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			export.GET("/activities/:id/sessions", exportHandler.ExportActivitySessions)
 			export.GET("/courses/:id/mastery", exportHandler.ExportClassMastery)
@@ -198,12 +212,36 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 	return r
 }
 
-// corsMiddleware handles CORS for frontend development.
-func corsMiddleware() gin.HandlerFunc {
+// corsMiddleware handles CORS with configurable allowed origins.
+// allowedOrigins is a comma-separated list (e.g. "http://localhost:3000,https://app.example.com")
+// or "*" to allow all origins (dev only).
+func corsMiddleware(allowedOrigins string) gin.HandlerFunc {
+	// Pre-parse the allowed origins once at startup.
+	allowed := make(map[string]struct{})
+	wildcard := false
+	for _, o := range strings.Split(allowedOrigins, ",") {
+		o = strings.TrimSpace(o)
+		if o == "*" {
+			wildcard = true
+		}
+		if o != "" {
+			allowed[o] = struct{}{}
+		}
+	}
+
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+
+		if wildcard {
+			c.Header("Access-Control-Allow-Origin", "*")
+		} else if _, ok := allowed[origin]; ok {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
+
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Max-Age", "86400")
 
 		if c.Request.Method == "OPTIONS" {

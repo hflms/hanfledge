@@ -11,9 +11,11 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import type { SkillRendererProps } from '@/lib/plugin/types';
-import MarkdownRenderer from '@/components/MarkdownRenderer';
 import styles from './RolePlayRenderer.module.css';
+
+const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
 // -- Types -------------------------------------------------------
 

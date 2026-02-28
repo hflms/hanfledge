@@ -7,6 +7,7 @@ import {
     getDocuments, uploadMaterial, deleteDocument, retryDocument,
     type Document,
 } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 import styles from './page.module.css';
 
 // -- Constants -----------------------------------------------
@@ -61,6 +62,7 @@ function formatDate(dateStr: string): string {
 export default function MaterialsPage() {
     const params = useParams();
     const courseId = Number(params.id);
+    const { toast } = useToast();
     const fileInput = useRef<HTMLInputElement>(null);
 
     const [docs, setDocs] = useState<Document[]>([]);
@@ -165,7 +167,7 @@ export default function MaterialsPage() {
         }
 
         if (errors.length > 0) {
-            alert(errors.join('\n'));
+            toast(errors.join('\n'), 'warning');
         }
 
         if (newTasks.length > 0) {
@@ -176,7 +178,7 @@ export default function MaterialsPage() {
                 return updated;
             });
         }
-    }, [processQueue]);
+    }, [processQueue, toast]);
 
     // -- Drag & drop handlers ------------------------------------
 
@@ -217,7 +219,7 @@ export default function MaterialsPage() {
             setDeleteConfirm(null);
         } catch (err) {
             const msg = err instanceof Error ? err.message : '删除失败';
-            alert(msg);
+            toast(msg, 'error');
         }
     };
 
@@ -231,7 +233,7 @@ export default function MaterialsPage() {
             setDocs(freshDocs);
         } catch (err) {
             const msg = err instanceof Error ? err.message : '重试失败';
-            alert(msg);
+            toast(msg, 'error');
         } finally {
             setRetrying(null);
         }

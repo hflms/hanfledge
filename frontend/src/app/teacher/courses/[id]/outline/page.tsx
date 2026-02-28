@@ -8,6 +8,7 @@ import {
     listSkills, mountSkill, unmountSkill, updateSkillConfig,
     type Course, type Document, type SkillMetadata, type MountedSkill,
 } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 import styles from './page.module.css';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -27,6 +28,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 export default function OutlinePage() {
     const params = useParams();
     const courseId = Number(params.id);
+    const { toast } = useToast();
     const fileInput = useRef<HTMLInputElement>(null);
 
     const [course, setCourse] = useState<Course | null>(null);
@@ -86,7 +88,7 @@ export default function OutlinePage() {
 
     const handleUpload = async (file: File) => {
         if (!file.name.toLowerCase().endsWith('.pdf')) {
-            alert('仅支持 PDF 文件');
+            toast('仅支持 PDF 文件', 'warning');
             return;
         }
         setUploading(true);
@@ -96,7 +98,7 @@ export default function OutlinePage() {
             setDocs(freshDocs);
         } catch (err) {
             console.error('Upload failed', err);
-            alert('上传失败');
+            toast('上传失败', 'error');
         } finally {
             setUploading(false);
         }
@@ -139,7 +141,7 @@ export default function OutlinePage() {
             setPickerChapterId(null);
         } catch (err) {
             console.error('Failed to mount skill', err);
-            alert('挂载技能失败');
+            toast('挂载技能失败', 'error');
         } finally {
             setMounting(false);
         }
@@ -155,7 +157,7 @@ export default function OutlinePage() {
             setConfigMount(null);
         } catch (err) {
             console.error('Failed to unmount skill', err);
-            alert('卸载技能失败');
+            toast('卸载技能失败', 'error');
         } finally {
             setUnmounting(null);
         }
@@ -193,7 +195,7 @@ export default function OutlinePage() {
             setConfigMount(null);
         } catch (err) {
             console.error('Failed to save config', err);
-            alert('保存配置失败');
+            toast('保存配置失败', 'error');
         } finally {
             setConfigSaving(false);
         }

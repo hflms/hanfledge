@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
     getSession,
     createWSUrl,
@@ -10,11 +11,13 @@ import {
     type StudentSession,
     type WSEvent,
 } from '@/lib/api';
-import MarkdownRenderer from '@/components/MarkdownRenderer';
 import { usePluginRegistry } from '@/lib/plugin/PluginRegistry';
 import { useBuiltinSkillRenderers } from '@/lib/plugin/SkillRendererPlugins';
 import type { AgentWebSocketChannel, SkillRendererProps, InteractionEvent } from '@/lib/plugin/types';
+import { useToast } from '@/components/Toast';
 import styles from './page.module.css';
+
+const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
 // -- Types -------------------------------------------------------
 
@@ -60,6 +63,7 @@ const SCAFFOLD_DESCRIPTIONS: Record<ScaffoldLevel, string> = {
 export default function SessionPage() {
     const params = useParams();
     const router = useRouter();
+    const { toast } = useToast();
     const sessionId = Number(params.id);
 
     // Register built-in skill renderers with plugin system
@@ -168,7 +172,7 @@ export default function SessionPage() {
                 setMessages(existingMessages);
             } catch (err) {
                 console.error('Failed to load session:', err);
-                alert('加载会话失败');
+                toast('加载会话失败', 'error');
                 router.push('/student/activities');
             } finally {
                 setLoading(false);
@@ -176,7 +180,7 @@ export default function SessionPage() {
         };
 
         loadSession();
-    }, [sessionId, router]);
+    }, [sessionId, router, toast]);
 
     // -- WebSocket connection ------------------------------------
 
@@ -363,11 +367,11 @@ export default function SessionPage() {
                 const payload = event.payload as { message: string };
                 setThinkingStatus(null);
                 setSending(false);
-                alert(payload.message);
+                toast(payload.message, 'error');
                 break;
             }
         }
-    }, []);
+    }, [toast]);
 
     // -- Send Message (fallback mode) ----------------------------
 

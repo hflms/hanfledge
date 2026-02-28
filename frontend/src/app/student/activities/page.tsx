@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listStudentActivities, joinActivity, type LearningActivity } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 import styles from './page.module.css';
 
 // -- Status Labels -----------------------------------------------
@@ -15,6 +16,7 @@ const SESSION_STATUS_MAP: Record<string, string> = {
 
 export default function StudentActivitiesPage() {
     const router = useRouter();
+    const { toast } = useToast();
     const [activities, setActivities] = useState<LearningActivity[]>([]);
     const [loading, setLoading] = useState(true);
     const [joining, setJoining] = useState<number | null>(null);
@@ -41,7 +43,7 @@ export default function StudentActivitiesPage() {
             router.push(`/student/session/${result.session_id}`);
         } catch (err) {
             console.error('Failed to join activity:', err);
-            alert('加入活动失败，请重试');
+            toast('加入活动失败，请重试', 'error');
         } finally {
             setJoining(null);
         }
