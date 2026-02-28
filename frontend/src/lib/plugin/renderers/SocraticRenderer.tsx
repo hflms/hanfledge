@@ -35,7 +35,6 @@ interface ScaffoldData {
 // -- Component ---------------------------------------------------
 
 export default function SocraticRenderer({
-    studentContext: _studentContext,
     knowledgePoint,
     scaffoldingLevel,
     agentChannel,
@@ -49,9 +48,6 @@ export default function SocraticRenderer({
     const [scaffoldData, setScaffoldData] = useState<ScaffoldData>({});
     const [scaffoldTransition, setScaffoldTransition] = useState(false);
 
-    // Track previous scaffold level for transition animation
-    const prevScaffoldRef = useRef(scaffoldingLevel);
-
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,15 +60,6 @@ export default function SocraticRenderer({
     useEffect(() => {
         scrollToBottom();
     }, [messages, streamingContent, thinkingStatus, scrollToBottom]);
-
-    // -- Sync scaffold level from props --------------------------
-
-    if (scaffoldingLevel !== prevScaffoldRef.current) {
-        prevScaffoldRef.current = scaffoldingLevel;
-        // Trigger transition animation via a timeout
-        setTimeout(() => setScaffoldTransition(true), 0);
-        setTimeout(() => setScaffoldTransition(false), 500);
-    }
 
     // -- WebSocket message handling ------------------------------
 

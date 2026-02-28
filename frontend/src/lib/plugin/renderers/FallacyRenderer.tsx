@@ -47,9 +47,7 @@ interface RevealData {
 // -- Component ---------------------------------------------------
 
 export default function FallacyRenderer({
-    studentContext: _studentContext,
     knowledgePoint,
-    scaffoldingLevel: _scaffoldingLevel,
     agentChannel,
     onInteractionEvent,
 }: SkillRendererProps) {

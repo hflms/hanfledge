@@ -86,7 +86,7 @@ export default function OutlinePage() {
         return () => clearInterval(interval);
     }, [docs, courseId]);
 
-    const handleUpload = async (file: File) => {
+    const handleUpload = useCallback(async (file: File) => {
         if (!file.name.toLowerCase().endsWith('.pdf')) {
             toast('仅支持 PDF 文件', 'warning');
             return;
@@ -102,14 +102,14 @@ export default function OutlinePage() {
         } finally {
             setUploading(false);
         }
-    };
+    }, [courseId, toast]);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setDragging(false);
         const file = e.dataTransfer.files[0];
         if (file) handleUpload(file);
-    }, []);
+    }, [handleUpload]);
 
     // -- Skill picker handlers ----------------------------------------
 

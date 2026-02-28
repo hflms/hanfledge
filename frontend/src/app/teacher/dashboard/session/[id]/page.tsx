@@ -295,7 +295,7 @@ function InteractionLog({ data }: { data: InteractionLogResponse }) {
         <div className={styles.logContainer}>
             {/* Timeline */}
             <div className={styles.logTimeline}>
-                {data.interactions.map((entry, i) => (
+                {data.interactions.map((entry) => (
                     <div
                         key={entry.id}
                         className={`${styles.logEntry} ${entry.role === 'student' ? styles.logEntryStudent : styles.logEntryCoach}`}

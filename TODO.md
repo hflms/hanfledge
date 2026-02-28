@@ -1,6 +1,6 @@
 # Hanfledge MVP V1.0 — TODO Tasks
 
-**Last Updated:** 2026-02-28 22:00
+**Last Updated:** 2026-02-28 23:30
 **Tech Stack:** Go (Gin+GORM) / Next.js / PostgreSQL (pgvector) / Neo4j / Redis
 **Reference:** [design.md](./design.md)
 
@@ -23,11 +23,12 @@
 | **Post-MVP: 多 LLM Provider** | **✅ 已完成** | **100%** | — |
 | **Post-MVP: 前端 UI 优化** | **✅ 已完成** | **100%** | — |
 | **Post-MVP: 单元测试补全** | **✅ 已完成** | **100%** | — |
-| **V3.0: 质量与架构治理** | **🔧 进行中** | **0%** | — |
+| **V3.0: 质量与架构治理** | **✅ 已完成** | **100%** | — |
+| **V3.1: Handler HTTP 测试** | **✅ 已完成** | **100%** | — |
 
 **MVP 总进度: 73 / 73 tasks (100%)**
 **V2.0 进度: Phase A ✅ + Phase B ✅ + Phase C ✅ + Phase D ✅ + Phase E ✅ + Phase F ✅ + Phase G ✅ + Phase H ✅ + Phase I ✅ + WS Robustness ✅**
-**V3.0 进度: 0 / 10 tasks (0%)**
+**V3.0 进度: 10 / 10 tasks (100%) ✅**
 
 ---
 
@@ -1546,4 +1547,69 @@ After:  RRF Top-20 → Cross-Encoder Top-5 → CRAG → Truncator → Prompt
 | `go vet ./...` | ✅ 通过 |
 | `go build ./...` | ✅ 通过 |
 | `npm run build` | ✅ 通过 (12 页面编译) |
-| `npm run lint` | ⚠️ 2 个预存错误 + 7 个预存警告 (均非 V3.0 引入) |
+| `npm run lint` | ✅ 通过 (0 errors, 0 warnings) |
+
+---
+
+## V3.1: Handler HTTP 测试 (httptest + SQLite In-Memory) ✅
+
+> **目标:** 为核心 HTTP handler 添加真实请求/响应测试，使用 `httptest` + `gin.CreateTestContext` + GORM SQLite in-memory DB。
+> **方法:** 共享 `testhelper_test.go` 提供 `setupTestDB`、seed 函数、断言辅助函数。
+
+### 新增测试文件
+
+- [x] `testhelper_test.go` — 共享测试基础设施
+  - `setupTestDB`: SQLite in-memory + AutoMigrate (跳过 pgvector 表)
+  - `seedUser`, `seedCourse`, `seedChapter`, `seedKP`, `seedActivity`, `seedSession` — 数据种子函数
+  - `newTestContext`, `newTestContextWithParams`, `newTestContextWithQuery` — gin 测试上下文构建
+  - `assertStatus`, `assertBodyContains`, `assertBodyNotContains`, `assertCSVResponse` — 断言辅助
+
+### Auth Handler HTTP 测试 (auth_test.go)
+
+- [x] `TestLogin_Success` — 正确手机号密码登录，返回 JWT + 用户信息
+- [x] `TestLogin_WrongPassword` — 错误密码返回 401
+- [x] `TestLogin_UserNotFound` — 不存在的手机号返回 401
+- [x] `TestLogin_BannedUser` — 被禁用用户返回 403
+- [x] `TestLogin_MissingFields` — 缺少字段返回 400 (4 个子用例)
+- [x] `TestLogin_TokenIsValidJWT` — 验证返回的 token 和用户信息格式
+- [x] `TestGetMe_Success` — 已认证用户获取个人信息
+- [x] `TestGetMe_UserNotFound` — user_id 不存在返回 404
+
+### Export Handler HTTP 测试 (export_test.go)
+
+- [x] `TestExportActivitySessions_Success` — 导出活动会话 CSV (验证 BOM + 表头 + 数据)
+- [x] `TestExportActivitySessions_NotFound` — 活动不存在返回 404
+- [x] `TestExportActivitySessions_Forbidden` — 非所属教师返回 403
+- [x] `TestExportActivitySessions_InvalidID` — 无效 ID 返回 400
+- [x] `TestExportActivitySessions_EmptySessions` — 空数据仍返回 CSV 表头
+- [x] `TestExportClassMastery_Success` — 导出班级掌握度 CSV
+- [x] `TestExportClassMastery_NotFound` — 课程不存在
+- [x] `TestExportClassMastery_Forbidden` — 无权限
+- [x] `TestExportClassMastery_NoKPs` — 无知识点时返回提示消息
+- [x] `TestExportErrorNotebook_Success` — 导出错题本 CSV (含中文错误类型映射)
+- [x] `TestExportErrorNotebook_NotFound` — 课程不存在
+- [x] `TestExportErrorNotebook_Forbidden` — 无权限
+- [x] `TestExportInteractionLog_Success` — 导出交互日志 CSV (含角色标签映射)
+- [x] `TestExportInteractionLog_SessionNotFound` — 会话不存在
+- [x] `TestExportInteractionLog_Forbidden` — 无权限
+
+### Dashboard Handler HTTP 测试 (dashboard_test.go)
+
+- [x] `TestGetKnowledgeRadar_Success` — 知识雷达图聚合 (验证 labels/values/studentCount)
+- [x] `TestGetKnowledgeRadar_MissingCourseID` — 缺少参数返回 400
+- [x] `TestGetKnowledgeRadar_CourseNotFound` — 课程不存在返回 404
+- [x] `TestGetKnowledgeRadar_Forbidden` — 非所属教师返回 403
+- [x] `TestGetKnowledgeRadar_EmptyKPs` — 无知识点返回空数组
+- [x] `TestGetStudentMastery_Success` — 学生掌握度详情
+- [x] `TestGetStudentMastery_StudentNotFound` — 学生不存在返回 404
+- [x] `TestGetStudentMastery_InvalidID` — 无效 ID 返回 400
+- [x] `TestGetActivitySessions_Success` — 活动会话统计 (验证 total/active/completed/completionRate)
+- [x] `TestGetActivitySessions_NotFound` — 活动不存在
+- [x] `TestGetActivitySessions_Forbidden` — 无权限
+- [x] `TestGetSelfMastery_Success` — 学生自查掌握度
+- [x] `TestGetErrorNotebook_Success` — 错题本列表 (验证 total/unresolved/resolved 计数)
+- [x] `TestGetErrorNotebook_FilterResolved` — resolved=false 过滤
+- [x] `TestGetErrorNotebook_EmptyNotebook` — 空错题本
+
+**新增: 1 个测试基础设施文件 + 38 个 HTTP 测试用例 (含 4 个子用例), 全部通过 ✅**
+**Handler 测试总计: 原有纯函数/构造函数测试 + 38 个新 HTTP 测试 = 完整 handler 覆盖**

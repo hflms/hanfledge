@@ -62,3 +62,42 @@ func TestIsValidLinkType(t *testing.T) {
 		})
 	}
 }
+
+// ── parseKPNumericID Tests ──────────────────────────────────
+
+func TestParseKPNumericID(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		expectedID uint
+		expectedOK bool
+	}{
+		{"valid kp_123", "kp_123", 123, true},
+		{"valid kp_1", "kp_1", 1, true},
+		{"valid kp_0", "kp_0", 0, true},
+		{"valid kp_999999", "kp_999999", 999999, true},
+		{"no underscore", "kp123", 0, false},
+		{"empty string", "", 0, false},
+		{"only prefix", "kp_", 0, false},
+		{"non-numeric after underscore", "kp_abc", 0, false},
+		{"negative number", "kp_-1", 0, false},
+		{"double underscore", "kp__123", 0, false},
+		{"different prefix", "node_42", 42, true},
+		{"just underscore and number", "_42", 42, true},
+		{"multiple underscores", "kp_1_2", 0, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			id, ok := parseKPNumericID(tc.input)
+			if ok != tc.expectedOK {
+				t.Errorf("parseKPNumericID(%q) ok = %v, want %v",
+					tc.input, ok, tc.expectedOK)
+			}
+			if ok && id != tc.expectedID {
+				t.Errorf("parseKPNumericID(%q) id = %d, want %d",
+					tc.input, id, tc.expectedID)
+			}
+		})
+	}
+}

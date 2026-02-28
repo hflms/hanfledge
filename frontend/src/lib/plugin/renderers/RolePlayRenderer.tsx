@@ -54,9 +54,7 @@ const DEFAULT_CHARACTERS: CharacterInfo[] = [
 // -- Component ---------------------------------------------------
 
 export default function RolePlayRenderer({
-    studentContext: _studentContext,
     knowledgePoint,
-    scaffoldingLevel: _scaffoldingLevel,
     agentChannel,
     onInteractionEvent,
 }: SkillRendererProps) {
