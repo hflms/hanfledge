@@ -25,12 +25,12 @@
 | **Post-MVP: 单元测试补全** | **✅ 已完成** | **100%** | — |
 | **V3.0: 质量与架构治理** | **✅ 已完成** | **100%** | — |
 | **V3.1: Handler HTTP 测试** | **✅ 已完成** | **100%** | — |
-| **V4.0: 中期功能** | **✅ 已完成** | **6/6** | `327e5df` |
+| **V4.0: 中期功能** | **✅ 已完成** | **7/7** | `ea8d183` |
 
 **MVP 总进度: 73 / 73 tasks (100%)**
 **V2.0 进度: Phase A ✅ + Phase B ✅ + Phase C ✅ + Phase D ✅ + Phase E ✅ + Phase F ✅ + Phase G ✅ + Phase H ✅ + Phase I ✅ + WS Robustness ✅**
 **V3.0 进度: 10 / 10 tasks (100%) ✅**
-**V4.0 进度: 6 / 6 tasks (100%) ✅**
+**V4.0 进度: 7 / 7 tasks (100%) ✅**
 
 ---
 
@@ -1620,7 +1620,7 @@ After:  RRF Top-20 → Cross-Encoder Top-5 → CRAG → Truncator → Prompt
 
 ## V4.0: 中期功能 ✅
 
-design.md §5–§8 中定义的 6 项中期特性，全部完成并通过构建/测试。
+design.md §5–§8 中定义的 7 项中期特性，全部完成并通过构建/测试。
 
 ### Task 4: 智能 ModelRouter ✅ `6fc5ac8`
 
@@ -1707,3 +1707,32 @@ MCQ/填空题生成 + QuizRenderer (design.md §7.13)
   - 移除硬编码 BUILTIN_RENDERERS (69 行)
   - 导入 MANIFEST_RENDERERS，hook API `useBuiltinSkillRenderers()` 保持不变
 - [x] 前端构建通过 (Next.js 16.1.6 Turbopack)
+
+### Task 10: 教师自定义技能创建 ✅ `ea8d183`
+
+教师可视化创建自定义教学技能 (design.md §6.4)
+
+- [x] `internal/domain/model/skill.go` — CustomSkill + CustomSkillVersion 模型
+  - 状态机: draft → published → shared/archived
+  - 可见性: private / school / platform
+  - 版本历史自动记录
+- [x] `internal/plugin/registry.go` — Registry 扩展
+  - `RegisterCustomSkill()` / `UnregisterSkill()` 动态注册
+  - `LoadConstraints()` 优先读取内存 SkillMDContent (DB-backed)
+- [x] `internal/delivery/http/handler/custom_skill.go` — 9 个 REST 端点
+  - CRUD: Create / List / Get / Update / Delete
+  - 生命周期: Publish / Share / Archive / ListVersions
+  - 验证: 3 段命名空间、token 上限 (2000)、去重
+- [x] `internal/delivery/http/handler/custom_skill_test.go` — 27 个 HTTP 测试
+- [x] `frontend/src/lib/api.ts` — 9 个 API 函数 + TypeScript 类型
+- [x] `frontend/src/app/teacher/skills/create/` — 4 步可视化创建表单
+  - Step 1: 基本信息 (Skill ID 三段式构建器、名称、描述、学科、标签)
+  - Step 2: SKILL.md 编辑器 (Markdown 实时预览 + token 计数器 + 模板插入)
+  - Step 3: 工具配置 (Leveler / Make it Relevant 开关)
+  - Step 4: 模板文件管理
+- [x] `frontend/src/app/teacher/skills/page.tsx` — Skill Store 升级
+  - 主标签: 系统技能 / 我的技能
+  - 自定义技能卡片 + 状态徽章 (草稿/已发布/已共享/已归档)
+  - 操作按钮: 发布 / 共享(学校/平台) / 归档 / 删除
+  - 自定义技能详情弹窗 (SKILL.md 渲染)
+- [x] Coach Agent + Strategist 兼容性验证 (无需修改)
