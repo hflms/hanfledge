@@ -25,10 +25,12 @@
 | **Post-MVP: 单元测试补全** | **✅ 已完成** | **100%** | — |
 | **V3.0: 质量与架构治理** | **✅ 已完成** | **100%** | — |
 | **V3.1: Handler HTTP 测试** | **✅ 已完成** | **100%** | — |
+| **V4.0: 中期功能** | **✅ 已完成** | **6/6** | `327e5df` |
 
 **MVP 总进度: 73 / 73 tasks (100%)**
 **V2.0 进度: Phase A ✅ + Phase B ✅ + Phase C ✅ + Phase D ✅ + Phase E ✅ + Phase F ✅ + Phase G ✅ + Phase H ✅ + Phase I ✅ + WS Robustness ✅**
 **V3.0 进度: 10 / 10 tasks (100%) ✅**
+**V4.0 进度: 6 / 6 tasks (100%) ✅**
 
 ---
 
@@ -1613,3 +1615,95 @@ After:  RRF Top-20 → Cross-Encoder Top-5 → CRAG → Truncator → Prompt
 
 **新增: 1 个测试基础设施文件 + 38 个 HTTP 测试用例 (含 4 个子用例), 全部通过 ✅**
 **Handler 测试总计: 原有纯函数/构造函数测试 + 38 个新 HTTP 测试 = 完整 handler 覆盖**
+
+---
+
+## V4.0: 中期功能 ✅
+
+design.md §5–§8 中定义的 6 项中期特性，全部完成并通过构建/测试。
+
+### Task 4: 智能 ModelRouter ✅ `6fc5ac8`
+
+基于 TaskContext 的复杂度评分路由 (design.md §8.3.3)
+
+- [x] `internal/infrastructure/llm/model_router.go` — ModelRouter 实现
+  - 复杂度评分: 基于 token 长度、对话轮次、scaffolding 级别、知识点难度
+  - 三档路由: simple (qwen2.5:1.5b) / moderate (qwen2.5:7b) / complex (qwen2.5:14b)
+  - 可配置阈值与模型映射
+- [x] `internal/infrastructure/llm/model_router_test.go` — 表驱动测试 (8 用例)
+- [x] Agent orchestrator 集成: `TurnContext` 携带路由信息
+
+### Task 5: L1 客户端 IndexedDB 缓存 ✅ `b0b7590`
+
+前端语义缓存层 (design.md §8.1.3)
+
+- [x] `frontend/src/lib/cache/SemanticCacheDB.ts` — IndexedDB 封装
+  - 基于 prompt hash 的精确匹配缓存
+  - TTL 过期 + LRU 淘汰 (maxEntries 可配置)
+  - 命中/未命中统计
+- [x] `frontend/src/lib/cache/useSemanticCache.ts` — React hook 封装
+- [x] 会话页集成: WebSocket 发送前先查缓存，命中则跳过网络请求
+
+### Task 6: Quiz 自动出题技能 ✅ `59fa1d2`
+
+MCQ/填空题生成 + QuizRenderer (design.md §7.13)
+
+- [x] `internal/agent/skills/quiz_generation.go` — Quiz 技能后端
+  - 支持 MCQ (选择题) 和 fill_blank (填空题)
+  - LLM JSON 提示词生成结构化题目
+  - 自动评分 + 解析反馈
+- [x] `internal/agent/skills/quiz_generation_test.go` — 单元测试
+- [x] `frontend/src/lib/plugin/renderers/QuizRenderer.tsx` — 前端交互组件
+  - 选择题: 单选按钮 + 即时反馈 (正确/错误 + 解析)
+  - 填空题: 文本输入 + 提交评分
+- [x] `frontend/src/lib/plugin/renderers/QuizRenderer.module.css` — 样式
+- [x] 技能注册: 后端 metadata.json + 前端 SkillRendererPlugins
+
+### Task 7: 成就/游戏化系统 ✅ `bbe8af5`
+
+徽章、连续学习、"谬误猎人" (design.md §5.2 Step 4)
+
+- [x] `internal/domain/model/achievement.go` — Achievement + UserAchievement 模型
+  - 7 种徽章: first_session, streak_3/7, mastery_5/10, fallacy_hunter, quiz_master
+  - 稀有度: common / rare / epic / legendary
+- [x] `internal/agent/achievement_evaluator.go` — 成就评估引擎
+  - OnScaffold 回调: 实时检测 scaffolding 降级触发
+  - OnTurnComplete 回调: 会话结束后批量评估连续学习等
+  - 幂等性: 已解锁的成就不重复授予
+- [x] `internal/agent/achievement_evaluator_test.go` — 表驱动测试 (6 用例)
+- [x] `internal/delivery/http/handler/achievement.go` — REST API
+  - GET /api/v1/achievements/my — 学生成就列表
+  - GET /api/v1/achievements/recent — 最近解锁
+  - GET /api/v1/achievements/stats — 统计 (总数/已解锁/完成率)
+- [x] `internal/delivery/http/handler/achievement_test.go` — HTTP 测试 (8 用例)
+- [x] `frontend/src/app/student/achievements/` — 前端成就页面 (徽章墙 + 统计)
+
+### Task 8: 教师 Sandbox 预览模式 ✅ `3237bf8`
+
+教师以学生视角预览活动 (design.md §5.1 Step 2-3)
+
+- [x] `IsSandbox bool` 字段添加到 `StudentSession` 模型
+- [x] `POST /api/v1/activities/:id/preview` — 教师创建沙盒会话
+  - StudentID = teacherID，复用已存在的活跃沙盒会话
+- [x] `TurnContext.IsSandbox` 传播到 Agent 管道
+  - Orchestrator 跳过 BKT 掌握度更新 + 错题本归档
+  - Achievement 评估跳过沙盒会话
+- [x] 沙盒会话排除: `GetActivitySessions`, `GetSkillEffectiveness`, `StudentListActivities`
+- [x] 前端: 沙盒横幅 (黄色样式) + 返回链接指向教师仪表盘
+- [x] `activity_test.go` — 7 个沙盒相关 HTTP 测试
+
+### Task 9: 前端插件 manifest.json 加载 ✅ `327e5df`
+
+从文件系统加载替代硬编码 (design.md §6.4, §7.1, §7.15-7.16)
+
+- [x] 创建 4 个 `plugins/skills/*/frontend/manifest.json`
+  - 声明 skillId, name, version, type, trust_level, slots, permissions 等元数据
+- [x] `frontend/src/lib/plugin/SkillManifestLoader.ts` — Manifest 加载器
+  - 类型化 PluginManifest 常量 (镜像 manifest.json 数据)
+  - COMPONENT_REGISTRY: skillId -> React 组件映射
+  - MANIFEST_RENDERERS: 解析后的 SkillUIRenderer 数组
+  - 辅助函数: `getRendererBySkillId()`, `getRegisteredSkillIds()`
+- [x] 重构 `SkillRendererPlugins.tsx`
+  - 移除硬编码 BUILTIN_RENDERERS (69 行)
+  - 导入 MANIFEST_RENDERERS，hook API `useBuiltinSkillRenderers()` 保持不变
+- [x] 前端构建通过 (Next.js 16.1.6 Turbopack)
