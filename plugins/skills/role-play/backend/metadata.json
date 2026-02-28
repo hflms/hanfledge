@@ -1,0 +1,38 @@
+{
+  "id": "general_review_roleplay",
+  "name": "角色扮演",
+  "description": "AI 模拟历史人物、科学家或外语语伴，让学生在沉浸式情境中巩固知识。通过角色代入提升学习动机和记忆留存率。",
+  "version": "1.0.0",
+  "author": "system",
+  "category": "role-play",
+  "subjects": ["math", "physics", "chemistry", "biology", "chinese", "english", "history", "geography"],
+  "tags": ["沉浸式学习", "角色代入", "情境模拟", "考前复习"],
+  "scaffolding_levels": ["high", "medium", "low"],
+  "constraints": {
+    "stay_in_character": true,
+    "knowledge_must_be_accurate": true,
+    "never_break_immersion_unless_asked": true,
+    "must_weave_knowledge_naturally": true,
+    "max_scenario_switches_per_session": 3
+  },
+  "tools": {
+    "leveler": {
+      "enabled": true,
+      "description": "根据学生年级调整角色的语言复杂度和知识深度"
+    },
+    "make_it_relevant": {
+      "enabled": true,
+      "description": "将历史/科学情境与学生日常生活建立关联"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "mastery_score >= 0.5",
+    "deactivate_when": "mastery_score >= 0.95"
+  },
+  "evaluation_dimensions": [
+    "immersion_quality",
+    "knowledge_integration",
+    "student_engagement",
+    "learning_transfer"
+  ]
+}

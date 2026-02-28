@@ -160,7 +160,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	registry := plugin.NewRegistry()
 	guard := safety.NewInjectionGuard()
 	cfg := newTestConfig()
-	router := delivery.NewRouter(db, cfg, nil, registry, nil, guard)
+	router := delivery.NewRouter(db, cfg, nil, registry, nil, guard, nil, nil, nil)
 
 	// Generate JWT tokens
 	adminToken := generateToken(t, admin.ID, admin.Phone, admin.DisplayName)

@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"github.com/ledongthuc/pdf"
 	"gorm.io/gorm"
@@ -23,11 +24,12 @@ import (
 type CourseHandler struct {
 	DB    *gorm.DB
 	KARAG *usecase.KARAGEngine
+	Cache *cache.RedisCache // nil if Redis unavailable
 }
 
 // NewCourseHandler creates a new CourseHandler.
-func NewCourseHandler(db *gorm.DB, karag *usecase.KARAGEngine) *CourseHandler {
-	return &CourseHandler{DB: db, KARAG: karag}
+func NewCourseHandler(db *gorm.DB, karag *usecase.KARAGEngine, redisCache *cache.RedisCache) *CourseHandler {
+	return &CourseHandler{DB: db, KARAG: karag, Cache: redisCache}
 }
 
 // ListCourses returns courses for the authenticated teacher.
@@ -116,6 +118,12 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 		return
 	}
 
+	// Validate file size (50 MB max)
+	if header.Size > MaxFileSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件大小不能超过 50 MB"})
+		return
+	}
+
 	// Save file to disk
 	uploadDir := filepath.Join("uploads", courseID)
 	os.MkdirAll(uploadDir, 0755)
@@ -161,6 +169,15 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 		if err := h.KARAG.ProcessDocument(ctx, &doc, rawText); err != nil {
 			log.Printf("❌ KA-RAG pipeline failed for doc %d: %v", doc.ID, err)
 			h.DB.Model(&doc).Update("status", model.DocStatusFailed)
+			return
+		}
+
+		// Invalidate L2 semantic cache for this course (§8.1.3)
+		// Course materials changed → cached responses may be stale
+		if h.Cache != nil {
+			if err := h.Cache.InvalidateSemanticCacheByCourse(ctx, doc.CourseID); err != nil {
+				log.Printf("⚠️  [Cache] Invalidate L2 cache for course=%d failed: %v", doc.CourseID, err)
+			}
 		}
 	}()
 
@@ -245,6 +262,116 @@ func (h *CourseHandler) SearchCourse(c *gin.Context) {
 		"query":   req.Query,
 		"results": results,
 		"count":   len(results),
+	})
+}
+
+// -- Document Management ----------------------------------------
+
+// MaxFileSize is the maximum allowed upload size (50 MB).
+const MaxFileSize = 50 * 1024 * 1024
+
+// DeleteDocument removes a document and its associated chunks and file.
+// DELETE /api/v1/courses/:id/documents/:doc_id
+func (h *CourseHandler) DeleteDocument(c *gin.Context) {
+	courseID := c.Param("id")
+	docID := c.Param("doc_id")
+
+	var doc model.Document
+	if err := h.DB.Where("id = ? AND course_id = ?", docID, courseID).First(&doc).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文档不存在"})
+		return
+	}
+
+	// Don't allow deleting documents that are currently processing
+	if doc.Status == model.DocStatusProcessing {
+		c.JSON(http.StatusConflict, gin.H{"error": "文档正在处理中，无法删除"})
+		return
+	}
+
+	// Delete chunks first (cascade)
+	h.DB.Where("document_id = ?", doc.ID).Delete(&model.DocumentChunk{})
+
+	// Delete the file from disk
+	if doc.FilePath != "" {
+		os.Remove(doc.FilePath)
+	}
+
+	// Delete the document record
+	h.DB.Delete(&doc)
+
+	// Invalidate L2 semantic cache for this course
+	if h.Cache != nil {
+		ctx := c.Request.Context()
+		if err := h.Cache.InvalidateSemanticCacheByCourse(ctx, doc.CourseID); err != nil {
+			log.Printf("⚠️  [Cache] Invalidate L2 cache for course=%d failed: %v", doc.CourseID, err)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "文档已删除"})
+}
+
+// RetryDocument retriggers the KA-RAG pipeline for a failed document.
+// POST /api/v1/courses/:id/documents/:doc_id/retry
+func (h *CourseHandler) RetryDocument(c *gin.Context) {
+	courseID := c.Param("id")
+	docID := c.Param("doc_id")
+
+	var doc model.Document
+	if err := h.DB.Where("id = ? AND course_id = ?", docID, courseID).First(&doc).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文档不存在"})
+		return
+	}
+
+	if doc.Status != model.DocStatusFailed {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "只能重试失败的文档"})
+		return
+	}
+
+	// Verify file still exists on disk
+	if _, err := os.Stat(doc.FilePath); os.IsNotExist(err) {
+		c.JSON(http.StatusGone, gin.H{"error": "原始文件已丢失，请重新上传"})
+		return
+	}
+
+	// Re-extract text
+	rawText, pageCount, err := extractPDFText(doc.FilePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 解析失败: " + err.Error()})
+		return
+	}
+
+	// Delete old chunks before reprocessing
+	h.DB.Where("document_id = ?", doc.ID).Delete(&model.DocumentChunk{})
+
+	// Update status to processing
+	h.DB.Model(&doc).Updates(map[string]interface{}{
+		"status":     model.DocStatusProcessing,
+		"page_count": pageCount,
+	})
+
+	// Trigger KA-RAG pipeline asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if err := h.KARAG.ProcessDocument(ctx, &doc, rawText); err != nil {
+			log.Printf("❌ KA-RAG retry failed for doc %d: %v", doc.ID, err)
+			h.DB.Model(&doc).Update("status", model.DocStatusFailed)
+			return
+		}
+
+		// Invalidate L2 semantic cache
+		if h.Cache != nil {
+			if err := h.Cache.InvalidateSemanticCacheByCourse(ctx, doc.CourseID); err != nil {
+				log.Printf("⚠️  [Cache] Invalidate L2 cache for course=%d failed: %v", doc.CourseID, err)
+			}
+		}
+	}()
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"message":    "文档重新处理已启动",
+		"document":   doc,
+		"page_count": pageCount,
 	})
 }
 

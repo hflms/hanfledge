@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,12 +40,48 @@ func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injec
 	return &SessionHandler{DB: db, Orchestrator: orchestrator, InjectionGuard: injectionGuard}
 }
 
+// -- WebSocket Constants ----------------------------------------
+
+const (
+	// wsPongWait is the maximum time to wait for a pong from the client.
+	wsPongWait = 60 * time.Second
+
+	// wsPingInterval is the interval between heartbeat pings (must be < wsPongWait).
+	wsPingInterval = 30 * time.Second
+
+	// wsWriteWait is the maximum time to wait for a write to complete.
+	wsWriteWait = 10 * time.Second
+)
+
 // WebSocket upgrader
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	// Allow all origins for development; tighten in production
 	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// wsConn wraps a WebSocket connection with a write mutex to prevent
+// concurrent writes from the read-loop goroutine and the ping ticker.
+type wsConn struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+// writeJSON marshals and writes a message with a write deadline.
+func (w *wsConn) writeJSON(v interface{}) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+	return w.conn.WriteJSON(v)
+}
+
+// writePing sends a WebSocket ping control frame with a write deadline.
+func (w *wsConn) writePing() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+	return w.conn.WriteMessage(websocket.PingMessage, nil)
 }
 
 // StreamSession upgrades the HTTP connection to WebSocket and handles
@@ -75,18 +112,51 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 	}
 
 	// Upgrade to WebSocket
-	ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	rawWS, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("⚠️  [WebSocket] Upgrade failed: %v", err)
 		return
 	}
-	defer ws.Close()
+	defer rawWS.Close()
+
+	ws := &wsConn{conn: rawWS}
 
 	log.Printf("🔌 [WebSocket] Connected: session=%d student=%d", sessionID, studentID)
 
+	// ── Heartbeat: pong detection ────────────────────────────
+	rawWS.SetReadDeadline(time.Now().Add(wsPongWait))
+	rawWS.SetPongHandler(func(string) error {
+		rawWS.SetReadDeadline(time.Now().Add(wsPongWait))
+		return nil
+	})
+
+	// ── Heartbeat: ping ticker ───────────────────────────────
+	ticker := time.NewTicker(wsPingInterval)
+	defer ticker.Stop()
+
+	// Per-session turn lock — prevents concurrent HandleTurn calls
+	var turnMu sync.Mutex
+
+	// Ping goroutine: sends periodic pings until connection closes
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				if err := ws.writePing(); err != nil {
+					log.Printf("⚠️  [WebSocket] Ping failed: session=%d err=%v", sessionID, err)
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
 	// Main read loop
 	for {
-		_, msgBytes, err := ws.ReadMessage()
+		_, msgBytes, err := rawWS.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Printf("🔌 [WebSocket] Client disconnected: session=%d", sessionID)
@@ -99,15 +169,21 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		// Parse incoming event
 		var event agent.WSEvent
 		if err := json.Unmarshal(msgBytes, &event); err != nil {
-			h.sendError(ws, "消息格式错误")
+			h.sendWSError(ws, "消息格式错误")
 			continue
 		}
 
 		switch event.Event {
 		case agent.EventUserMessage:
+			// Acquire turn lock to prevent concurrent pipeline execution
+			if !turnMu.TryLock() {
+				h.sendWSError(ws, "请等待当前回答完成后再发送新消息")
+				continue
+			}
 			h.handleUserMessage(ws, &session, studentID, event)
+			turnMu.Unlock()
 		default:
-			h.sendError(ws, "未知事件类型: "+event.Event)
+			h.sendWSError(ws, "未知事件类型: "+event.Event)
 		}
 	}
 
@@ -115,12 +191,12 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 }
 
 // handleUserMessage processes a user_message event through the Agent pipeline.
-func (h *SessionHandler) handleUserMessage(ws *websocket.Conn, session *model.StudentSession, studentID uint, event agent.WSEvent) {
+func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSession, studentID uint, event agent.WSEvent) {
 	// Extract text from payload
 	payloadBytes, _ := json.Marshal(event.Payload)
 	var payload agent.UserMessagePayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil || payload.Text == "" {
-		h.sendError(ws, "消息内容不能为空")
+		h.sendWSError(ws, "消息内容不能为空")
 		return
 	}
 
@@ -130,7 +206,7 @@ func (h *SessionHandler) handleUserMessage(ws *websocket.Conn, session *model.St
 		if check.Risk == safety.RiskBlocked {
 			log.Printf("🛡️  [Safety] Injection BLOCKED: session=%d reason=%s matched=%s",
 				session.ID, check.Reason, check.Matched)
-			h.sendError(ws, "您的输入包含不允许的内容，请修改后重试")
+			h.sendWSError(ws, "您的输入包含不允许的内容，请修改后重试")
 			return
 		}
 		if check.Risk == safety.RiskWarning {
@@ -180,33 +256,27 @@ func (h *SessionHandler) handleUserMessage(ws *websocket.Conn, session *model.St
 	// Execute the Agent pipeline
 	if err := h.Orchestrator.HandleTurn(tc); err != nil {
 		log.Printf("⚠️  [WebSocket] Agent pipeline error: %v", err)
-		h.sendError(ws, "AI 处理失败，请重试")
+		h.sendWSError(ws, "AI 处理失败，请重试")
 	}
 }
 
 // ── WebSocket Helpers ───────────────────────────────────────
 
 // sendEvent sends a typed WSEvent over the WebSocket connection.
-func (h *SessionHandler) sendEvent(ws *websocket.Conn, eventType string, payload interface{}) {
+func (h *SessionHandler) sendEvent(ws *wsConn, eventType string, payload interface{}) {
 	event := agent.WSEvent{
 		Event:     eventType,
 		Payload:   payload,
 		Timestamp: time.Now().Unix(),
 	}
 
-	data, err := json.Marshal(event)
-	if err != nil {
-		log.Printf("⚠️  [WebSocket] Marshal event failed: %v", err)
-		return
-	}
-
-	if err := ws.WriteMessage(websocket.TextMessage, data); err != nil {
+	if err := ws.writeJSON(event); err != nil {
 		log.Printf("⚠️  [WebSocket] Write failed: %v", err)
 	}
 }
 
-// sendError sends an error message over the WebSocket connection.
-func (h *SessionHandler) sendError(ws *websocket.Conn, message string) {
+// sendWSError sends an error message over the WebSocket connection.
+func (h *SessionHandler) sendWSError(ws *wsConn, message string) {
 	h.sendEvent(ws, "error", map[string]string{"message": message})
 }
 

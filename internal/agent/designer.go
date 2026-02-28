@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
@@ -23,19 +24,27 @@ import (
 
 // DesignerAgent 设计师 Agent。
 type DesignerAgent struct {
-	db    *gorm.DB
-	llm   llm.LLMProvider
-	neo4j *neo4jRepo.Client
-	karag *usecase.KARAGEngine
+	db        *gorm.DB
+	llm       llm.LLMProvider
+	neo4j     *neo4jRepo.Client
+	karag     *usecase.KARAGEngine
+	truncator *TokenTruncator       // Token 截断中间件 (§8.2.2)
+	expander  *QueryExpander        // RAG-Fusion 查询扩展 (§8.1.2)
+	gateway   *QualityGateway       // CRAG 质量网关 (§8.1.2)
+	reranker  *CrossEncoderReranker // Cross-Encoder 精重排 (§8.1.1 Stage 2)
 }
 
 // NewDesignerAgent 创建设计师 Agent。
 func NewDesignerAgent(db *gorm.DB, llmClient llm.LLMProvider, neo4jClient *neo4jRepo.Client, karag *usecase.KARAGEngine) *DesignerAgent {
 	return &DesignerAgent{
-		db:    db,
-		llm:   llmClient,
-		neo4j: neo4jClient,
-		karag: karag,
+		db:        db,
+		llm:       llmClient,
+		neo4j:     neo4jClient,
+		karag:     karag,
+		truncator: DefaultTokenTruncator(),
+		expander:  NewQueryExpander(llmClient),
+		gateway:   NewQualityGateway(),
+		reranker:  NewCrossEncoderReranker(llmClient),
 	}
 }
 
@@ -43,11 +52,14 @@ func NewDesignerAgent(db *gorm.DB, llmClient llm.LLMProvider, neo4jClient *neo4j
 func (a *DesignerAgent) Name() string { return "Designer" }
 
 // Assemble 根据学习处方检索并组装个性化学习材料。
-// 1. pgvector 语义检索 Top-50
-// 2. Neo4j 图谱引导检索 Top-50
-// 3. RRF 融合排序 → Top-10
-// 4. 图谱上下文（知识点关系）
-// 5. 组装系统 Prompt
+// Pipeline (§8.1.1 + §8.1.2):
+// 1. RAG-Fusion 查询扩展 — 原始查询 → N 个变体
+// 2. 多路语义检索 — 每个变体独立检索 Top-50
+// 3. Neo4j 图谱引导检索 Top-50
+// 4. RRF 多路融合排序 → Top-20 (粗排候选池)
+// 4.5. Cross-Encoder 精重排 → Top-5 (§8.1.1 Stage 2)
+// 5. CRAG 质量网关 — 评估检索质量，低质量时触发回退
+// 6. Token 截断 + 图谱上下文 + 系统 Prompt 组装
 func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPrescription, userInput string) (PersonalizedMaterial, error) {
 	log.Printf("🎨 [Designer] Assembling material for student=%d, %d KP targets",
 		prescription.StudentID, len(prescription.TargetKPSequence))
@@ -58,41 +70,87 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 		return PersonalizedMaterial{}, fmt.Errorf("get course_id: %w", err)
 	}
 
-	// Step 2: 双路检索
-	// 2a. 语义检索 — pgvector cosine similarity Top-50
-	semanticChunks, err := a.semanticSearch(ctx, courseID, userInput)
-	if err != nil {
-		log.Printf("⚠️  [Designer] Semantic search failed: %v", err)
+	// Step 2: RAG-Fusion 查询扩展 (§8.1.2)
+	// 将原始查询扩展为多个学术化变体，提升召回覆盖面
+	expandedQueries := a.expander.ExpandQuery(ctx, userInput)
+	log.Printf("   → RAG-Fusion: %d query variants", len(expandedQueries))
+
+	// Step 3: 多路语义检索
+	// 3a. 对每个变体独立执行 pgvector 语义检索 Top-50
+	var allSemanticChunks []RetrievedChunk
+	for i, query := range expandedQueries {
+		chunks, err := a.semanticSearch(ctx, courseID, query)
+		if err != nil {
+			log.Printf("⚠️  [Designer] Semantic search failed for variant %d: %v", i, err)
+			continue
+		}
+		allSemanticChunks = append(allSemanticChunks, chunks...)
 	}
 
-	// 2b. 图谱引导检索 — Neo4j → KP titles → pgvector Top-50
+	// 3b. 图谱引导检索 — Neo4j → KP titles → pgvector Top-50
 	graphChunks, err := a.graphContentSearch(ctx, courseID, prescription.TargetKPSequence)
 	if err != nil {
 		log.Printf("⚠️  [Designer] Graph content search failed: %v", err)
 	}
 
-	// Step 3: RRF 融合排序 → Top-10
-	mergedChunks := rrfMerge(semanticChunks, graphChunks, 10)
+	// Step 4: RRF 多路融合排序 → Top-20 (粗排候选池)
+	// 合并所有语义检索变体结果 + 图谱检索结果
+	mergedChunks := rrfMerge(allSemanticChunks, graphChunks, 20)
 
-	log.Printf("   → RRF merge: semantic=%d + graph=%d → merged=%d",
-		len(semanticChunks), len(graphChunks), len(mergedChunks))
+	log.Printf("   → RRF merge: semantic=%d (from %d variants) + graph=%d → merged=%d",
+		len(allSemanticChunks), len(expandedQueries), len(graphChunks), len(mergedChunks))
 
-	// Step 4: 图谱上下文 — 知识点关系（用于 Prompt 和前端展示）
+	// Step 4.5: Cross-Encoder 精重排 (§8.1.1 Stage 2)
+	// 对 RRF 粗排候选池中的每个 chunk 与原始查询做深度语义评分，精选 Top-5
+	mergedChunks = a.reranker.Rerank(ctx, userInput, mergedChunks)
+
+	// Step 5: CRAG 质量网关 (§8.1.2)
+	// 评估检索结果与查询的相关性，低质量时触发回退
+	relevance := a.gateway.EvaluateRelevance(mergedChunks, userInput)
+
+	// Step 5.5: Token 截断 (§8.2.2) — 防止 "Lost in the Middle"
+	truncResult := a.truncator.TruncateChunks(mergedChunks)
+	mergedChunks = truncResult.Data
+	if truncResult.Truncated {
+		log.Printf("   → Truncator: %d→%d chunks (%d pages total)",
+			truncResult.TotalItems, len(mergedChunks), truncResult.TotalPages)
+	}
+
+	// Step 6: 图谱上下文 — 知识点关系（用于 Prompt 和前端展示）
 	graphNodes := a.graphSearch(ctx, prescription.TargetKPSequence)
 
-	// Step 5: 组装系统 Prompt
-	systemPrompt := a.buildSystemPrompt(prescription, mergedChunks, graphNodes)
+	// Step 6.5: 误区加载 — 谬误侦探技能激活时加载目标 KP 的误区 (§5.2 Step 5)
+	var misconceptions []MisconceptionItem
+	if isFallacyDetectiveSkill(prescription.RecommendedSkill) {
+		misconceptions = a.loadMisconceptions(prescription.TargetKPSequence)
+		log.Printf("   → Misconceptions: %d items loaded for fallacy-detective", len(misconceptions))
+	}
+
+	// Step 7: 组装系统 Prompt
+	systemPrompt := a.buildSystemPrompt(prescription, mergedChunks, graphNodes, misconceptions)
+
+	// Step 7.5: CRAG 回退处理 — 如果检索质量不达标，追加低置信度提示
+	if !relevance.Passed {
+		systemPrompt = a.gateway.HandleFallback(systemPrompt)
+	}
+
+	// Step 8: System Prompt Token 截断 — 防止超长上下文
+	systemPrompt, promptTruncated := a.truncator.TruncateSystemPrompt(systemPrompt, 2048)
+	if promptTruncated {
+		log.Printf("   → Truncator: system prompt truncated to 2048 tokens")
+	}
 
 	material := PersonalizedMaterial{
 		SessionID:       prescription.SessionID,
 		Prescription:    prescription,
 		RetrievedChunks: mergedChunks,
 		GraphContext:    graphNodes,
+		Misconceptions:  misconceptions,
 		SystemPrompt:    systemPrompt,
 	}
 
-	log.Printf("   → Material: %d chunks, %d graph nodes, prompt=%d chars",
-		len(mergedChunks), len(graphNodes), len(systemPrompt))
+	log.Printf("   → Material: %d chunks, %d graph nodes, prompt=%d chars, CRAG=%v (avg=%.4f)",
+		len(mergedChunks), len(graphNodes), len(systemPrompt), relevance.Passed, relevance.AvgScore)
 
 	return material, nil
 }
@@ -297,7 +355,7 @@ func rrfMerge(semantic, graph []RetrievedChunk, topN int) []RetrievedChunk {
 // ── Prompt Assembly ─────────────────────────────────────────
 
 // buildSystemPrompt 根据检索结果和处方组装系统 Prompt。
-func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chunks []RetrievedChunk, nodes []GraphNode) string {
+func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chunks []RetrievedChunk, nodes []GraphNode, misconceptions []MisconceptionItem) string {
 	var sb strings.Builder
 
 	sb.WriteString("你是一位 AI 学习教练，正在帮助学生学习。\n\n")
@@ -352,6 +410,17 @@ func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chu
 		}
 	}
 
+	// 误区材料（谬误侦探技能专用 §5.2 Step 5）
+	if len(misconceptions) > 0 {
+		sb.WriteString("【已知误区库 — 仅供你生成谬误挑战时参考，不可直接展示给学生】\n")
+		sb.WriteString("以下是该知识点的常见认知陷阱，你应从中选取或改编来设计谬误挑战：\n")
+		for i, m := range misconceptions {
+			trapLabel := trapTypeLabel(m.TrapType)
+			sb.WriteString(fmt.Sprintf("%d. [%s|严重度:%.1f] %s\n", i+1, trapLabel, m.Severity, m.Description))
+		}
+		sb.WriteString("\n")
+	}
+
 	return sb.String()
 }
 
@@ -379,4 +448,75 @@ func (a *DesignerAgent) getKPTitle(kpID uint) string {
 	var kp struct{ Title string }
 	a.db.Raw("SELECT title FROM knowledge_points WHERE id = ?", kpID).Scan(&kp)
 	return kp.Title
+}
+
+// ── Fallacy Detective Support (§5.2 Step 5) ────────────────
+
+// fallacyDetectiveSkillID 是谬误侦探技能的标准 ID。
+const fallacyDetectiveSkillID = "general_assessment_fallacy"
+
+// isFallacyDetectiveSkill 判断技能 ID 是否为谬误侦探。
+// 兼容旧 ID (fallacy-detective) 和新 ID (general_assessment_fallacy)。
+func isFallacyDetectiveSkill(skillID string) bool {
+	return skillID == fallacyDetectiveSkillID || skillID == "fallacy-detective"
+}
+
+// loadMisconceptions 从 PostgreSQL 加载目标 KP 的误区列表。
+// 按严重度降序排列，最多返回 5 个（防止 Prompt 过长）。
+func (a *DesignerAgent) loadMisconceptions(targets []KnowledgePointTarget) []MisconceptionItem {
+	if a.db == nil || len(targets) == 0 {
+		return nil
+	}
+
+	kpIDs := make([]uint, len(targets))
+	for i, t := range targets {
+		kpIDs[i] = t.KPID
+	}
+
+	var misconceptions []model.Misconception
+	a.db.Where("kp_id IN ?", kpIDs).
+		Order("severity DESC").
+		Limit(5).
+		Find(&misconceptions)
+
+	if len(misconceptions) == 0 {
+		return nil
+	}
+
+	// 预加载 KP 标题
+	kpTitles := make(map[uint]string)
+	for _, t := range targets {
+		if _, ok := kpTitles[t.KPID]; !ok {
+			kpTitles[t.KPID] = a.getKPTitle(t.KPID)
+		}
+	}
+
+	items := make([]MisconceptionItem, len(misconceptions))
+	for i, m := range misconceptions {
+		items[i] = MisconceptionItem{
+			KPID:        m.KPID,
+			KPTitle:     kpTitles[m.KPID],
+			Description: m.Description,
+			TrapType:    string(m.TrapType),
+			Severity:    m.Severity,
+		}
+	}
+
+	return items
+}
+
+// trapTypeLabel 返回误区类型的中文标签。
+func trapTypeLabel(trapType string) string {
+	switch trapType {
+	case "conceptual":
+		return "概念性"
+	case "procedural":
+		return "操作性"
+	case "intuitive":
+		return "直觉性"
+	case "transfer":
+		return "迁移性"
+	default:
+		return trapType
+	}
 }

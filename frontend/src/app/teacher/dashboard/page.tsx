@@ -1,19 +1,29 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
     listCourses,
     listTeacherActivities,
     getKnowledgeRadar,
     getActivitySessions,
+    getSkillEffectiveness,
+    exportClassMastery,
+    exportErrorNotebookCSV,
+    exportActivitySessions,
+    exportInteractionLog,
     type Course,
     type LearningActivity,
     type KnowledgeRadarData,
     type ActivitySessionStats,
+    type SkillEffectivenessResponse,
 } from '@/lib/api';
 import styles from './page.module.css';
 import RadarChart from './RadarChart';
 import MasteryBarChart from './MasteryBarChart';
+import SkillEffectivenessChart from './SkillEffectivenessChart';
+import PluginSlot from '@/components/PluginSlot';
+import { useBuiltinDashboardPlugins } from '@/lib/plugin/DashboardPlugins';
 
 // -- Status Maps ------------------------------------------
 
@@ -35,13 +45,19 @@ const SCAFFOLD_MAP: Record<string, string> = {
 // -- Main Component ---------------------------------------
 
 export default function TeacherDashboardPage() {
+    const router = useRouter();
     const [courses, setCourses] = useState<Course[]>([]);
     const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
     const [radarData, setRadarData] = useState<KnowledgeRadarData | null>(null);
     const [activities, setActivities] = useState<LearningActivity[]>([]);
     const [selectedActivity, setSelectedActivity] = useState<ActivitySessionStats | null>(null);
+    const [skillEffectiveness, setSkillEffectiveness] = useState<SkillEffectivenessResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [radarLoading, setRadarLoading] = useState(false);
+    const [exporting, setExporting] = useState<string | null>(null);
+
+    // Register built-in dashboard widget plugins
+    useBuiltinDashboardPlugins();
 
     // Load courses on mount
     useEffect(() => {
@@ -61,12 +77,14 @@ export default function TeacherDashboardPage() {
     const loadDashboardData = useCallback(async (courseId: number) => {
         setRadarLoading(true);
         try {
-            const [radar, acts] = await Promise.all([
+            const [radar, acts, skillData] = await Promise.all([
                 getKnowledgeRadar(courseId),
                 listTeacherActivities(courseId),
+                getSkillEffectiveness(courseId).catch(() => null),
             ]);
             setRadarData(radar);
             setActivities(acts || []);
+            setSkillEffectiveness(skillData);
         } catch (err) {
             console.error('Failed to load dashboard data', err);
         } finally {
@@ -87,6 +105,19 @@ export default function TeacherDashboardPage() {
             setSelectedActivity(stats);
         } catch (err) {
             console.error('Failed to load activity sessions', err);
+        }
+    };
+
+    // Handle CSV export with loading state
+    const handleExport = async (type: string, fn: () => Promise<void>) => {
+        setExporting(type);
+        try {
+            await fn();
+        } catch (err) {
+            console.error(`Export ${type} failed`, err);
+            alert(`导出失败: ${err instanceof Error ? err.message : '未知错误'}`);
+        } finally {
+            setExporting(null);
         }
     };
 
@@ -129,6 +160,22 @@ export default function TeacherDashboardPage() {
                             <option key={c.id} value={c.id}>{c.title}</option>
                         ))}
                     </select>
+                    <div className={styles.exportGroup}>
+                        <button
+                            className={styles.exportBtn}
+                            disabled={!!exporting || !selectedCourseId}
+                            onClick={() => selectedCourseId && handleExport('mastery', () => exportClassMastery(selectedCourseId))}
+                        >
+                            {exporting === 'mastery' ? '导出中...' : '导出掌握度'}
+                        </button>
+                        <button
+                            className={styles.exportBtn}
+                            disabled={!!exporting || !selectedCourseId}
+                            onClick={() => selectedCourseId && handleExport('errors', () => exportErrorNotebookCSV(selectedCourseId))}
+                        >
+                            {exporting === 'errors' ? '导出中...' : '导出错题本'}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -199,6 +246,25 @@ export default function TeacherDashboardPage() {
                     </div>
                 </div>
             )}
+
+            {/* Skill Effectiveness */}
+            {skillEffectiveness && skillEffectiveness.items.length > 0 && (
+                <div className={styles.skillEffectivenessSection}>
+                    <div className={styles.chartCard}>
+                        <div className={styles.chartTitle}>技能教学效果评估 (RAGAS)</div>
+                        <SkillEffectivenessChart items={skillEffectiveness.items} />
+                    </div>
+                </div>
+            )}
+
+            {/* Plugin Extension Slot — additional dashboard widgets render here */}
+            <PluginSlot
+                name="teacher.dashboard.widget"
+                context={{
+                    courseId: selectedCourseId || 0,
+                    courseTitle: courses.find(c => c.id === selectedCourseId)?.title || '',
+                }}
+            />
 
             {/* Activity Table */}
             <h2 className={styles.sectionTitle}>学习活动统计</h2>
@@ -277,13 +343,14 @@ export default function TeacherDashboardPage() {
                         {selectedActivity.sessions.length > 0 ? (
                             <table className={styles.sessionTable}>
                                 <thead>
-                                    <tr>
+                                     <tr>
                                         <th>学生</th>
                                         <th>状态</th>
                                         <th>支架</th>
                                         <th>掌握度</th>
                                         <th>时长</th>
                                         <th>开始时间</th>
+                                        <th>操作</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -310,6 +377,27 @@ export default function TeacherDashboardPage() {
                                                 </td>
                                                 <td>{Math.round(s.duration_min)} 分钟</td>
                                                 <td>{new Date(s.started_at).toLocaleString('zh-CN')}</td>
+                                                <td>
+                                                    <button
+                                                        className={styles.analysisBtn}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            router.push(`/teacher/dashboard/session/${s.session_id}`);
+                                                        }}
+                                                    >
+                                                        查看分析
+                                                    </button>
+                                                    <button
+                                                        className={styles.exportSmallBtn}
+                                                        disabled={!!exporting}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleExport(`interaction-${s.session_id}`, () => exportInteractionLog(s.session_id));
+                                                        }}
+                                                    >
+                                                        导出
+                                                    </button>
+                                                </td>
                                             </tr>
                                         );
                                     })}
@@ -322,6 +410,13 @@ export default function TeacherDashboardPage() {
                         )}
 
                         <div className={styles.modalClose}>
+                            <button
+                                className={styles.exportBtn}
+                                disabled={!!exporting}
+                                onClick={() => handleExport('sessions', () => exportActivitySessions(selectedActivity.activity_id))}
+                            >
+                                {exporting === 'sessions' ? '导出中...' : '导出会话 CSV'}
+                            </button>
                             <button className="btn btn-secondary" onClick={() => setSelectedActivity(null)}>
                                 关闭
                             </button>

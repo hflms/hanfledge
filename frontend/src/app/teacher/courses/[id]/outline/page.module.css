@@ -25,6 +25,27 @@
     font-weight: 700;
 }
 
+.materialsLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.15s;
+}
+
+.materialsLink:hover {
+    color: var(--accent-light);
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.08);
+}
+
 .twoCol {
     display: grid;
     grid-template-columns: 1fr 340px;

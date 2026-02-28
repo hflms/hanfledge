@@ -2,9 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
+	"strings"
 
+	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
@@ -23,6 +27,25 @@ import (
 // Actor-Critic 循环中的 "Actor" 角色：
 // 1. 根据 Designer 提供的材料生成初稿
 // 2. 如果 Critic 驳回，根据反馈修订
+
+// cotReasoningDirective 是注入到系统 Prompt 的交错思考指令 (design.md §8.2.3)。
+// 强制 Agent 在调用技能或生成回复前，先在 <reasoning> 标签内完成自检。
+const cotReasoningDirective = `
+【交错思考指令】
+在你生成最终回复之前，你 **必须** 先在 <reasoning> 标签内完成以下自检：
+1. 学生要解决的核心问题是什么？
+2. 我应该使用哪种教学策略？为什么选它而非其他？
+3. 当前的参考材料是否足够回答学生的问题？
+4. 我的回复是否符合当前技能约束中的所有规则（不泄露答案、保持启发性）？
+只有在推理完成后，才可以生成面向学生的回复。
+
+格式要求：
+<reasoning>
+你的推理过程...
+</reasoning>
+
+然后是面向学生的正式回复。
+`
 
 // CoachAgent 教练 Agent。
 type CoachAgent struct {
@@ -77,15 +100,21 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 	// 估算 token 数（粗略：中文约 1 字 = 1 token）
 	tokensUsed := estimateTokens(response)
 
+	// 剥离 <reasoning> 块 — 不发送给学生 (§8.2.3)
+	cleanResponse, reasoning := stripReasoningBlock(response)
+	if reasoning != "" {
+		log.Printf("   → Coach CoT reasoning: %s", truncate(reasoning, 100))
+	}
+
 	draft := DraftResponse{
 		SessionID:     tc.SessionID,
-		Content:       response,
+		Content:       cleanResponse,
 		SkillID:       skillID,
 		ScaffoldLevel: material.Prescription.InitialScaffold,
 		TokensUsed:    tokensUsed,
 	}
 
-	log.Printf("   → Coach draft: %d chars, %d tokens", len(response), tokensUsed)
+	log.Printf("   → Coach draft: %d chars, %d tokens", len(cleanResponse), tokensUsed)
 	return draft, nil
 }
 
@@ -132,9 +161,12 @@ func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMateri
 
 	tokensUsed := estimateTokens(response)
 
+	// 剥离 <reasoning> 块 — 不发送给学生 (§8.2.3)
+	cleanResponse, _ := stripReasoningBlock(response)
+
 	return DraftResponse{
 		SessionID:     tc.SessionID,
-		Content:       response,
+		Content:       cleanResponse,
 		SkillID:       skillID,
 		ScaffoldLevel: material.Prescription.InitialScaffold,
 		TokensUsed:    tokensUsed,
@@ -189,11 +221,31 @@ func (a *CoachAgent) loadSkillConstraints(skillID string) string {
 
 // buildMessages 构建 LLM 消息列表。
 func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMaterial, skillPrompt string) []llm.ChatMessage {
-	// 系统 Prompt = Designer 组装的 + 技能约束
+	// 系统 Prompt = Designer 组装的 + 技能约束 + CoT 推理指令 (§8.2.3)
 	systemContent := material.SystemPrompt
 	if skillPrompt != "" {
 		systemContent += "\n" + skillPrompt
 	}
+
+	// 技能会话状态注入
+	skillID := material.Prescription.RecommendedSkill
+
+	// 谬误侦探技能: 注入会话状态上下文 (§5.2 Step 2, item 5)
+	if isFallacyDetectiveActive(skillID) {
+		state := a.loadFallacyState(tc.SessionID)
+		fallacyCtx := buildFallacyContext(state, material.Misconceptions)
+		systemContent += fallacyCtx
+	}
+
+	// 角色扮演技能: 注入角色状态上下文
+	if isRolePlayActive(skillID) {
+		state := a.loadRolePlayState(tc.SessionID)
+		rolePlayCtx := buildRolePlayContext(state)
+		systemContent += rolePlayCtx
+	}
+
+	// 交错思考 (Interleaved Thinking) — 强制 <reasoning> 块 (§8.2.3)
+	systemContent += "\n" + cotReasoningDirective
 
 	messages := []llm.ChatMessage{
 		{Role: "system", Content: systemContent},
@@ -288,4 +340,284 @@ func estimateTokens(text string) int {
 		}
 	}
 	return int(float64(chineseCount)/1.5) + int(float64(englishCount)/4.0) + 1
+}
+
+// ── CoT Reasoning Support (§8.2.3) ─────────────────────────
+
+// reasoningBlockRe 匹配 <reasoning>...</reasoning> 块（含换行符）。
+var reasoningBlockRe = regexp.MustCompile(`(?s)<reasoning>\s*(.*?)\s*</reasoning>`)
+
+// stripReasoningBlock 从 LLM 输出中剥离 <reasoning> 推理块。
+// 返回 (面向学生的干净内容, 推理部分内容)。
+// 推理内容仅用于日志和内部审查，不应发送给学生。
+func stripReasoningBlock(response string) (string, string) {
+	matches := reasoningBlockRe.FindStringSubmatch(response)
+	if len(matches) < 2 {
+		return response, ""
+	}
+
+	reasoning := matches[1]
+	cleaned := reasoningBlockRe.ReplaceAllString(response, "")
+	cleaned = strings.TrimSpace(cleaned)
+
+	return cleaned, reasoning
+}
+
+// ── Fallacy Detective Session State (§5.2 Step 2, item 5) ───
+
+// fallacyDetectiveIDs lists all valid skill IDs for the fallacy-detective skill.
+var fallacyDetectiveIDs = map[string]bool{
+	"general_assessment_fallacy": true,
+	"fallacy-detective":          true, // backward compat
+}
+
+// isFallacyDetectiveActive 判断当前技能是否为谬误侦探。
+func isFallacyDetectiveActive(skillID string) bool {
+	return fallacyDetectiveIDs[skillID]
+}
+
+// loadFallacyState 从 StudentSession.SkillState 加载谬误侦探会话状态。
+// 如果不存在或解析失败，返回初始状态。
+func (a *CoachAgent) loadFallacyState(sessionID uint) FallacySessionState {
+	var session model.StudentSession
+	if err := a.db.Select("skill_state").First(&session, sessionID).Error; err != nil {
+		log.Printf("⚠️  [Coach] Load fallacy state session=%d failed: %v", sessionID, err)
+		return defaultFallacyState()
+	}
+
+	if session.SkillState == nil || *session.SkillState == "" || *session.SkillState == "null" {
+		return defaultFallacyState()
+	}
+
+	var state FallacySessionState
+	if err := json.Unmarshal([]byte(*session.SkillState), &state); err != nil {
+		log.Printf("⚠️  [Coach] Parse fallacy state session=%d failed: %v", sessionID, err)
+		return defaultFallacyState()
+	}
+
+	return state
+}
+
+// saveFallacyState 将谬误侦探会话状态保存到 StudentSession.SkillState。
+func (a *CoachAgent) saveFallacyState(sessionID uint, state FallacySessionState) {
+	data, err := json.Marshal(state)
+	if err != nil {
+		log.Printf("⚠️  [Coach] Marshal fallacy state failed: %v", err)
+		return
+	}
+	stateStr := string(data)
+	if err := a.db.Model(&model.StudentSession{}).Where("id = ?", sessionID).
+		Update("skill_state", stateStr).Error; err != nil {
+		log.Printf("⚠️  [Coach] Save fallacy state session=%d failed: %v", sessionID, err)
+	}
+}
+
+// defaultFallacyState 返回谬误侦探的初始会话状态。
+func defaultFallacyState() FallacySessionState {
+	return FallacySessionState{
+		EmbeddedCount:   0,
+		IdentifiedCount: 0,
+		Phase:           FallacyPhasePresentTrap,
+		MaxPerSession:   3, // 默认值，来自 metadata.json constraints.max_embedded_fallacies_per_session
+	}
+}
+
+// buildFallacyContext 构建谬误侦探技能的额外系统上下文。
+// 告知 LLM 当前的谬误嵌入进度和学生识别状态，使 LLM 能够正确推进流程。
+func buildFallacyContext(state FallacySessionState, misconceptions []MisconceptionItem) string {
+	var sb strings.Builder
+	sb.WriteString("\n【谬误侦探会话状态】\n")
+	sb.WriteString(fmt.Sprintf("- 当前阶段: %s\n", fallacyPhaseLabel(state.Phase)))
+	sb.WriteString(fmt.Sprintf("- 已嵌入谬误数: %d / %d\n", state.EmbeddedCount, state.MaxPerSession))
+	sb.WriteString(fmt.Sprintf("- 学生已正确识别: %d\n", state.IdentifiedCount))
+
+	if state.CurrentTrapDesc != "" {
+		sb.WriteString(fmt.Sprintf("- 当前嵌入的谬误: %s\n", state.CurrentTrapDesc))
+	}
+
+	// 阶段指令
+	switch state.Phase {
+	case FallacyPhasePresentTrap:
+		if state.EmbeddedCount >= state.MaxPerSession {
+			sb.WriteString("\n注意：本会话已达到最大谬误数，不要再嵌入新的谬误。直接进行总结。\n")
+		} else {
+			sb.WriteString("\n指令：请在接下来的讲解中巧妙嵌入一个学科常见误区。" +
+				"嵌入后，系统将进入等待学生识别阶段。\n")
+		}
+	case FallacyPhaseAwaiting:
+		sb.WriteString("\n指令：学生正在尝试识别谬误。" +
+			"评估学生的回答是否准确定位了谬误。" +
+			"如果学生正确识别，进入揭示阶段。" +
+			"如果学生未能识别，根据支架等级给予适当提示，但不要直接揭露答案。\n")
+	case FallacyPhaseRevealed:
+		sb.WriteString("\n指令：学生已识别谬误。" +
+			"请揭示这个谬误的设计意图，解释为什么它是一个常见误区，" +
+			"以及在真实考试中它可能以什么形式出现。" +
+			"揭示完成后，如果未达到最大谬误数，准备嵌入下一个谬误。\n")
+	}
+
+	return sb.String()
+}
+
+// fallacyPhaseLabel 将阶段枚举转换为中文标签。
+func fallacyPhaseLabel(phase FallacyPhase) string {
+	switch phase {
+	case FallacyPhasePresentTrap:
+		return "展示陷阱"
+	case FallacyPhaseAwaiting:
+		return "等待识别"
+	case FallacyPhaseRevealed:
+		return "已揭示"
+	default:
+		return string(phase)
+	}
+}
+
+// advanceFallacyPhase 根据交互结果推进谬误侦探的阶段状态。
+// 在 orchestrator 的 HandleTurn 完成后调用。
+//
+// 状态转换:
+//
+//	present_trap → awaiting  (Coach 输出含谬误的讲解后)
+//	awaiting     → revealed  (学生正确识别后)
+//	awaiting     → awaiting  (学生未能识别，保持等待)
+//	revealed     → present_trap (准备下一个谬误)
+func (a *CoachAgent) AdvanceFallacyPhase(sessionID uint, studentIdentified bool) {
+	state := a.loadFallacyState(sessionID)
+
+	switch state.Phase {
+	case FallacyPhasePresentTrap:
+		// Coach 刚输出了含谬误的讲解 → 进入等待识别
+		state.EmbeddedCount++
+		state.Phase = FallacyPhaseAwaiting
+		log.Printf("🎯 [Fallacy] Session=%d: trap presented (%d/%d), awaiting identification",
+			sessionID, state.EmbeddedCount, state.MaxPerSession)
+
+	case FallacyPhaseAwaiting:
+		if studentIdentified {
+			// 学生正确识别 → 进入揭示阶段
+			state.IdentifiedCount++
+			state.Phase = FallacyPhaseRevealed
+			log.Printf("✅ [Fallacy] Session=%d: student identified trap! (%d/%d identified)",
+				sessionID, state.IdentifiedCount, state.EmbeddedCount)
+		} else {
+			log.Printf("🔄 [Fallacy] Session=%d: student did not identify, staying in awaiting",
+				sessionID)
+		}
+
+	case FallacyPhaseRevealed:
+		// 揭示完成 → 回到展示陷阱（如果还有配额）
+		state.CurrentTrapDesc = ""
+		if state.EmbeddedCount < state.MaxPerSession {
+			state.Phase = FallacyPhasePresentTrap
+			log.Printf("🔄 [Fallacy] Session=%d: reveal complete, ready for next trap", sessionID)
+		} else {
+			log.Printf("🏁 [Fallacy] Session=%d: all traps completed (%d/%d)",
+				sessionID, state.IdentifiedCount, state.EmbeddedCount)
+		}
+	}
+
+	a.saveFallacyState(sessionID, state)
+}
+
+// ── Role-Play Session State ────────────────────────────────
+
+// rolePlayIDs lists all valid skill IDs for the role-play skill.
+var rolePlayIDs = map[string]bool{
+	"general_review_roleplay": true,
+	"role-play":               true, // backward compat
+}
+
+// isRolePlayActive 判断当前技能是否为角色扮演。
+func isRolePlayActive(skillID string) bool {
+	return rolePlayIDs[skillID]
+}
+
+// loadRolePlayState 从 StudentSession.SkillState 加载角色扮演会话状态。
+// 如果不存在或解析失败，返回初始状态。
+func (a *CoachAgent) loadRolePlayState(sessionID uint) RolePlaySessionState {
+	var session model.StudentSession
+	if err := a.db.Select("skill_state").First(&session, sessionID).Error; err != nil {
+		log.Printf("⚠️  [Coach] Load role-play state session=%d failed: %v", sessionID, err)
+		return defaultRolePlayState()
+	}
+
+	if session.SkillState == nil || *session.SkillState == "" || *session.SkillState == "null" {
+		return defaultRolePlayState()
+	}
+
+	var state RolePlaySessionState
+	if err := json.Unmarshal([]byte(*session.SkillState), &state); err != nil {
+		log.Printf("⚠️  [Coach] Parse role-play state session=%d failed: %v", sessionID, err)
+		return defaultRolePlayState()
+	}
+
+	return state
+}
+
+// saveRolePlayState 将角色扮演会话状态保存到 StudentSession.SkillState。
+func (a *CoachAgent) saveRolePlayState(sessionID uint, state RolePlaySessionState) {
+	data, err := json.Marshal(state)
+	if err != nil {
+		log.Printf("⚠️  [Coach] Marshal role-play state failed: %v", err)
+		return
+	}
+	stateStr := string(data)
+	if err := a.db.Model(&model.StudentSession{}).Where("id = ?", sessionID).
+		Update("skill_state", stateStr).Error; err != nil {
+		log.Printf("⚠️  [Coach] Save role-play state session=%d failed: %v", sessionID, err)
+	}
+}
+
+// defaultRolePlayState 返回角色扮演的初始会话状态。
+func defaultRolePlayState() RolePlaySessionState {
+	return RolePlaySessionState{
+		ScenarioSwitches: 0,
+		MaxSwitches:      3, // 来自 metadata.json constraints.max_scenario_switches_per_session
+		Active:           true,
+	}
+}
+
+// buildRolePlayContext 构建角色扮演技能的额外系统上下文。
+// 告知 LLM 当前的角色身份和情境状态，使 LLM 能够维持角色一致性。
+func buildRolePlayContext(state RolePlaySessionState) string {
+	var sb strings.Builder
+	sb.WriteString("\n【角色扮演会话状态】\n")
+
+	if state.CharacterName != "" {
+		sb.WriteString(fmt.Sprintf("- 当前角色: %s（%s）\n", state.CharacterName, state.CharacterRole))
+	} else {
+		sb.WriteString("- 当前角色: 尚未选定（请根据学科和知识点选择一个合适的角色）\n")
+	}
+
+	if state.ScenarioDesc != "" {
+		sb.WriteString(fmt.Sprintf("- 当前情境: %s\n", state.ScenarioDesc))
+	}
+
+	sb.WriteString(fmt.Sprintf("- 已切换情境: %d / %d 次\n", state.ScenarioSwitches, state.MaxSwitches))
+	sb.WriteString(fmt.Sprintf("- 角色状态: %s\n", rolePlayActiveLabel(state.Active)))
+
+	// 状态指令
+	if !state.Active {
+		sb.WriteString("\n指令：学生已请求退出角色扮演。请以角色身份做简短告别，" +
+			"然后切换回导师视角，总结本次扮演中涉及的知识点和学生表现亮点。\n")
+	} else if state.CharacterName == "" {
+		sb.WriteString("\n指令：这是角色扮演的第一轮。请根据当前学科和知识点，" +
+			"选择一个合适的角色身份，简要介绍自己并设定情境，然后以角色视角展开对话。\n")
+	} else if state.ScenarioSwitches >= state.MaxSwitches {
+		sb.WriteString("\n注意：本会话已达到最大情境切换次数，请保持当前角色和情境继续对话。\n")
+	} else {
+		sb.WriteString("\n指令：请继续以当前角色身份与学生对话，" +
+			"在对话中自然融入知识点。保持角色一致性。\n")
+	}
+
+	return sb.String()
+}
+
+// rolePlayActiveLabel 将活跃状态转换为中文标签。
+func rolePlayActiveLabel(active bool) string {
+	if active {
+		return "沉浸中"
+	}
+	return "已退出"
 }

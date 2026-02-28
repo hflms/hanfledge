@@ -139,6 +139,7 @@ func (g *InjectionGuard) initKeywordBlacklist() {
 
 		// 中文 — 系统指令劫持
 		"忽略之前的指令",
+		"忽略之前所有",
 		"忽略所有指令",
 		"忽略上面的",
 		"忽略以上",

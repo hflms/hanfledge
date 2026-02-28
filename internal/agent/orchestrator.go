@@ -40,12 +40,13 @@ type AgentOrchestrator struct {
 	masteryCh      chan MasteryUpdate        // Coach → Strategist
 
 	// 依赖
-	db       *gorm.DB
-	llm      llm.LLMProvider
-	neo4j    *neo4jRepo.Client
-	karag    *usecase.KARAGEngine
-	registry *plugin.Registry
-	cache    *cache.RedisCache // nil if Redis unavailable
+	db          *gorm.DB
+	llm         llm.LLMProvider
+	neo4j       *neo4jRepo.Client
+	karag       *usecase.KARAGEngine
+	registry    *plugin.Registry
+	cache       *cache.RedisCache   // nil if Redis unavailable
+	outputGuard *safety.OutputGuard // 输出安全审核器
 
 	// Actor-Critic 最大重试轮数
 	maxCriticRetries int
@@ -60,6 +61,7 @@ func NewAgentOrchestrator(
 	registry *plugin.Registry,
 	piiRedactor *safety.PIIRedactor,
 	redisCache *cache.RedisCache,
+	outputGuard *safety.OutputGuard,
 ) *AgentOrchestrator {
 	o := &AgentOrchestrator{
 		// 通道初始化（缓冲为 1，防止阻塞）
@@ -69,18 +71,19 @@ func NewAgentOrchestrator(
 		reviewCh:       make(chan ReviewResult, 1),
 		masteryCh:      make(chan MasteryUpdate, 1),
 
-		db:       db,
-		llm:      llmClient,
-		neo4j:    neo4jClient,
-		karag:    karag,
-		registry: registry,
-		cache:    redisCache,
+		db:          db,
+		llm:         llmClient,
+		neo4j:       neo4jClient,
+		karag:       karag,
+		registry:    registry,
+		cache:       redisCache,
+		outputGuard: outputGuard,
 
 		maxCriticRetries: 2,
 	}
 
 	// 初始化各 Agent
-	o.strategist = NewStrategistAgent(db, neo4jClient)
+	o.strategist = NewStrategistAgent(db, neo4jClient, registry)
 	o.designer = NewDesignerAgent(db, llmClient, neo4jClient, karag)
 	o.coach = NewCoachAgent(db, llmClient, registry, piiRedactor, redisCache)
 	o.critic = NewCriticAgent(llmClient)
@@ -94,12 +97,28 @@ func NewAgentOrchestrator(
 
 // HandleTurn 处理一轮学生对话，驱动整个 Agent 管道。
 // 这是 WebSocket handler 调用的主入口。
+//
+// Pipeline (with L2+L3 caching, §8.1.3):
+//
+//	User Input → L2 Semantic Cache Check → L3 Output Cache Check
+//	  → HIT: Return cached response immediately
+//	  → MISS: Strategist → Designer → Coach → Critic → Save + Write Cache
 func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	ctx := tc.Ctx
 	start := time.Now()
 
 	log.Printf("🎯 [Agent] HandleTurn: session=%d student=%d input=%q",
 		tc.SessionID, tc.StudentID, truncate(tc.UserInput, 50))
+
+	// ── Pre-Stage: L2 Semantic Cache Check (§8.1.3) ─────
+	if hit, err := o.checkSemanticCache(tc); err != nil {
+		log.Printf("⚠️  [L2-Cache] Check failed: %v", err)
+	} else if hit != nil {
+		// Cache hit — return cached response directly
+		log.Printf("⚡ [L2-Cache] HIT: similarity=%.4f, skipping full pipeline",
+			hit.Similarity)
+		return o.returnCachedResponse(tc, hit.Entry.Response, hit.Entry.SkillID, start)
+	}
 
 	// ── Stage 1: Strategist — 生成学习处方 ──────────────
 	if tc.OnThinking != nil {
@@ -139,13 +158,28 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		return fmt.Errorf("actor-critic loop failed: %w", err)
 	}
 
+	// ── Stage 4.5: Output Safety Guardrail (§4.1 Layer 3) ──
+	finalResponse = o.checkOutputSafety(tc, finalResponse)
+
 	// ── Stage 5: 持久化交互记录 ─────────────────────────
 	if err := o.saveInteraction(tc, finalResponse); err != nil {
 		log.Printf("⚠️  [Agent] Save interaction failed: %v", err)
 	}
 
+	// ── Stage 5.5: Write L2+L3 Cache ────────────────────
+	o.writeResponseToCache(tc, material, finalResponse)
+
 	// ── Stage 6: BKT 掌握度更新 + 支架衰减 ──────────────
 	o.updateMasteryAndFadeScaffold(tc)
+
+	// ── Stage 6.5: 谬误侦探阶段推进 (§5.2 Step 2, item 5) ──
+	o.advanceFallacyPhaseIfActive(tc, finalResponse)
+
+	// ── Stage 6.6: 角色扮演状态更新 ──
+	o.updateRolePlayStateIfActive(tc, finalResponse)
+
+	// ── Stage 7: 错题本自动归档 (§5.2 Step 3, item 3) ───
+	o.archiveErrorIfIncorrect(tc, finalResponse)
 
 	elapsed := time.Since(start)
 	log.Printf("✅ [Agent] Turn complete: session=%d tokens=%d elapsed=%s",
@@ -368,6 +402,159 @@ func scaffoldDirection(old, new_ model.ScaffoldLevel) string {
 	return "strengthen" // 支架增强（退步）
 }
 
+// ── Output Safety Guardrail (§4.1 Layer 3) ──────────────────
+
+// checkOutputSafety 在 LLM 输出到达学生之前执行安全审核。
+// 如果 outputGuard 为 nil 则跳过（nil-safe）。
+//
+// 审核结果处理：
+//   - Safe:    无操作，原样返回
+//   - Warning: 记录审计日志，但允许通过
+//   - Blocked: 替换为安全回退消息，记录日志
+func (o *AgentOrchestrator) checkOutputSafety(tc *TurnContext, response *DraftResponse) *DraftResponse {
+	if o.outputGuard == nil {
+		return response
+	}
+
+	result := o.outputGuard.Check(tc.Ctx, response.Content)
+
+	switch result.Risk {
+	case safety.OutputBlocked:
+		log.Printf("🛡️  [Output Guard] BLOCKED: session=%d category=%s reason=%q",
+			tc.SessionID, result.Category, result.Reason)
+		// 替换为安全回退消息
+		response.Content = o.outputGuard.FallbackResponse()
+		// 如果已经流式输出了不安全内容，需要通知前端覆盖
+		if tc.OnTokenDelta != nil {
+			tc.OnTokenDelta("\n\n---\n\n" + response.Content)
+		}
+
+	case safety.OutputWarning:
+		log.Printf("⚠️  [Output Guard] WARNING: session=%d category=%s reason=%q",
+			tc.SessionID, result.Category, result.Reason)
+		// Warning 级别允许通过，仅记录日志
+	}
+
+	return response
+}
+
+// ── L2+L3 Cache Integration (§8.1.3) ───────────────────────
+
+// checkSemanticCache performs L2 semantic cache lookup.
+// Embeds the user query and searches for similar cached responses.
+// Returns nil if cache is unavailable, empty, or no match found.
+func (o *AgentOrchestrator) checkSemanticCache(tc *TurnContext) (*cache.SemanticCacheHit, error) {
+	if o.cache == nil || o.llm == nil {
+		return nil, nil
+	}
+
+	// Get courseID for cache scoping
+	courseID, err := o.getCourseIDFromSession(tc.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("get course_id for cache: %w", err)
+	}
+
+	// Embed the query
+	embedding, err := o.llm.Embed(tc.Ctx, tc.UserInput)
+	if err != nil {
+		return nil, fmt.Errorf("embed query for cache: %w", err)
+	}
+
+	// Store embedding in TurnContext for later cache write
+	tc.queryEmbedding = embedding
+	tc.queryCourseID = courseID
+
+	// L2 semantic search
+	hit, err := o.cache.FindSemanticMatch(tc.Ctx, courseID, embedding)
+	if err != nil {
+		return nil, err
+	}
+
+	return hit, nil
+}
+
+// returnCachedResponse sends a cached response to the client and persists the interaction.
+func (o *AgentOrchestrator) returnCachedResponse(tc *TurnContext, response, skillID string, start time.Time) error {
+	// Send cached response to frontend
+	if tc.OnTokenDelta != nil {
+		tc.OnTokenDelta(response)
+	}
+
+	// Persist interaction
+	cached := &DraftResponse{
+		SessionID:  tc.SessionID,
+		Content:    response,
+		SkillID:    skillID,
+		TokensUsed: 0, // cached, no LLM tokens used
+	}
+	if err := o.saveInteraction(tc, cached); err != nil {
+		log.Printf("⚠️  [Agent] Save cached interaction failed: %v", err)
+	}
+
+	// BKT update still needed
+	o.updateMasteryAndFadeScaffold(tc)
+
+	elapsed := time.Since(start)
+	log.Printf("⚡ [Agent] Turn complete (cached): session=%d elapsed=%s", tc.SessionID, elapsed)
+
+	if tc.OnTurnComplete != nil {
+		tc.OnTurnComplete(0)
+	}
+
+	return nil
+}
+
+// writeResponseToCache writes the LLM response to both L2 and L3 caches.
+func (o *AgentOrchestrator) writeResponseToCache(tc *TurnContext, material PersonalizedMaterial, response *DraftResponse) {
+	if o.cache == nil {
+		return
+	}
+
+	ctx := tc.Ctx
+
+	// L2: Semantic cache (if we have the query embedding from the earlier check)
+	if tc.queryEmbedding != nil {
+		entry := cache.SemanticCacheEntry{
+			QueryText: tc.UserInput,
+			Embedding: tc.queryEmbedding,
+			Response:  response.Content,
+			SkillID:   response.SkillID,
+			CourseID:  tc.queryCourseID,
+		}
+		if err := o.cache.SetSemanticCache(ctx, entry); err != nil {
+			log.Printf("⚠️  [L2-Cache] Write failed: %v", err)
+		}
+	}
+
+	// L3: Output cache (exact prompt hash)
+	promptHash := cache.PromptHash(material.SystemPrompt, tc.UserInput, nil, nil)
+	outputEntry := cache.OutputCacheEntry{
+		Response: response.Content,
+		SkillID:  response.SkillID,
+		CourseID: tc.queryCourseID,
+	}
+	if err := o.cache.SetOutputCache(ctx, promptHash, outputEntry); err != nil {
+		log.Printf("⚠️  [L3-Cache] Write failed: %v", err)
+	}
+}
+
+// getCourseIDFromSession queries the course ID from session → activity → course.
+func (o *AgentOrchestrator) getCourseIDFromSession(sessionID uint) (uint, error) {
+	var result struct {
+		CourseID uint
+	}
+	err := o.db.Raw(`
+		SELECT la.course_id
+		FROM student_sessions ss
+		JOIN learning_activities la ON la.id = ss.activity_id
+		WHERE ss.id = ?
+	`, sessionID).Scan(&result).Error
+	if err != nil {
+		return 0, err
+	}
+	return result.CourseID, nil
+}
+
 // ── Helpers ─────────────────────────────────────────────────
 
 // truncate 截断字符串到指定长度。
@@ -377,4 +564,136 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+// ── Fallacy Detective Phase Management ─────────────────────
+
+// advanceFallacyPhaseIfActive 当活跃技能为谬误侦探时，推进会话阶段。
+// 使用启发式方法从 Critic 审查结果推断学生是否正确识别了谬误:
+//   - depth_score >= 0.6 且 Critic 通过 → 视为学生识别成功
+//   - 否则 → 视为未识别（需要更多提示）
+//
+// 当学生成功识别谬误时，通过 OnScaffold 回调发送 fallacy_identified 事件到前端，
+// 前端可用此事件展示突破成就通知 (design.md §5.2 Step 4: "谬误猎人" 成就)。
+func (o *AgentOrchestrator) advanceFallacyPhaseIfActive(tc *TurnContext, response *DraftResponse) {
+	if response == nil || !isFallacyDetectiveActive(response.SkillID) {
+		return
+	}
+
+	// 推断学生是否正确识别了谬误
+	identified := false
+	if tc.Review != nil {
+		// Critic 审查通过且深度分数较高 → 学生有效参与了辨误
+		identified = tc.Review.Approved && tc.Review.DepthScore >= 0.6
+	}
+
+	// 加载当前状态用于事件通知
+	stateBefore := o.coach.loadFallacyState(tc.SessionID)
+
+	o.coach.AdvanceFallacyPhase(tc.SessionID, identified)
+
+	// 当学生成功识别谬误 → 发送前端通知事件
+	if identified && stateBefore.Phase == FallacyPhaseAwaiting && tc.OnScaffold != nil {
+		tc.OnScaffold("fallacy_identified", map[string]interface{}{
+			"identified_count": stateBefore.IdentifiedCount + 1,
+			"embedded_count":   stateBefore.EmbeddedCount,
+			"max_per_session":  stateBefore.MaxPerSession,
+			"trap_desc":        stateBefore.CurrentTrapDesc,
+		})
+	}
+}
+
+// ── Role-Play State Management ─────────────────────────────
+
+// updateRolePlayStateIfActive 当活跃技能为角色扮演时，更新会话中的角色状态。
+// 角色扮演不需要像谬误侦探那样的状态机，但需要在首轮对话后持久化角色身份，
+// 以便后续轮次维持角色一致性。
+func (o *AgentOrchestrator) updateRolePlayStateIfActive(tc *TurnContext, response *DraftResponse) {
+	if response == nil || !isRolePlayActive(response.SkillID) {
+		return
+	}
+
+	state := o.coach.loadRolePlayState(tc.SessionID)
+
+	// 初始化: 首轮对话后角色已由 LLM 选定，但状态中尚未记录
+	// 后续轮次会由前端通过 scaffold 事件传递角色信息
+	// 这里仅确保状态已被持久化（即使角色名为空，也保存初始状态）
+	if state.CharacterName == "" {
+		// 首次保存初始状态，后续 LLM 对话中角色信息会通过 SKILL.md 约束自然维持
+		o.coach.saveRolePlayState(tc.SessionID, state)
+		log.Printf("🎭 [RolePlay] Session=%d: initial state saved (character TBD by LLM)",
+			tc.SessionID)
+		return
+	}
+
+	// 如果角色已选定，仅记录日志
+	log.Printf("🎭 [RolePlay] Session=%d: character=%s, scenario_switches=%d/%d, active=%v",
+		tc.SessionID, state.CharacterName, state.ScenarioSwitches, state.MaxSwitches, state.Active)
+}
+
+// ── Error Notebook Auto-Archiving (§5.2 Step 3, item 3) ────
+
+// archiveErrorIfIncorrect 当推断学生回答错误时，自动将错误和 AI 引导归档到错题本。
+// 同时检查是否有已归档但尚未解决的错题因掌握度提升而可标记为已解决。
+func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *DraftResponse) {
+	if response == nil {
+		return
+	}
+
+	// 获取当前会话的 KP
+	var session model.StudentSession
+	if err := o.db.First(&session, tc.SessionID).Error; err != nil {
+		return
+	}
+
+	kpID := session.CurrentKP
+	if kpID == 0 && tc.Prescription != nil && len(tc.Prescription.TargetKPSequence) > 0 {
+		kpID = tc.Prescription.TargetKPSequence[0].KPID
+	}
+	if kpID == 0 {
+		return
+	}
+
+	correct := o.inferCorrectness(tc)
+
+	if !correct {
+		// 获取当前掌握度用于记录
+		mastery := o.bkt.GetMastery(tc.StudentID, kpID)
+
+		entry := model.ErrorNotebookEntry{
+			StudentID:      tc.StudentID,
+			KPID:           kpID,
+			SessionID:      tc.SessionID,
+			StudentInput:   tc.UserInput,
+			CoachGuidance:  response.Content,
+			ErrorType:      "unknown", // 默认; 后续可用 LLM 分类
+			MasteryAtError: mastery,
+			ArchivedAt:     time.Now(),
+		}
+
+		if err := o.db.Create(&entry).Error; err != nil {
+			log.Printf("⚠️  [ErrorNotebook] Archive failed: student=%d kp=%d: %v",
+				tc.StudentID, kpID, err)
+			return
+		}
+
+		log.Printf("📝 [ErrorNotebook] Archived: student=%d kp=%d session=%d mastery=%.3f",
+			tc.StudentID, kpID, tc.SessionID, mastery)
+	}
+
+	// 自动解决：当掌握度达到 0.8 时，标记该 KP 的未解决错题为已解决
+	currentMastery := o.bkt.GetMastery(tc.StudentID, kpID)
+	if currentMastery >= 0.8 {
+		now := time.Now()
+		result := o.db.Model(&model.ErrorNotebookEntry{}).
+			Where("student_id = ? AND kp_id = ? AND resolved = ?", tc.StudentID, kpID, false).
+			Updates(map[string]interface{}{
+				"resolved":    true,
+				"resolved_at": now,
+			})
+		if result.RowsAffected > 0 {
+			log.Printf("✅ [ErrorNotebook] Auto-resolved %d entries: student=%d kp=%d mastery=%.3f",
+				result.RowsAffected, tc.StudentID, kpID, currentMastery)
+		}
+	}
 }

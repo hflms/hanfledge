@@ -131,7 +131,7 @@ func setupBenchEnv(b *testing.B) *testEnv {
 			ExpiryHours: testJWTExpiry,
 		},
 	}
-	router := delivery.NewRouter(db, cfg, nil, registry, nil, guard)
+	router := delivery.NewRouter(db, cfg, nil, registry, nil, guard, nil, nil, nil)
 
 	return &testEnv{
 		db:           db,

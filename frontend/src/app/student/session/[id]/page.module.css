@@ -327,6 +327,51 @@
     color: var(--text-primary);
 }
 
+/* -- Connection Status Indicator ------------------------ */
+.connectionStatus {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 100px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.connectionDot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.ws_connecting .connectionDot,
+.ws_reconnecting .connectionDot {
+    background: #fdcb6e;
+}
+
+.ws_connecting {
+    color: #fdcb6e;
+    background: rgba(253, 203, 110, 0.12);
+}
+
+.ws_reconnecting {
+    color: #e17055;
+    background: rgba(225, 112, 85, 0.12);
+}
+
+.ws_disconnected .connectionDot {
+    background: #ff6b6b;
+    animation: none;
+}
+
+.ws_disconnected {
+    color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.12);
+    animation: none;
+}
+
 /* -- Mobile Responsive ---------------------------------- */
 
 @media (max-width: 768px) {

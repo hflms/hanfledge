@@ -58,9 +58,13 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.StudentSession{},
 		&model.Interaction{},
 		&model.StudentKPMastery{},
+		&model.ErrorNotebookEntry{},
 		// 文档与向量
 		&model.Document{},
 		&model.DocumentChunk{},
+		// 知识图谱扩展
+		&model.Misconception{},
+		&model.CrossLink{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

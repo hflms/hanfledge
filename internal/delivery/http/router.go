@@ -7,14 +7,16 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/handler"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
+	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"gorm.io/gorm"
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, registry *plugin.Registry, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard) *gin.Engine {
+func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, registry *plugin.Registry, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard, neo4jClient *neo4jRepo.Client, redisCache *cache.RedisCache, piiRedactor *safety.PIIRedactor) *gin.Engine {
 	r := gin.Default()
 
 	// Global middleware
@@ -27,11 +29,14 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(db, cfg.JWT.Secret, cfg.JWT.ExpiryHours)
 	userHandler := handler.NewUserHandler(db)
-	courseHandler := handler.NewCourseHandler(db, karag)
+	courseHandler := handler.NewCourseHandler(db, karag, redisCache)
 	skillHandler := handler.NewSkillHandler(db, registry)
 	activityHandler := handler.NewActivityHandler(db, orchestrator)
 	sessionHandler := handler.NewSessionHandler(db, orchestrator, injectionGuard)
 	dashboardHandler := handler.NewDashboardHandler(db)
+	kgHandler := handler.NewKnowledgeGraphHandler(db, neo4jClient)
+	analyticsHandler := handler.NewAnalyticsHandler(db, piiRedactor)
+	exportHandler := handler.NewExportHandler(db)
 
 	// API v1 group
 	v1 := r.Group("/api/v1")
@@ -88,6 +93,8 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 				courses.GET("/:id/outline", courseHandler.GetOutline)
 				courses.GET("/:id/documents", courseHandler.GetDocumentStatus)
 				courses.POST("/:id/search", courseHandler.SearchCourse)
+				courses.DELETE("/:id/documents/:doc_id", courseHandler.DeleteDocument)
+				courses.POST("/:id/documents/:doc_id/retry", courseHandler.RetryDocument)
 			}
 		}
 
@@ -108,11 +115,31 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 			chapters.DELETE("/:id/skills/:mount_id", skillHandler.UnmountSkill)
 		}
 
-		// ── Dashboard Analytics (TEACHER) — Phase 5 ────
+		// ── Knowledge Graph Enrichment (TEACHER) — Phase B ─
+		kps := protected.Group("/knowledge-points")
+		kps.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		{
+			// Misconception CRUD
+			kps.POST("/:id/misconceptions", kgHandler.CreateMisconception)
+			kps.GET("/:id/misconceptions", kgHandler.ListMisconceptions)
+			kps.DELETE("/:id/misconceptions/:misconception_id", kgHandler.DeleteMisconception)
+
+			// Cross-Disciplinary Links
+			kps.POST("/:id/cross-links", kgHandler.CreateCrossLink)
+			kps.GET("/:id/cross-links", kgHandler.ListCrossLinks)
+			kps.DELETE("/:id/cross-links/:link_id", kgHandler.DeleteCrossLink)
+
+			// Prerequisite Management
+			kps.POST("/:id/prerequisites", kgHandler.CreatePrerequisite)
+			kps.GET("/:id/prerequisites", kgHandler.GetPrerequisites)
+		}
+
+		// ── Dashboard Analytics (TEACHER) — Phase 5 + Phase G ─
 		dashboard := protected.Group("/dashboard")
 		dashboard.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
 		{
 			dashboard.GET("/knowledge-radar", dashboardHandler.GetKnowledgeRadar)
+			dashboard.GET("/skill-effectiveness", analyticsHandler.GetSkillEffectiveness) // Phase G
 		}
 
 		// ── Student Mastery (TEACHER) — Phase 5 ─────────
@@ -137,12 +164,32 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 		student.Use(middleware.RBAC(db, model.RoleStudent, model.RoleSysAdmin))
 		{
 			student.GET("/activities", activityHandler.StudentListActivities)
-			student.GET("/mastery", dashboardHandler.GetSelfMastery) // Phase 5
+			student.GET("/mastery", dashboardHandler.GetSelfMastery)          // Phase 5
+			student.GET("/knowledge-map", kgHandler.GetStudentKnowledgeMap)   // Knowledge Map
+			student.GET("/error-notebook", dashboardHandler.GetErrorNotebook) // Error Notebook
 		}
 
 		// ── Activity Join & Sessions (any authenticated) ─
 		protected.POST("/activities/:id/join", activityHandler.JoinActivity)
 		protected.GET("/sessions/:id", activityHandler.GetSession)
+
+		// ── Session Analytics (TEACHER) — Phase G ──────
+		sessionAnalytics := protected.Group("/sessions")
+		sessionAnalytics.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		{
+			sessionAnalytics.GET("/:id/inquiry-tree", analyticsHandler.GetInquiryTree)
+			sessionAnalytics.GET("/:id/interactions", analyticsHandler.GetInteractionLog)
+		}
+
+		// ── Data Export (TEACHER) — CSV Downloads ────────
+		export := protected.Group("/export")
+		export.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		{
+			export.GET("/activities/:id/sessions", exportHandler.ExportActivitySessions)
+			export.GET("/courses/:id/mastery", exportHandler.ExportClassMastery)
+			export.GET("/courses/:id/error-notebook", exportHandler.ExportErrorNotebook)
+			export.GET("/sessions/:id/interactions", exportHandler.ExportInteractionLog)
+		}
 
 		// ── WebSocket Session Stream — Phase 4 ──────────
 		protected.GET("/sessions/:id/stream", sessionHandler.StreamSession)

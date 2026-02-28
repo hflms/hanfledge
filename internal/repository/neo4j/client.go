@@ -156,6 +156,183 @@ func (c *Client) GetPrerequisites(ctx context.Context, kpID uint) ([]map[string]
 	return prereqs, nil
 }
 
+// ── Misconception CRUD ──────────────────────────────────────
+
+// CreateMisconceptionNode creates a Misconception node and links it to a KP via HAS_TRAP.
+func (c *Client) CreateMisconceptionNode(ctx context.Context, kpID, misconceptionID uint, description, trapType string) error {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	_, err := session.Run(ctx, `
+		MATCH (kp:KnowledgePoint {id: $kpId})
+		MERGE (m:Misconception {id: $mId})
+		SET m.description = $description, m.trap_type = $trapType
+		MERGE (kp)-[:HAS_TRAP]->(m)
+	`, map[string]interface{}{
+		"kpId":        fmt.Sprintf("kp_%d", kpID),
+		"mId":         fmt.Sprintf("misconception_%d", misconceptionID),
+		"description": description,
+		"trapType":    trapType,
+	})
+	return err
+}
+
+// GetMisconceptions retrieves all misconceptions linked to a KP via HAS_TRAP.
+func (c *Client) GetMisconceptions(ctx context.Context, kpID uint) ([]MisconceptionResult, error) {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	result, err := session.Run(ctx, `
+		MATCH (kp:KnowledgePoint {id: $kpId})-[:HAS_TRAP]->(m:Misconception)
+		RETURN m.id AS id, m.description AS description, m.trap_type AS trap_type
+	`, map[string]interface{}{
+		"kpId": fmt.Sprintf("kp_%d", kpID),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var misconceptions []MisconceptionResult
+	for result.Next(ctx) {
+		record := result.Record()
+		id, _ := record.Get("id")
+		desc, _ := record.Get("description")
+		trapType, _ := record.Get("trap_type")
+
+		idStr, _ := id.(string)
+		descStr, _ := desc.(string)
+		trapTypeStr, _ := trapType.(string)
+
+		misconceptions = append(misconceptions, MisconceptionResult{
+			ID:          idStr,
+			Description: descStr,
+			TrapType:    trapTypeStr,
+		})
+	}
+	return misconceptions, nil
+}
+
+// DeleteMisconceptionNode removes a Misconception node and its HAS_TRAP relation.
+func (c *Client) DeleteMisconceptionNode(ctx context.Context, misconceptionID uint) error {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	_, err := session.Run(ctx, `
+		MATCH (m:Misconception {id: $mId})
+		DETACH DELETE m
+	`, map[string]interface{}{
+		"mId": fmt.Sprintf("misconception_%d", misconceptionID),
+	})
+	return err
+}
+
+// MisconceptionResult 误区查询结果。
+type MisconceptionResult struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	TrapType    string `json:"trap_type"`
+}
+
+// ── Cross-Disciplinary Links ────────────────────────────────
+
+// CreateCrossLink creates a RELATES_TO relation between two KPs from different disciplines.
+func (c *Client) CreateCrossLink(ctx context.Context, fromKPID, toKPID uint, linkType string, weight float64) error {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	_, err := session.Run(ctx, `
+		MATCH (from:KnowledgePoint {id: $fromId})
+		MATCH (to:KnowledgePoint {id: $toId})
+		MERGE (from)-[r:RELATES_TO]->(to)
+		SET r.link_type = $linkType, r.weight = $weight
+	`, map[string]interface{}{
+		"fromId":   fmt.Sprintf("kp_%d", fromKPID),
+		"toId":     fmt.Sprintf("kp_%d", toKPID),
+		"linkType": linkType,
+		"weight":   weight,
+	})
+	return err
+}
+
+// GetCrossLinks retrieves all cross-disciplinary links for a KP (bidirectional).
+func (c *Client) GetCrossLinks(ctx context.Context, kpID uint) ([]CrossLinkResult, error) {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	result, err := session.Run(ctx, `
+		MATCH (source:KnowledgePoint {id: $kpId})-[r:RELATES_TO]-(linked:KnowledgePoint)
+		OPTIONAL MATCH (linked)<-[:HAS_KP]-(ch:Chapter)<-[:HAS_CHAPTER]-(c:Course)
+		RETURN linked.id AS id, linked.title AS title, linked.difficulty AS difficulty,
+		       r.link_type AS link_type, r.weight AS weight,
+		       c.subject AS subject
+	`, map[string]interface{}{
+		"kpId": fmt.Sprintf("kp_%d", kpID),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var links []CrossLinkResult
+	for result.Next(ctx) {
+		record := result.Record()
+		id, _ := record.Get("id")
+		title, _ := record.Get("title")
+		difficulty, _ := record.Get("difficulty")
+		linkType, _ := record.Get("link_type")
+		weight, _ := record.Get("weight")
+		subject, _ := record.Get("subject")
+
+		idStr, _ := id.(string)
+		titleStr, _ := title.(string)
+		linkTypeStr, _ := linkType.(string)
+		subjectStr, _ := subject.(string)
+
+		diffVal := 0.5
+		if d, ok := difficulty.(float64); ok {
+			diffVal = d
+		}
+		weightVal := 1.0
+		if w, ok := weight.(float64); ok {
+			weightVal = w
+		}
+
+		links = append(links, CrossLinkResult{
+			KPID:       idStr,
+			KPTitle:    titleStr,
+			Difficulty: diffVal,
+			LinkType:   linkTypeStr,
+			Weight:     weightVal,
+			Subject:    subjectStr,
+		})
+	}
+	return links, nil
+}
+
+// DeleteCrossLink removes a RELATES_TO relation between two KPs.
+func (c *Client) DeleteCrossLink(ctx context.Context, fromKPID, toKPID uint) error {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	_, err := session.Run(ctx, `
+		MATCH (from:KnowledgePoint {id: $fromId})-[r:RELATES_TO]-(to:KnowledgePoint {id: $toId})
+		DELETE r
+	`, map[string]interface{}{
+		"fromId": fmt.Sprintf("kp_%d", fromKPID),
+		"toId":   fmt.Sprintf("kp_%d", toKPID),
+	})
+	return err
+}
+
+// CrossLinkResult 跨学科联结查询结果。
+type CrossLinkResult struct {
+	KPID       string  `json:"kp_id"`
+	KPTitle    string  `json:"kp_title"`
+	Difficulty float64 `json:"difficulty"`
+	LinkType   string  `json:"link_type"` // "analogy" | "shared_model" | "application"
+	Weight     float64 `json:"weight"`    // link strength [0,1]
+	Subject    string  `json:"subject"`   // course subject of the linked KP
+}
+
 // ── Graph Search for RRF Retrieval ──────────────────────────
 
 // GraphSearchResult 图谱搜索结果。
@@ -182,7 +359,7 @@ func (c *Client) SearchRelatedKPs(ctx context.Context, kpIDs []uint, limit int) 
 		neo4jIDs[i] = fmt.Sprintf("kp_%d", id)
 	}
 
-	// Query: find related KPs via REQUIRES (both directions) and HAS_KP siblings
+	// Query: find related KPs via REQUIRES, HAS_KP siblings, and RELATES_TO cross-links
 	result, err := session.Run(ctx, `
 		UNWIND $kpIds AS targetId
 		MATCH (target:KnowledgePoint {id: targetId})
@@ -193,6 +370,9 @@ func (c *Client) SearchRelatedKPs(ctx context.Context, kpIDs []uint, limit int) 
 		// Sibling KPs in the same chapter
 		OPTIONAL MATCH (target)<-[:HAS_KP]-(ch:Chapter)-[:HAS_KP]->(related2:KnowledgePoint)
 		WHERE related2.id <> target.id
+		
+		// Cross-disciplinary links
+		OPTIONAL MATCH (target)-[:RELATES_TO]-(related3:KnowledgePoint)
 		
 		WITH targetId, 
 		     collect(DISTINCT {
@@ -208,9 +388,16 @@ func (c *Client) SearchRelatedKPs(ctx context.Context, kpIDs []uint, limit int) 
 		       difficulty: related2.difficulty,
 		       relation: 'sibling', 
 		       depth: 1
-		     }) AS siblings
+		     }) AS siblings,
+		     collect(DISTINCT {
+		       id: related3.id, 
+		       title: related3.title, 
+		       difficulty: related3.difficulty,
+		       relation: 'cross_disciplinary', 
+		       depth: 1
+		     }) AS crossLinks
 		
-		UNWIND (prereqs + siblings) AS node
+		UNWIND (prereqs + siblings + crossLinks) AS node
 		WITH DISTINCT node
 		WHERE node.id IS NOT NULL
 		RETURN node.id AS id, node.title AS title, node.difficulty AS difficulty,
@@ -261,4 +448,60 @@ func (c *Client) SearchRelatedKPs(ctx context.Context, kpIDs []uint, limit int) 
 	}
 
 	return results, nil
+}
+
+// ── Course Graph for Knowledge Map ──────────────────────────
+
+// GraphEdge represents a single directed edge in the knowledge graph.
+type GraphEdge struct {
+	FromID string `json:"from_id"` // e.g. "kp_1"
+	ToID   string `json:"to_id"`   // e.g. "kp_2"
+	Type   string `json:"type"`    // "REQUIRES" | "RELATES_TO" | "HAS_TRAP"
+}
+
+// GetCourseGraphEdges returns all edges among KPs belonging to a course.
+// Traverses: Course → Chapter → KP, then collects REQUIRES and RELATES_TO edges.
+func (c *Client) GetCourseGraphEdges(ctx context.Context, courseID uint) ([]GraphEdge, error) {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	result, err := session.Run(ctx, `
+		MATCH (course:Course {id: $courseId})-[:HAS_CHAPTER]->(ch:Chapter)-[:HAS_KP]->(kp:KnowledgePoint)
+		WITH collect(kp) AS allKPs
+		UNWIND allKPs AS kp
+		OPTIONAL MATCH (kp)-[:REQUIRES]->(prereq:KnowledgePoint)
+		WHERE prereq IN allKPs
+		WITH allKPs, collect({from: kp.id, to: prereq.id, type: 'REQUIRES'}) AS reqEdges
+		UNWIND allKPs AS kp2
+		OPTIONAL MATCH (kp2)-[:RELATES_TO]-(linked:KnowledgePoint)
+		WHERE linked IN allKPs AND kp2.id < linked.id
+		WITH reqEdges, collect({from: kp2.id, to: linked.id, type: 'RELATES_TO'}) AS relEdges
+		UNWIND (reqEdges + relEdges) AS edge
+		WITH edge WHERE edge.from IS NOT NULL AND edge.to IS NOT NULL
+		RETURN DISTINCT edge.from AS from_id, edge.to AS to_id, edge.type AS type
+	`, map[string]interface{}{
+		"courseId": fmt.Sprintf("course_%d", courseID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get course graph edges failed: %w", err)
+	}
+
+	var edges []GraphEdge
+	for result.Next(ctx) {
+		record := result.Record()
+		fromID, _ := record.Get("from_id")
+		toID, _ := record.Get("to_id")
+		edgeType, _ := record.Get("type")
+
+		fromStr, _ := fromID.(string)
+		toStr, _ := toID.(string)
+		typeStr, _ := edgeType.(string)
+
+		edges = append(edges, GraphEdge{
+			FromID: fromStr,
+			ToID:   toStr,
+			Type:   typeStr,
+		})
+	}
+	return edges, nil
 }

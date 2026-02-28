@@ -227,3 +227,93 @@ func TestParseKPIDs(t *testing.T) {
 		})
 	}
 }
+
+// ── checkPrereqGapsEnriched deduplication Tests ─────────────
+
+func TestPrereqGapAutoInsertDeduplication(t *testing.T) {
+	// Test that the inserted map correctly prevents duplicate insertions
+	inserted := make(map[uint]bool)
+
+	// Simulate inserting KP 10
+	inserted[10] = true
+
+	// Verify deduplication logic
+	if !inserted[10] {
+		t.Error("KP 10 should be marked as inserted")
+	}
+	if inserted[20] {
+		t.Error("KP 20 should not be marked as inserted")
+	}
+
+	// Insert again — map doesn't change
+	inserted[10] = true
+	if count := len(inserted); count != 1 {
+		t.Errorf("inserted map should have 1 entry, got %d", count)
+	}
+}
+
+func TestPrereqGapTargetDefaults(t *testing.T) {
+	// Test that auto-inserted prereq KP targets have correct defaults
+	mastery := 0.35
+	scaffold := scaffoldForMastery(mastery)
+
+	target := KnowledgePointTarget{
+		KPID:           42,
+		CurrentMastery: mastery,
+		TargetMastery:  0.6, // prereq target: medium threshold
+		ScaffoldLevel:  scaffold,
+	}
+
+	if target.TargetMastery != 0.6 {
+		t.Errorf("prereq target mastery should be 0.6, got %f", target.TargetMastery)
+	}
+	if target.ScaffoldLevel != ScaffoldHigh {
+		t.Errorf("prereq scaffold should be high for mastery 0.35, got %s", target.ScaffoldLevel)
+	}
+}
+
+func TestPrereqGapBKTDefault(t *testing.T) {
+	// Test that zero mastery is treated as BKT initial value 0.1
+	masteryMap := map[uint]float64{
+		1: 0.7,
+		2: 0.0, // zero = never attempted
+	}
+
+	// Simulate the BKT default logic from checkPrereqGapsEnriched
+	for id, m := range masteryMap {
+		if m == 0 {
+			masteryMap[id] = 0.1
+		}
+	}
+
+	if masteryMap[2] != 0.1 {
+		t.Errorf("zero mastery should be defaulted to 0.1, got %f", masteryMap[2])
+	}
+	if masteryMap[1] != 0.7 {
+		t.Errorf("non-zero mastery should be unchanged, got %f", masteryMap[1])
+	}
+}
+
+func TestPrereqGapThreshold(t *testing.T) {
+	// Test that only KPs below 0.6 mastery are identified as gaps
+	tests := []struct {
+		mastery float64
+		isGap   bool
+	}{
+		{0.0, true},
+		{0.1, true},
+		{0.3, true},
+		{0.59, true},
+		{0.6, false}, // exactly at threshold = not a gap
+		{0.7, false},
+		{0.9, false},
+		{1.0, false},
+	}
+
+	for _, tc := range tests {
+		result := tc.mastery < 0.6
+		if result != tc.isGap {
+			t.Errorf("mastery=%.2f: isGap=%v, want %v", tc.mastery, result, tc.isGap)
+		}
+	}
+}

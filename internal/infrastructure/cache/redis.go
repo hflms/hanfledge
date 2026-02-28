@@ -2,9 +2,13 @@ package cache
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -198,4 +202,328 @@ func (rc *RedisCache) SetSessionState(ctx context.Context, sessionID uint, state
 // InvalidateSessionState removes the session state cache.
 func (rc *RedisCache) InvalidateSessionState(ctx context.Context, sessionID uint) error {
 	return rc.client.Del(ctx, sessionStateKey(sessionID)).Err()
+}
+
+// ── L2 Semantic Cache (§8.1.3) ──────────────────────────────
+//
+// 语义缓存：将 query embedding 与已缓存的 embedding 做余弦相似度匹配。
+// 当相似度 > 0.95 时命中缓存，直接返回之前的 LLM 响应，避免完整 RAG+LLM 流程。
+//
+// 存储策略：
+//   semantic:index:{courseID}  → Set of cache entry keys (用于按课程失效)
+//   semantic:entry:{hash}     → JSON(SemanticCacheEntry) 含 embedding + 响应
+
+const (
+	semanticEntryPrefix = "semantic:entry:"
+	semanticIndexPrefix = "semantic:index:"
+	semanticCacheTTL    = 2 * time.Hour
+	// semanticSimilarityThreshold is the cosine similarity threshold for cache hits.
+	// Per design.md §8.1.3: > 0.95.
+	semanticSimilarityThreshold = 0.95
+	// semanticMaxEntries is the max number of entries scanned per course.
+	// Brute-force search is feasible at this scale (private deployment, moderate traffic).
+	semanticMaxEntries = 200
+)
+
+// SemanticCacheEntry stores a cached LLM response with its query embedding.
+type SemanticCacheEntry struct {
+	QueryText string    `json:"query_text"`
+	Embedding []float64 `json:"embedding"`
+	Response  string    `json:"response"`
+	SkillID   string    `json:"skill_id,omitempty"`
+	CourseID  uint      `json:"course_id"`
+	CreatedAt int64     `json:"created_at"`
+}
+
+// SemanticCacheHit is returned when a cache hit is found.
+type SemanticCacheHit struct {
+	Entry      SemanticCacheEntry
+	Similarity float64
+}
+
+func semanticEntryKey(hash string) string {
+	return semanticEntryPrefix + hash
+}
+
+func semanticIndexKey(courseID uint) string {
+	return fmt.Sprintf("%s%d", semanticIndexPrefix, courseID)
+}
+
+// embeddingHash generates a compact hash key from an embedding vector.
+// Uses SHA-256 of the float64 values formatted at reduced precision.
+func embeddingHash(embedding []float64) string {
+	var sb strings.Builder
+	for i, v := range embedding {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		fmt.Fprintf(&sb, "%.4f", v)
+	}
+	h := sha256.Sum256([]byte(sb.String()))
+	return hex.EncodeToString(h[:16]) // 128-bit, 32-char hex
+}
+
+// SetSemanticCache stores a query-response pair in the L2 semantic cache.
+func (rc *RedisCache) SetSemanticCache(ctx context.Context, entry SemanticCacheEntry) error {
+	hash := embeddingHash(entry.Embedding)
+	key := semanticEntryKey(hash)
+	idxKey := semanticIndexKey(entry.CourseID)
+
+	entry.CreatedAt = time.Now().Unix()
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal semantic cache entry: %w", err)
+	}
+
+	pipe := rc.client.Pipeline()
+	pipe.Set(ctx, key, string(data), semanticCacheTTL)
+	pipe.SAdd(ctx, idxKey, hash)
+	pipe.Expire(ctx, idxKey, semanticCacheTTL)
+
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("redis set semantic cache: %w", err)
+	}
+
+	log.Printf("📦 [L2-Cache] Stored: query=%q course=%d key=%s",
+		truncateStr(entry.QueryText, 40), entry.CourseID, hash[:12])
+	return nil
+}
+
+// FindSemanticMatch searches the L2 cache for an entry whose embedding is
+// similar to queryEmbedding (cosine similarity > 0.95).
+// Performs brute-force search over all entries for the given course.
+// Returns nil if no match is found.
+func (rc *RedisCache) FindSemanticMatch(ctx context.Context, courseID uint, queryEmbedding []float64) (*SemanticCacheHit, error) {
+	idxKey := semanticIndexKey(courseID)
+
+	// Get all entry hashes for this course
+	hashes, err := rc.client.SMembers(ctx, idxKey).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("redis smembers %s: %w", idxKey, err)
+	}
+
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+
+	// Cap scan size to prevent excessive reads
+	if len(hashes) > semanticMaxEntries {
+		hashes = hashes[:semanticMaxEntries]
+	}
+
+	// Build keys for batch fetch
+	keys := make([]string, len(hashes))
+	for i, h := range hashes {
+		keys[i] = semanticEntryKey(h)
+	}
+
+	// Batch fetch all entries
+	vals, err := rc.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis mget semantic entries: %w", err)
+	}
+
+	// Find best match above threshold
+	var bestHit *SemanticCacheHit
+	var bestSim float64
+
+	for i, val := range vals {
+		if val == nil {
+			// Entry expired but index not cleaned — remove stale hash
+			rc.client.SRem(ctx, idxKey, hashes[i])
+			continue
+		}
+
+		strVal, ok := val.(string)
+		if !ok {
+			continue
+		}
+
+		var entry SemanticCacheEntry
+		if err := json.Unmarshal([]byte(strVal), &entry); err != nil {
+			continue
+		}
+
+		sim := CosineSimilarity(queryEmbedding, entry.Embedding)
+		if sim > semanticSimilarityThreshold && sim > bestSim {
+			bestSim = sim
+			bestHit = &SemanticCacheHit{
+				Entry:      entry,
+				Similarity: sim,
+			}
+		}
+	}
+
+	if bestHit != nil {
+		log.Printf("📦 [L2-Cache] HIT: similarity=%.4f query=%q → cached=%q",
+			bestHit.Similarity, truncateStr("", 0), truncateStr(bestHit.Entry.QueryText, 40))
+	}
+
+	return bestHit, nil
+}
+
+// InvalidateSemanticCacheByCourse removes all L2 semantic cache entries for a course.
+// Called when course materials are updated (KA-RAG graph rebuild).
+func (rc *RedisCache) InvalidateSemanticCacheByCourse(ctx context.Context, courseID uint) error {
+	idxKey := semanticIndexKey(courseID)
+
+	hashes, err := rc.client.SMembers(ctx, idxKey).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil
+		}
+		return fmt.Errorf("redis smembers %s: %w", idxKey, err)
+	}
+
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	// Delete all entry keys + the index key
+	keys := make([]string, 0, len(hashes)+1)
+	for _, h := range hashes {
+		keys = append(keys, semanticEntryKey(h))
+	}
+	keys = append(keys, idxKey)
+
+	if err := rc.client.Del(ctx, keys...).Err(); err != nil {
+		return fmt.Errorf("redis del semantic cache course=%d: %w", courseID, err)
+	}
+
+	log.Printf("🗑️  [L2-Cache] Invalidated %d entries for course=%d", len(hashes), courseID)
+	return nil
+}
+
+// ── L3 Output Cache (§8.1.3) ────────────────────────────────
+//
+// 精确哈希缓存：对完整 prompt（系统提示 + 历史 + 用户输入）做 SHA-256 哈希。
+// 完全相同的上下文 → 直接返回缓存的 LLM 输出。
+
+const (
+	outputCachePrefix = "output:"
+	outputCacheTTL    = 1 * time.Hour
+)
+
+// OutputCacheEntry stores a cached LLM response with exact prompt hash.
+type OutputCacheEntry struct {
+	Response  string `json:"response"`
+	SkillID   string `json:"skill_id,omitempty"`
+	CourseID  uint   `json:"course_id"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+func outputCacheKey(hash string) string {
+	return outputCachePrefix + hash
+}
+
+// PromptHash computes SHA-256 of the full prompt context for L3 cache keying.
+func PromptHash(systemPrompt, userInput string, historyRoles, historyContents []string) string {
+	h := sha256.New()
+	h.Write([]byte("sys:"))
+	h.Write([]byte(systemPrompt))
+	h.Write([]byte("\n"))
+	for i := range historyRoles {
+		h.Write([]byte(historyRoles[i]))
+		h.Write([]byte(":"))
+		if i < len(historyContents) {
+			h.Write([]byte(historyContents[i]))
+		}
+		h.Write([]byte("\n"))
+	}
+	h.Write([]byte("usr:"))
+	h.Write([]byte(userInput))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// SetOutputCache stores an LLM response in the L3 exact-match cache.
+func (rc *RedisCache) SetOutputCache(ctx context.Context, promptHash string, entry OutputCacheEntry) error {
+	key := outputCacheKey(promptHash)
+	entry.CreatedAt = time.Now().Unix()
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal output cache entry: %w", err)
+	}
+
+	if err := rc.client.Set(ctx, key, string(data), outputCacheTTL).Err(); err != nil {
+		return fmt.Errorf("redis set output cache: %w", err)
+	}
+
+	log.Printf("📦 [L3-Cache] Stored: hash=%s", promptHash[:12])
+	return nil
+}
+
+// GetOutputCache retrieves a cached LLM response by exact prompt hash.
+// Returns nil if not cached.
+func (rc *RedisCache) GetOutputCache(ctx context.Context, promptHash string) (*OutputCacheEntry, error) {
+	key := outputCacheKey(promptHash)
+	val, err := rc.client.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("redis get %s: %w", key, err)
+	}
+
+	var entry OutputCacheEntry
+	if err := json.Unmarshal([]byte(val), &entry); err != nil {
+		return nil, fmt.Errorf("unmarshal output cache: %w", err)
+	}
+
+	log.Printf("📦 [L3-Cache] HIT: hash=%s", promptHash[:12])
+	return &entry, nil
+}
+
+// InvalidateOutputCacheByCourse is a no-op for L3 since entries are prompt-hashed.
+// Course material changes naturally invalidate L3 because the system prompt changes
+// (different retrieved chunks → different prompt hash → no match).
+// This method is provided for API consistency.
+func (rc *RedisCache) InvalidateOutputCacheByCourse(ctx context.Context, courseID uint) error {
+	// L3 is self-invalidating: changed materials → changed system prompt → different hash.
+	log.Printf("📦 [L3-Cache] Course=%d invalidation: self-invalidating via prompt hash (no-op)", courseID)
+	return nil
+}
+
+// ── Cosine Similarity ───────────────────────────────────────
+
+// CosineSimilarity computes the cosine similarity between two vectors.
+// Returns a value in [-1, 1]. Higher values indicate more similar vectors.
+// Returns 0 if either vector is zero-length or if dimensions don't match.
+func CosineSimilarity(a, b []float64) float64 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+
+	var dot, normA, normB float64
+	for i := range a {
+		dot += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+
+	denom := math.Sqrt(normA) * math.Sqrt(normB)
+	if denom == 0 {
+		return 0
+	}
+
+	return dot / denom
+}
+
+// ── Helpers ─────────────────────────────────────────────────
+
+// truncateStr truncates a string for log output.
+func truncateStr(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "..."
 }

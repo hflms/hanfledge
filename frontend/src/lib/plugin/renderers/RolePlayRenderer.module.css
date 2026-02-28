@@ -1,0 +1,467 @@
+/* ── Role-Play Skill Renderer ──────────────────────────── */
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 0;
+}
+
+/* -- Scenario Panel ------------------------------------- */
+.scenarioPanel {
+    background: linear-gradient(135deg, rgba(9, 132, 227, 0.08), rgba(108, 92, 231, 0.08));
+    border: 1px solid rgba(108, 92, 231, 0.15);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+}
+
+.scenarioPanel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(180deg, #0984e3, #6c5ce7);
+}
+
+.scenarioHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.scenarioLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.scenarioSwitch {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.scenarioSwitchCount {
+    font-weight: 700;
+    color: #0984e3;
+}
+
+.scenarioTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.scenarioDesc {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.scenarioObjectives {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(108, 92, 231, 0.1);
+}
+
+.objectivesLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.objectiveItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 4px;
+}
+
+.objectiveBullet {
+    flex-shrink: 0;
+    color: #0984e3;
+    font-weight: 700;
+}
+
+/* -- Character Selector --------------------------------- */
+.characterSelector {
+    margin-bottom: 12px;
+}
+
+.characterSelectorLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.characterGrid {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.characterCard {
+    flex-shrink: 0;
+    width: 110px;
+    padding: 14px 12px;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.characterCard:hover {
+    border-color: rgba(108, 92, 231, 0.4);
+    transform: translateY(-2px);
+}
+
+.characterCardActive {
+    border-color: #6c5ce7;
+    background: rgba(108, 92, 231, 0.05);
+    box-shadow: 0 2px 8px rgba(108, 92, 231, 0.15);
+}
+
+.characterAvatar {
+    font-size: 32px;
+    margin-bottom: 8px;
+    line-height: 1;
+}
+
+.characterName {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.characterRole {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* -- Chat Area (immersive dialog) ----------------------- */
+.messagesArea {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* -- Immersive Message Bubble --------------------------- */
+.messageBubble {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+.messageHeader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.avatarIcon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.characterLabel {
+    display: flex;
+    flex-direction: column;
+}
+
+.characterNameLabel {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.toneIndicator {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.messageContent {}
+
+.messageStudent {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+
+.messageStudent .characterNameLabel {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.messageStudent .toneIndicator {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.messageCoach {
+    align-self: flex-start;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-bottom-left-radius: 4px;
+}
+
+.messageSystem {
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 6px 16px;
+    background: transparent;
+}
+
+/* -- Thinking Indicator --------------------------------- */
+.thinkingIndicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #0984e3;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.thinkingDots {
+    display: flex;
+    gap: 4px;
+}
+
+.thinkingDot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #0984e3;
+    animation: dotBounce 1.2s ease-in-out infinite;
+}
+
+.thinkingDot:nth-child(2) { animation-delay: 0.2s; }
+.thinkingDot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* -- Input Area ----------------------------------------- */
+.inputArea {
+    flex-shrink: 0;
+    display: flex;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+}
+
+.chatInput {
+    flex: 1;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+    resize: none;
+    min-height: 44px;
+    max-height: 120px;
+    font-family: inherit;
+}
+
+.chatInput:focus {
+    border-color: #0984e3;
+}
+
+.chatInput::placeholder {
+    color: var(--text-muted);
+}
+
+.inputActions {
+    display: flex;
+    gap: 8px;
+    align-self: flex-end;
+}
+
+.sendBtn {
+    flex-shrink: 0;
+    padding: 0 20px;
+    height: 44px;
+}
+
+.sendBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.exitBtn {
+    flex-shrink: 0;
+    padding: 0 14px;
+    height: 44px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.exitBtn:hover {
+    border-color: var(--warning);
+    color: var(--warning);
+}
+
+/* -- Learning Summary Overlay --------------------------- */
+.summaryOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.summaryCard {
+    background: var(--bg-card);
+    border: 2px solid #0984e3;
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 520px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    animation: summarySlideUp 0.4s ease;
+}
+
+@keyframes summarySlideUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.summaryIcon {
+    font-size: 40px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.summaryTitle {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.summaryContent {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+}
+
+.summaryCloseBtn {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: #0984e3;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.summaryCloseBtn:hover {
+    opacity: 0.85;
+}
+
+/* -- Empty State ---------------------------------------- */
+.emptyHint {
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 6px 16px;
+}
+
+/* -- Mobile --------------------------------------------- */
+@media (max-width: 768px) {
+    .scenarioPanel {
+        padding: 12px 16px;
+    }
+    .characterGrid {
+        gap: 8px;
+    }
+    .characterCard {
+        width: 90px;
+        padding: 10px 8px;
+    }
+    .characterAvatar {
+        font-size: 26px;
+    }
+    .messageBubble {
+        max-width: 90%;
+    }
+    .summaryCard {
+        padding: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .messageBubble {
+        max-width: 95%;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    .chatInput {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    .characterCard {
+        width: 80px;
+    }
+}

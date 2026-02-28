@@ -90,6 +90,7 @@ func main() {
 	// ── Safety Components ──────────────────────────────
 	injectionGuard := safety.NewInjectionGuard()
 	piiRedactor := safety.NewPIIRedactor(db)
+	outputGuard := safety.NewOutputGuardWithLLM(llmProvider)
 
 	// ── Redis Cache ────────────────────────────────────
 	var redisCache *cache.RedisCache
@@ -104,10 +105,16 @@ func main() {
 	}
 
 	// ── Agent Orchestrator ──────────────────────────────
-	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, piiRedactor, redisCache)
+	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, piiRedactor, redisCache, outputGuard)
+
+	// ── RAGAS Evaluator (§4.2 Background Quality Evaluation) ──
+	evaluator := agent.NewRAGASEvaluator(db, llmProvider, agent.DefaultEvalConfig())
+	evalCtx, evalCancel := context.WithCancel(context.Background())
+	defer evalCancel()
+	go evaluator.Start(evalCtx)
 
 	// ── Router Setup ────────────────────────────────────
-	router := delivery.NewRouter(db, cfg, karagEngine, registry, orchestrator, injectionGuard)
+	router := delivery.NewRouter(db, cfg, karagEngine, registry, orchestrator, injectionGuard, neo4jClient, redisCache, piiRedactor)
 
 	// ── Start Server ────────────────────────────────────
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)

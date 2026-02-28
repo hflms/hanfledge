@@ -23,16 +23,18 @@ import (
 
 // Registry is the central plugin registry and lifecycle manager.
 type Registry struct {
-	mu       sync.RWMutex
-	skills   map[string]*RegisteredSkill // key: skill ID
-	eventBus *EventBus
+	mu        sync.RWMutex
+	skills    map[string]*RegisteredSkill // key: skill ID
+	eventBus  *EventBus
+	validator *SkillValidator // Anti-God Skill 验证器 (§8.2.1)
 }
 
 // NewRegistry creates an empty plugin registry with an EventBus.
 func NewRegistry() *Registry {
 	return &Registry{
-		skills:   make(map[string]*RegisteredSkill),
-		eventBus: NewEventBus(),
+		skills:    make(map[string]*RegisteredSkill),
+		eventBus:  NewEventBus(),
+		validator: DefaultSkillValidator(),
 	}
 }
 
@@ -128,6 +130,19 @@ func (r *Registry) RegisterSkillPlugin(impl SkillPlugin) error {
 	return nil
 }
 
+// RegisterSkillWithMetadata registers a skill with explicit SkillMetadata.
+// This allows full control over all metadata fields (including ProgressiveTriggers)
+// and is useful for testing and programmatic registration.
+func (r *Registry) RegisterSkillWithMetadata(meta SkillMetadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.skills[meta.ID] = &RegisteredSkill{
+		Metadata: meta,
+		State:    PluginStateRunning,
+	}
+}
+
 // ShutdownAll gracefully shuts down all programmatic plugins.
 func (r *Registry) ShutdownAll(ctx context.Context) {
 	r.mu.RLock()
@@ -196,7 +211,7 @@ func (r *Registry) discoverSkill(skillDir string) (*RegisteredSkill, error) {
 	return skill, nil
 }
 
-// validateSkill checks required fields and file existence (Validated state).
+// validateSkill checks required fields, file existence, and Anti-God Skill rules (Validated state).
 func (r *Registry) validateSkill(skill *RegisteredSkill) error {
 	if skill.Metadata.ID == "" {
 		return fmt.Errorf("missing required field: id")
@@ -208,6 +223,21 @@ func (r *Registry) validateSkill(skill *RegisteredSkill) error {
 	// Check that SKILL.md exists
 	if _, err := os.Stat(skill.SkillMDPath); err != nil {
 		return fmt.Errorf("SKILL.md not found at %s", skill.SkillMDPath)
+	}
+
+	// Anti-God Skill 验证 (§8.2.1)
+	if r.validator != nil {
+		result := r.validator.Validate(skill)
+
+		// 输出警告（不阻止加载）
+		for _, w := range result.Warnings {
+			log.Printf("⚠️  [Validator] %s: %s", skill.Metadata.ID, w)
+		}
+
+		// 输出错误（阻止加载）
+		if !result.Valid {
+			return fmt.Errorf("Anti-God Skill validation failed: %s", strings.Join(result.Errors, "; "))
+		}
 	}
 
 	skill.State = PluginStateValidated

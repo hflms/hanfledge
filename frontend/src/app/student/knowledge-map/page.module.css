@@ -1,0 +1,164 @@
+/* -- Page Header -------------------------------------- */
+
+.pageHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.pageTitle {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.courseSelect {
+    padding: 8px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+    min-width: 200px;
+    transition: border-color 0.2s ease;
+}
+
+.courseSelect:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.courseSelect option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+/* -- Summary Cards ------------------------------------ */
+
+.summaryRow {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.summaryCard {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.summaryLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summaryValue {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.summaryUnit {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-left: 4px;
+}
+
+/* -- Graph Container ---------------------------------- */
+
+.graphCard {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    margin-bottom: 32px;
+}
+
+.graphHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.graphTitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* -- Legend ------------------------------------------- */
+
+.legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.legendItem {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.legendDot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.legendLine {
+    width: 20px;
+    height: 2px;
+    flex-shrink: 0;
+}
+
+.legendLineDashed {
+    width: 20px;
+    height: 0;
+    border-top: 2px dashed;
+    flex-shrink: 0;
+}
+
+/* -- Empty State -------------------------------------- */
+
+.emptyState {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-muted);
+}
+
+.emptyIcon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.emptyText {
+    font-size: 15px;
+}
+
+/* -- Tooltip ------------------------------------------ */
+
+.tooltipWrap {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.6;
+}

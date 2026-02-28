@@ -1,5 +1,5 @@
 {
-  "id": "fallacy-detective",
+  "id": "general_assessment_fallacy",
   "name": "谬误侦探",
   "description": "AI 在解释中故意埋入学科常见误区，训练学生的批判性思维和辨别能力。学生需找出错误并论证理由。",
   "version": "1.0.0",

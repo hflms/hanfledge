@@ -226,9 +226,14 @@ export default function OutlinePage() {
             <Link href="/teacher/courses" className={styles.backLink}>← 返回课程列表</Link>
             <div className={styles.pageHeader}>
                 <h1 className={styles.pageTitle}>{course?.title || '课程详情'}</h1>
-                <span className={`badge badge-${course?.status}`}>
-                    {course?.status === 'draft' ? '草稿' : course?.status}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Link href={`/teacher/courses/${courseId}/materials`} className={styles.materialsLink}>
+                        📤 教材管理
+                    </Link>
+                    <span className={`badge badge-${course?.status}`}>
+                        {course?.status === 'draft' ? '草稿' : course?.status}
+                    </span>
+                </div>
             </div>
 
             <div className={styles.twoCol}>

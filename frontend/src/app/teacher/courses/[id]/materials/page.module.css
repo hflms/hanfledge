@@ -1,0 +1,458 @@
+/* === Page Layout === */
+
+.backLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    margin-bottom: 8px;
+    transition: color 0.15s;
+}
+
+.backLink:hover {
+    color: var(--text-primary);
+}
+
+.pageHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    gap: 24px;
+}
+
+.pageTitle {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.pageSubtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* === Stats Row === */
+
+.statsRow {
+    display: flex;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.statBadge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    min-width: 64px;
+}
+
+.statBadgeDanger {
+    border-color: rgba(225, 112, 85, 0.3);
+}
+
+.statNum {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.statBadgeDanger .statNum {
+    color: var(--danger);
+}
+
+.statLabel {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+}
+
+/* === Upload Zone === */
+
+.uploadZone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    margin-bottom: 24px;
+}
+
+.uploadZone:hover {
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.04);
+}
+
+.uploadZoneDragging {
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.08);
+    box-shadow: var(--shadow-glow);
+    transform: scale(1.005);
+}
+
+.uploadIcon {
+    font-size: 36px;
+    margin-bottom: 12px;
+}
+
+.uploadTitle {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.uploadHint {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* === Upload Queue === */
+
+.queueSection {
+    margin-bottom: 28px;
+}
+
+.queueHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.queueTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.clearBtn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.clearBtn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.queueList {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.queueItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.queueIcon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.queueName {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.queueSize {
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.progressBar {
+    width: 80px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.progressFill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width 0.3s ease;
+}
+
+.queueError {
+    font-size: 11px;
+    color: var(--danger);
+    flex-shrink: 0;
+}
+
+.queueDone {
+    font-size: 11px;
+    color: var(--success);
+    flex-shrink: 0;
+}
+
+/* === Document Section === */
+
+.docSection {
+    margin-top: 8px;
+}
+
+.docSectionTitle {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.emptyState {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    font-size: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+}
+
+.emptyState p {
+    margin: 0;
+}
+
+/* === Document Grid === */
+
+.docGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 12px;
+}
+
+@media (max-width: 800px) {
+    .docGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.docCard {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    transition: all 0.15s;
+}
+
+.docCard:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.docCardHeader {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.docIcon {
+    font-size: 20px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.docInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.docName {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 3px;
+}
+
+.docMeta {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* === Status Badges === */
+
+.statusBadge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.status_uploaded {
+    background: rgba(116, 185, 255, 0.15);
+    color: var(--info);
+}
+
+.status_processing {
+    background: rgba(253, 203, 110, 0.15);
+    color: var(--warning);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status_completed {
+    background: rgba(0, 184, 148, 0.15);
+    color: var(--success);
+}
+
+.status_failed {
+    background: rgba(225, 112, 85, 0.15);
+    color: var(--danger);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* === Processing Bar === */
+
+.processingBar {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+    margin: 12px 0 4px;
+}
+
+.processingFill {
+    height: 100%;
+    width: 40%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-light));
+    animation: indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+/* === Document Actions === */
+
+.docActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.retryBtn {
+    padding: 5px 12px;
+    border: 1px solid rgba(253, 203, 110, 0.3);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--warning);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.retryBtn:hover:not(:disabled) {
+    background: rgba(253, 203, 110, 0.1);
+    border-color: var(--warning);
+}
+
+.retryBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.deleteBtn {
+    padding: 5px 12px;
+    border: 1px solid rgba(225, 112, 85, 0.2);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: auto;
+}
+
+.deleteBtn:hover {
+    color: var(--danger);
+    border-color: rgba(225, 112, 85, 0.4);
+    background: rgba(225, 112, 85, 0.05);
+}
+
+/* === Delete Confirmation === */
+
+.confirmGroup {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.confirmText {
+    font-size: 12px;
+    color: var(--danger);
+}
+
+.confirmYes {
+    padding: 3px 10px;
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    background: rgba(225, 112, 85, 0.15);
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.confirmYes:hover {
+    background: rgba(225, 112, 85, 0.3);
+}
+
+.confirmNo {
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.confirmNo:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}

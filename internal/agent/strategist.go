@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"gorm.io/gorm"
 )
@@ -21,13 +24,14 @@ import (
 
 // StrategistAgent 策略师 Agent。
 type StrategistAgent struct {
-	db    *gorm.DB
-	neo4j *neo4jRepo.Client
+	db       *gorm.DB
+	neo4j    *neo4jRepo.Client
+	registry *plugin.Registry // 插件注册表，用于读取 ProgressiveTriggers
 }
 
 // NewStrategistAgent 创建策略师 Agent。
-func NewStrategistAgent(db *gorm.DB, neo4jClient *neo4jRepo.Client) *StrategistAgent {
-	return &StrategistAgent{db: db, neo4j: neo4jClient}
+func NewStrategistAgent(db *gorm.DB, neo4jClient *neo4jRepo.Client, registry *plugin.Registry) *StrategistAgent {
+	return &StrategistAgent{db: db, neo4j: neo4jClient, registry: registry}
 }
 
 // Name 返回 Agent 名称。
@@ -64,6 +68,7 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 	// Step 3: 构建目标 KP 序列（按掌握度从低到高排列）
 	targets := make([]KnowledgePointTarget, 0, len(kpIDs))
 	var prereqGaps []string
+	prereqInserted := make(map[uint]bool) // 防止重复插入前置 KP
 
 	for _, kpID := range kpIDs {
 		currentMastery := masteryMap[kpID] // 默认 0.0
@@ -77,6 +82,23 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		// 查询已挂载技能
 		skillID := a.getSkillForKP(kpID)
 
+		// Step 3.5: 渐进策略触发 — 检查是否满足技能切换条件 (§5.2 Step 2, item 4)
+		// 例如: 苏格拉底引导 mastery >= 0.8 → 自动切换为谬误侦探
+		if a.registry != nil && skillID != "" {
+			if newSkillID, switched := a.evaluateProgressiveTriggers(skillID, currentMastery); switched {
+				log.Printf("   → Progressive trigger fired: %s → %s (mastery=%.2f, kp=%d)",
+					skillID, newSkillID, currentMastery, kpID)
+				skillID = newSkillID
+			}
+		}
+
+		// Step 4: 检查前置知识差距 → 自动插入前置复习环节
+		if a.neo4j != nil {
+			gapTargets, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, prereqInserted)
+			targets = append(targets, gapTargets...)
+			prereqGaps = append(prereqGaps, gapDescs...)
+		}
+
 		targets = append(targets, KnowledgePointTarget{
 			KPID:           kpID,
 			CurrentMastery: currentMastery,
@@ -84,12 +106,6 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 			ScaffoldLevel:  scaffold,
 			SkillID:        skillID,
 		})
-
-		// Step 4: 检查前置知识差距
-		if a.neo4j != nil {
-			gaps := a.checkPrereqGaps(ctx, kpID, studentID, masteryMap)
-			prereqGaps = append(prereqGaps, gaps...)
-		}
 	}
 
 	// 排序：掌握度低的优先
@@ -143,15 +159,19 @@ func (a *StrategistAgent) getSkillForKP(kpID uint) string {
 	return mount.SkillID
 }
 
-// checkPrereqGaps 检查某个 KP 的前置知识点是否存在掌握度差距。
-func (a *StrategistAgent) checkPrereqGaps(ctx context.Context, kpID, studentID uint, masteryMap map[uint]float64) []string {
+// checkPrereqGapsEnriched 检查某个 KP 的前置知识点是否存在掌握度差距。
+// 当发现差距时，自动生成前置 KP 的复习目标插入到序列中（§5.2 Step 1: 自动插入前置复习环节）。
+// 返回: (需要插入的前置 KP 目标列表, 人类可读的差距描述列表)
+func (a *StrategistAgent) checkPrereqGapsEnriched(ctx context.Context, kpID, studentID uint, masteryMap map[uint]float64, inserted map[uint]bool) ([]KnowledgePointTarget, []string) {
 	prereqs, err := a.neo4j.GetPrerequisites(ctx, kpID)
 	if err != nil {
 		log.Printf("⚠️  [Strategist] Get prerequisites for kp=%d failed: %v", kpID, err)
-		return nil
+		return nil, nil
 	}
 
-	var gaps []string
+	var gapTargets []KnowledgePointTarget
+	var gapDescs []string
+
 	for _, p := range prereqs {
 		prereqTitle, _ := p["title"].(string)
 		prereqID, _ := p["id"].(string)
@@ -161,11 +181,32 @@ func (a *StrategistAgent) checkPrereqGaps(ctx context.Context, kpID, studentID u
 		fmt.Sscanf(prereqID, "kp_%d", &numID)
 
 		mastery := masteryMap[numID]
+		if mastery == 0 {
+			mastery = 0.1 // BKT 初始值
+		}
+
 		if mastery < 0.6 { // 前置知识掌握不足
-			gaps = append(gaps, fmt.Sprintf("%s (mastery=%.2f)", prereqTitle, mastery))
+			gapDescs = append(gapDescs, fmt.Sprintf("%s (mastery=%.2f)", prereqTitle, mastery))
+
+			// 自动插入前置 KP 到复习序列（去重）
+			if !inserted[numID] {
+				inserted[numID] = true
+				scaffold := scaffoldForMastery(mastery)
+				skillID := a.getSkillForKP(numID)
+
+				gapTargets = append(gapTargets, KnowledgePointTarget{
+					KPID:           numID,
+					CurrentMastery: mastery,
+					TargetMastery:  0.6, // 前置知识目标: 达到 medium 即可解锁后续
+					ScaffoldLevel:  scaffold,
+					SkillID:        skillID,
+				})
+
+				log.Printf("   → Auto-inserted prereq KP=%d (%s) mastery=%.2f", numID, prereqTitle, mastery)
+			}
 		}
 	}
-	return gaps
+	return gapTargets, gapDescs
 }
 
 // averageMastery 计算目标 KP 序列的平均掌握度。
@@ -216,4 +257,104 @@ func parseKPIDs(jsonStr string) ([]uint, error) {
 // parseJSONSafe 安全解析 JSON 字符串。
 func parseJSONSafe(jsonStr string, v interface{}) error {
 	return json.Unmarshal([]byte(jsonStr), v)
+}
+
+// ── Progressive Trigger Evaluation (§5.2 Step 2) ───────────
+
+// evaluateProgressiveTriggers 检查当前技能是否应根据渐进策略触发器切换到另一个技能。
+//
+// 工作原理：
+//  1. 检查当前技能的 deactivate_when 条件是否满足 → 如果满足，说明应该离开当前技能
+//  2. 遍历所有注册技能，找到 activate_when 条件满足的候选技能
+//  3. 返回新技能 ID 和 true；如果没有触发则返回 ("", false)
+//
+// 例如：苏格拉底引导 deactivate_when="mastery_score >= 0.8"，
+// 谬误侦探 activate_when="mastery_score >= 0.8"，
+// 当 mastery >= 0.8 时，从苏格拉底切换到谬误侦探。
+func (a *StrategistAgent) evaluateProgressiveTriggers(currentSkillID string, mastery float64) (string, bool) {
+	// Step 1: 检查当前技能是否应该 deactivate
+	currentSkill, ok := a.registry.GetSkill(currentSkillID)
+	if !ok {
+		return "", false
+	}
+
+	triggers := currentSkill.Metadata.ProgressiveTriggers
+	if triggers == nil || triggers.DeactivateWhen == "" {
+		return "", false // 当前技能没有 deactivate 条件
+	}
+
+	if !parseTriggerCondition(triggers.DeactivateWhen, mastery) {
+		return "", false // 条件未满足，保持当前技能
+	}
+
+	// Step 2: 当前技能应该 deactivate，寻找应该 activate 的替代技能
+	allSkills := a.registry.ListSkills("", "")
+	for _, candidate := range allSkills {
+		if candidate.Metadata.ID == currentSkillID {
+			continue // 跳过当前技能
+		}
+
+		ct := candidate.Metadata.ProgressiveTriggers
+		if ct == nil || ct.ActivateWhen == "" {
+			continue
+		}
+
+		if parseTriggerCondition(ct.ActivateWhen, mastery) {
+			return candidate.Metadata.ID, true
+		}
+	}
+
+	return "", false // 没有找到合适的替代技能
+}
+
+// parseTriggerCondition 解析并评估触发条件字符串。
+// 支持格式: "mastery_score >= 0.8", "mastery_score < 0.6" 等。
+// 支持的操作符: >=, <=, >, <, ==, !=
+// 当前仅支持 mastery_score 变量。
+func parseTriggerCondition(condition string, mastery float64) bool {
+	condition = strings.TrimSpace(condition)
+	if condition == "" {
+		return false
+	}
+
+	// 解析格式: "<variable> <operator> <value>"
+	parts := strings.Fields(condition)
+	if len(parts) != 3 {
+		log.Printf("⚠️  [Strategist] Invalid trigger condition format: %q (expected 3 parts)", condition)
+		return false
+	}
+
+	variable := parts[0]
+	operator := parts[1]
+	valueStr := parts[2]
+
+	// 当前仅支持 mastery_score
+	if variable != "mastery_score" {
+		log.Printf("⚠️  [Strategist] Unsupported trigger variable: %q (only mastery_score supported)", variable)
+		return false
+	}
+
+	threshold, err := strconv.ParseFloat(valueStr, 64)
+	if err != nil {
+		log.Printf("⚠️  [Strategist] Invalid trigger threshold: %q: %v", valueStr, err)
+		return false
+	}
+
+	switch operator {
+	case ">=":
+		return mastery >= threshold
+	case "<=":
+		return mastery <= threshold
+	case ">":
+		return mastery > threshold
+	case "<":
+		return mastery < threshold
+	case "==":
+		return mastery == threshold
+	case "!=":
+		return mastery != threshold
+	default:
+		log.Printf("⚠️  [Strategist] Unsupported trigger operator: %q", operator)
+		return false
+	}
 }

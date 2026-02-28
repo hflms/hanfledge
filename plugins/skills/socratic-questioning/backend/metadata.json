@@ -1,5 +1,5 @@
 {
-  "id": "socratic-questioning",
+  "id": "general_concept_socratic",
   "name": "苏格拉底式引导",
   "description": "通过连续追问和反问引导学生自主发现答案，而非直接给出结论。AI 扮演苏格拉底的角色，以问题链逐步启发学生的思维深度。",
   "version": "1.0.0",

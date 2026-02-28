@@ -1,16 +1,19 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
     getSession,
-    getToken,
+    createWSUrl,
     type Interaction,
     type StudentSession,
     type WSEvent,
 } from '@/lib/api';
 import MarkdownRenderer from '@/components/MarkdownRenderer';
+import { usePluginRegistry } from '@/lib/plugin/PluginRegistry';
+import { useBuiltinSkillRenderers } from '@/lib/plugin/SkillRendererPlugins';
+import type { AgentWebSocketChannel, SkillRendererProps, InteractionEvent } from '@/lib/plugin/types';
 import styles from './page.module.css';
 
 // -- Types -------------------------------------------------------
@@ -23,6 +26,15 @@ interface ChatMessage {
 }
 
 type ScaffoldLevel = 'high' | 'medium' | 'low';
+
+type WSStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+
+// -- Reconnect Constants -----------------------------------------
+
+const WS_RECONNECT_BASE_DELAY = 1000;  // 1s initial delay
+const WS_RECONNECT_MAX_DELAY = 30000;  // 30s max delay
+const WS_RECONNECT_MAX_RETRIES = 8;
+const WS_PING_INTERVAL = 30000;        // 30s heartbeat ping
 
 interface ScaffoldData {
     steps?: string[];
@@ -50,6 +62,9 @@ export default function SessionPage() {
     const router = useRouter();
     const sessionId = Number(params.id);
 
+    // Register built-in skill renderers with plugin system
+    useBuiltinSkillRenderers();
+
     // Core state
     const [session, setSession] = useState<StudentSession | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -59,7 +74,7 @@ export default function SessionPage() {
 
     // Scaffold state
     const [scaffoldLevel, setScaffoldLevel] = useState<ScaffoldLevel>('high');
-    const [scaffoldData, setScaffoldData] = useState<ScaffoldData>({});
+    const [scaffoldData] = useState<ScaffoldData>({});
     const [scaffoldTransition, setScaffoldTransition] = useState(false);
 
     // Agent thinking state (T-4.14)
@@ -68,10 +83,57 @@ export default function SessionPage() {
     // Streaming token buffer
     const [streamingContent, setStreamingContent] = useState('');
 
+    // WebSocket connection status
+    const [wsStatus, setWsStatus] = useState<WSStatus>('disconnected');
+
     // WebSocket ref
     const wsRef = useRef<WebSocket | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const reconnectCountRef = useRef(0);
+    const intentionalCloseRef = useRef(false);
+
+    // -- Plugin System: find matching skill renderer -------------
+
+    const plugins = usePluginRegistry('student.interaction.main');
+    const activeSkill = session?.active_skill || '';
+    const matchedPlugin = useMemo(() => {
+        if (!activeSkill) return null;
+        return plugins.find(p => p.id === `skill-renderer-${activeSkill}`) || null;
+    }, [plugins, activeSkill]);
+
+    // -- AgentWebSocketChannel adapter ---------------------------
+
+    // Store WS message/close handlers as refs so renderers can subscribe
+    const wsMessageHandlersRef = useRef<Array<(data: string) => void>>([]);
+    const wsCloseHandlersRef = useRef<Array<() => void>>([]);
+
+    const agentChannel = useMemo<AgentWebSocketChannel>(() => ({
+        send: (message: string) => {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(message);
+            }
+        },
+        onMessage: (handler: (data: string) => void) => {
+            wsMessageHandlersRef.current.push(handler);
+        },
+        onClose: (handler: () => void) => {
+            wsCloseHandlersRef.current.push(handler);
+        },
+        close: () => {
+            intentionalCloseRef.current = true;
+            wsRef.current?.close();
+        },
+    }), []);
+
+    // -- Interaction event handler for analytics -----------------
+
+    const handleInteractionEvent = useCallback((event: InteractionEvent) => {
+        console.log('[Plugin] Interaction event:', event.type, event.payload);
+        // Future: send to analytics endpoint
+    }, []);
 
     // -- Scroll to bottom ----------------------------------------
 
@@ -118,29 +180,41 @@ export default function SessionPage() {
 
     // -- WebSocket connection ------------------------------------
 
-    useEffect(() => {
+    const connectWebSocket = useCallback(() => {
         if (!session || session.status !== 'active') return;
 
-        const token = getToken();
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const apiHost = process.env.NEXT_PUBLIC_API_URL
-            ? new URL(process.env.NEXT_PUBLIC_API_URL).host
-            : 'localhost:8080';
-        const wsUrl = `${wsProtocol}//${apiHost}/api/v1/sessions/${sessionId}/stream${
-            token ? '?token=' + token : ''
-        }`;
+        const wsUrl = createWSUrl(sessionId);
+        setWsStatus(reconnectCountRef.current > 0 ? 'reconnecting' : 'connecting');
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
             console.log('[WS] Connected to session', sessionId);
+            setWsStatus('connected');
+            reconnectCountRef.current = 0;
+
+            // Start heartbeat ping interval
+            pingTimerRef.current = setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ event: 'ping', payload: {}, timestamp: Math.floor(Date.now() / 1000) }));
+                }
+            }, WS_PING_INTERVAL);
         };
 
         ws.onmessage = (event) => {
             try {
                 const wsEvent: WSEvent = JSON.parse(event.data);
-                handleWSEvent(wsEvent);
+
+                // Forward raw message to all plugin-registered handlers
+                for (const handler of wsMessageHandlersRef.current) {
+                    handler(event.data);
+                }
+
+                // Also handle in the default chat UI (for fallback mode)
+                if (!matchedPlugin) {
+                    handleWSEvent(wsEvent);
+                }
             } catch (err) {
                 console.error('[WS] Parse error:', err);
             }
@@ -149,20 +223,70 @@ export default function SessionPage() {
         ws.onclose = (event) => {
             console.log('[WS] Disconnected:', event.code, event.reason);
             wsRef.current = null;
+
+            // Notify plugin close handlers
+            for (const handler of wsCloseHandlersRef.current) {
+                handler();
+            }
+
+            // Stop heartbeat
+            if (pingTimerRef.current) {
+                clearInterval(pingTimerRef.current);
+                pingTimerRef.current = null;
+            }
+
+            // Auto-reconnect unless intentionally closed
+            if (!intentionalCloseRef.current && reconnectCountRef.current < WS_RECONNECT_MAX_RETRIES) {
+                const delay = Math.min(
+                    WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectCountRef.current),
+                    WS_RECONNECT_MAX_DELAY
+                );
+                reconnectCountRef.current += 1;
+                setWsStatus('reconnecting');
+                console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectCountRef.current}/${WS_RECONNECT_MAX_RETRIES})`);
+                reconnectTimerRef.current = setTimeout(connectWebSocket, delay);
+            } else {
+                setWsStatus('disconnected');
+                if (reconnectCountRef.current >= WS_RECONNECT_MAX_RETRIES) {
+                    console.warn('[WS] Max reconnect attempts reached');
+                }
+            }
         };
 
         ws.onerror = (err) => {
             console.error('[WS] Error:', err);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session, sessionId, matchedPlugin]);
+
+    useEffect(() => {
+        if (!session || session.status !== 'active') return;
+
+        intentionalCloseRef.current = false;
+        // Clear plugin handlers on reconnect
+        wsMessageHandlersRef.current = [];
+        wsCloseHandlersRef.current = [];
+        connectWebSocket();
 
         return () => {
-            ws.close();
-            wsRef.current = null;
+            intentionalCloseRef.current = true;
+            if (reconnectTimerRef.current) {
+                clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = null;
+            }
+            if (pingTimerRef.current) {
+                clearInterval(pingTimerRef.current);
+                pingTimerRef.current = null;
+            }
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session, sessionId]);
 
-    // -- WebSocket Event Handler ---------------------------------
+    // -- WebSocket Event Handler (default/fallback mode) ---------
 
     const handleWSEvent = useCallback((event: WSEvent) => {
         switch (event.event) {
@@ -245,7 +369,7 @@ export default function SessionPage() {
         }
     }, []);
 
-    // -- Send Message --------------------------------------------
+    // -- Send Message (fallback mode) ----------------------------
 
     const handleSend = useCallback(() => {
         const text = input.trim();
@@ -296,7 +420,7 @@ export default function SessionPage() {
         textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
     }, []);
 
-    // -- Render Scaffold UI (T-4.13) -----------------------------
+    // -- Render Scaffold UI (T-4.13) — fallback mode only --------
 
     const renderScaffold = () => {
         switch (scaffoldLevel) {
@@ -370,6 +494,143 @@ export default function SessionPage() {
         );
     };
 
+    // -- Render Connection Status ---------------------------------
+
+    const renderConnectionStatus = () => {
+        if (wsStatus === 'connected') return null; // Don't show when healthy
+        const labels: Record<WSStatus, string> = {
+            connecting: '连接中...',
+            connected: '已连接',
+            reconnecting: `重连中 (${reconnectCountRef.current}/${WS_RECONNECT_MAX_RETRIES})...`,
+            disconnected: '连接断开',
+        };
+        return (
+            <div className={`${styles.connectionStatus} ${styles[`ws_${wsStatus}`]}`}>
+                <span className={styles.connectionDot} />
+                {labels[wsStatus]}
+            </div>
+        );
+    };
+
+    // -- Default Chat Interface (fallback when no skill renderer) -
+
+    const renderDefaultChat = () => (
+        <>
+            {/* Messages */}
+            <div className={styles.messagesArea}>
+                {messages.length === 0 && !thinkingStatus && (
+                    <div className={styles.messageSystem}>
+                        发送消息开始学习对话
+                    </div>
+                )}
+
+                {messages.map(msg => (
+                    <div
+                        key={msg.id}
+                        className={`${styles.messageBubble} ${
+                            msg.role === 'student' ? styles.messageStudent :
+                            msg.role === 'coach' ? styles.messageCoach :
+                            styles.messageSystem
+                        }`}
+                    >
+                        {msg.role !== 'system' && (
+                            <div className={styles.messageHeader}>
+                                <span className={`${styles.roleIcon} ${
+                                    msg.role === 'student' ? styles.roleStudent : styles.roleCoach
+                                }`}>
+                                    {msg.role === 'student' ? 'S' : 'AI'}
+                                </span>
+                                <span className={styles.roleLabel}>
+                                    {msg.role === 'student' ? '我' : 'AI 导师'}
+                                </span>
+                            </div>
+                        )}
+                        <div className={styles.messageContent}>
+                            {msg.role === 'coach' ? (
+                                <MarkdownRenderer content={msg.content} />
+                            ) : (
+                                msg.content
+                            )}
+                        </div>
+                    </div>
+                ))}
+
+                {/* Streaming content (partial coach response) */}
+                {streamingContent && (
+                    <div className={`${styles.messageBubble} ${styles.messageCoach}`}>
+                        <div className={styles.messageHeader}>
+                            <span className={`${styles.roleIcon} ${styles.roleCoach}`}>AI</span>
+                            <span className={styles.roleLabel}>AI 导师</span>
+                        </div>
+                        <div className={styles.messageContent}>
+                            <MarkdownRenderer content={streamingContent} isStreaming />
+                        </div>
+                    </div>
+                )}
+
+                {/* Agent thinking indicator */}
+                {renderThinking()}
+
+                <div ref={messagesEndRef} />
+            </div>
+
+            {/* Scaffold UI */}
+            {renderScaffold()}
+
+            {/* Input */}
+            <div className={styles.inputArea}>
+                <textarea
+                    ref={inputRef}
+                    className={styles.chatInput}
+                    value={input}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                        session!.status !== 'active'
+                            ? '会话已结束'
+                            : sending
+                            ? 'AI 正在思考...'
+                            : '输入你的想法或问题... (Enter 发送, Shift+Enter 换行)'
+                    }
+                    disabled={session!.status !== 'active' || sending}
+                    rows={1}
+                />
+                <button
+                    className={`btn btn-primary ${styles.sendBtn}`}
+                    onClick={handleSend}
+                    disabled={!input.trim() || sending || session!.status !== 'active'}
+                >
+                    发送
+                </button>
+            </div>
+        </>
+    );
+
+    // -- Render Skill Renderer (plugin mode) ---------------------
+
+    const renderSkillRenderer = () => {
+        if (!matchedPlugin || !session) return null;
+        const RendererComponent = matchedPlugin.Component as unknown as React.FC<SkillRendererProps>;
+        const rendererProps: SkillRendererProps = {
+            studentContext: {
+                studentId: session.student_id,
+                displayName: '', // Not available in session data
+                courseId: 0, // Will be enhanced when API provides this
+                sessionId: session.id,
+            },
+            knowledgePoint: {
+                id: session.current_kp_id,
+                title: '', // Will be enhanced when API provides this
+                difficulty: 0,
+                chapterTitle: '',
+            },
+            scaffoldingLevel: scaffoldLevel,
+            agentChannel,
+            onInteractionEvent: handleInteractionEvent,
+        };
+        return <RendererComponent {...rendererProps} />;
+    };
+
     // -- Loading State -------------------------------------------
 
     if (loading) {
@@ -401,105 +662,23 @@ export default function SessionPage() {
                         </Link>
                         <div className={styles.chatTitle}>AI 学习对话</div>
                     </div>
-                    <div className={`${styles.scaffoldBadge} ${
-                        scaffoldLevel === 'high' ? styles.scaffoldHigh :
-                        scaffoldLevel === 'medium' ? styles.scaffoldMedium :
-                        styles.scaffoldLow
-                    }`}>
-                        {SCAFFOLD_LABELS[scaffoldLevel]}
-                        <span style={{ fontSize: '10px', opacity: 0.7 }}>
-                            &middot; {SCAFFOLD_DESCRIPTIONS[scaffoldLevel]}
-                        </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {renderConnectionStatus()}
+                        <div className={`${styles.scaffoldBadge} ${
+                            scaffoldLevel === 'high' ? styles.scaffoldHigh :
+                            scaffoldLevel === 'medium' ? styles.scaffoldMedium :
+                            styles.scaffoldLow
+                        }`}>
+                            {SCAFFOLD_LABELS[scaffoldLevel]}
+                            <span style={{ fontSize: '10px', opacity: 0.7 }}>
+                                &middot; {SCAFFOLD_DESCRIPTIONS[scaffoldLevel]}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                {/* Messages */}
-                <div className={styles.messagesArea}>
-                    {messages.length === 0 && !thinkingStatus && (
-                        <div className={styles.messageSystem}>
-                            发送消息开始学习对话
-                        </div>
-                    )}
-
-                    {messages.map(msg => (
-                        <div
-                            key={msg.id}
-                            className={`${styles.messageBubble} ${
-                                msg.role === 'student' ? styles.messageStudent :
-                                msg.role === 'coach' ? styles.messageCoach :
-                                styles.messageSystem
-                            }`}
-                        >
-                            {msg.role !== 'system' && (
-                                <div className={styles.messageHeader}>
-                                    <span className={`${styles.roleIcon} ${
-                                        msg.role === 'student' ? styles.roleStudent : styles.roleCoach
-                                    }`}>
-                                        {msg.role === 'student' ? 'S' : 'AI'}
-                                    </span>
-                                    <span className={styles.roleLabel}>
-                                        {msg.role === 'student' ? '我' : 'AI 导师'}
-                                    </span>
-                                </div>
-                            )}
-                            <div className={styles.messageContent}>
-                                {msg.role === 'coach' ? (
-                                    <MarkdownRenderer content={msg.content} />
-                                ) : (
-                                    msg.content
-                                )}
-                            </div>
-                        </div>
-                    ))}
-
-                    {/* Streaming content (partial coach response) */}
-                    {streamingContent && (
-                        <div className={`${styles.messageBubble} ${styles.messageCoach}`}>
-                            <div className={styles.messageHeader}>
-                                <span className={`${styles.roleIcon} ${styles.roleCoach}`}>AI</span>
-                                <span className={styles.roleLabel}>AI 导师</span>
-                            </div>
-                            <div className={styles.messageContent}>
-                                <MarkdownRenderer content={streamingContent} isStreaming />
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Agent thinking indicator */}
-                    {renderThinking()}
-
-                    <div ref={messagesEndRef} />
-                </div>
-
-                {/* Scaffold UI */}
-                {renderScaffold()}
-
-                {/* Input */}
-                <div className={styles.inputArea}>
-                    <textarea
-                        ref={inputRef}
-                        className={styles.chatInput}
-                        value={input}
-                        onChange={handleInputChange}
-                        onKeyDown={handleKeyDown}
-                        placeholder={
-                            session.status !== 'active'
-                                ? '会话已结束'
-                                : sending
-                                ? 'AI 正在思考...'
-                                : '输入你的想法或问题... (Enter 发送, Shift+Enter 换行)'
-                        }
-                        disabled={session.status !== 'active' || sending}
-                        rows={1}
-                    />
-                    <button
-                        className={`btn btn-primary ${styles.sendBtn}`}
-                        onClick={handleSend}
-                        disabled={!input.trim() || sending || session.status !== 'active'}
-                    >
-                        发送
-                    </button>
-                </div>
+                {/* Skill Renderer or Default Chat */}
+                {matchedPlugin ? renderSkillRenderer() : renderDefaultChat()}
             </div>
         </div>
     );

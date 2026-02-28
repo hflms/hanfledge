@@ -201,7 +201,33 @@ export async function getDocuments(courseId: number): Promise<Document[]> {
   return apiFetch<Document[]>(`/courses/${courseId}/documents`);
 }
 
+export async function deleteDocument(courseId: number, docId: number): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/courses/${courseId}/documents/${docId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function retryDocument(courseId: number, docId: number): Promise<{
+  message: string;
+  document: Document;
+  page_count: number;
+}> {
+  return apiFetch(`/courses/${courseId}/documents/${docId}/retry`, {
+    method: 'POST',
+  });
+}
+
 // ── Skill API ───────────────────────────────────────────────
+
+export interface SkillToolConfig {
+  enabled: boolean;
+  description: string;
+}
+
+export interface SkillProgressiveTriggers {
+  activate_when?: string;
+  deactivate_when?: string;
+}
 
 export interface SkillMetadata {
   id: string;
@@ -214,6 +240,8 @@ export interface SkillMetadata {
   tags: string[];
   scaffolding_levels: string[];
   constraints: Record<string, unknown>;
+  tools?: Record<string, SkillToolConfig>;
+  progressive_triggers?: SkillProgressiveTriggers;
   evaluation_dimensions?: string[];
 }
 
@@ -425,6 +453,149 @@ export async function listTeacherActivities(courseId?: number): Promise<Learning
   return apiFetch<LearningActivity[]>(`/activities${qs ? '?' + qs : ''}`);
 }
 
+// ── Analytics V2 API — Phase G ──────────────────────────────
+
+export interface InquiryTreeNode {
+  id: number;
+  role: string;
+  content: string;
+  skill_id?: string;
+  depth: number;
+  turn_type: string;
+  time: string;
+  children?: InquiryTreeNode[];
+}
+
+export interface InquiryTreeResponse {
+  session_id: number;
+  student_name: string;
+  total_turns: number;
+  max_depth: number;
+  skill_used: string;
+  roots: InquiryTreeNode[];
+}
+
+export interface InteractionLogEntry {
+  id: number;
+  role: string;
+  content: string;
+  skill_id?: string;
+  tokens_used: number;
+  created_at: string;
+  faithfulness_score?: number;
+  actionability_score?: number;
+  answer_restraint_score?: number;
+  eval_status: string;
+}
+
+export interface InteractionLogResponse {
+  session_id: number;
+  student_name: string;
+  active_skill: string;
+  scaffold_level: string;
+  status: string;
+  started_at: string;
+  ended_at?: string;
+  interactions: InteractionLogEntry[];
+}
+
+export interface SkillEffectivenessItem {
+  skill_id: string;
+  session_count: number;
+  interaction_count: number;
+  evaluated_count: number;
+  avg_faithfulness: number;
+  avg_actionability: number;
+  avg_answer_restraint: number;
+  avg_context_precision: number;
+  avg_context_recall: number;
+  avg_mastery_delta: number;
+}
+
+export interface SkillEffectivenessResponse {
+  course_id: number;
+  course_title: string;
+  items: SkillEffectivenessItem[];
+}
+
+export async function getInquiryTree(sessionId: number): Promise<InquiryTreeResponse> {
+  return apiFetch<InquiryTreeResponse>(`/sessions/${sessionId}/inquiry-tree`);
+}
+
+export async function getInteractionLog(sessionId: number): Promise<InteractionLogResponse> {
+  return apiFetch<InteractionLogResponse>(`/sessions/${sessionId}/interactions`);
+}
+
+export async function getSkillEffectiveness(courseId: number): Promise<SkillEffectivenessResponse> {
+  return apiFetch<SkillEffectivenessResponse>(`/dashboard/skill-effectiveness?course_id=${courseId}`);
+}
+
+// ── Student Knowledge Map API ───────────────────────────────
+
+export interface KnowledgeMapNode {
+  id: number;
+  neo4j_id: string;
+  title: string;
+  chapter_id: number;
+  chapter_title: string;
+  difficulty: number;
+  is_key_point: boolean;
+  mastery: number;        // 0.0~1.0, -1 = no data
+  attempt_count: number;
+}
+
+export interface KnowledgeMapEdge {
+  source: string;  // neo4j id
+  target: string;  // neo4j id
+  type: string;    // "REQUIRES" | "RELATES_TO"
+}
+
+export interface KnowledgeMapData {
+  course_id: number;
+  course_title: string;
+  nodes: KnowledgeMapNode[];
+  edges: KnowledgeMapEdge[];
+  avg_mastery: number;
+  mastered_count: number;
+  weak_count: number;
+}
+
+export async function getStudentKnowledgeMap(courseId: number): Promise<KnowledgeMapData> {
+  return apiFetch<KnowledgeMapData>(`/student/knowledge-map?course_id=${courseId}`);
+}
+
+// ── Error Notebook API ─────────────────────────────────────
+
+export interface ErrorNotebookItem {
+  id: number;
+  kp_id: number;
+  kp_title: string;
+  chapter_title: string;
+  session_id: number;
+  student_input: string;
+  coach_guidance: string;
+  error_type: string;
+  mastery_at_error: number;
+  resolved: boolean;
+  resolved_at?: string;
+  archived_at: string;
+}
+
+export interface ErrorNotebookData {
+  items: ErrorNotebookItem[];
+  total_count: number;
+  unresolved_count: number;
+  resolved_count: number;
+}
+
+export async function getErrorNotebook(opts?: { resolved?: boolean; kpId?: number }): Promise<ErrorNotebookData> {
+  const params = new URLSearchParams();
+  if (opts?.resolved !== undefined) params.set('resolved', String(opts.resolved));
+  if (opts?.kpId !== undefined) params.set('kp_id', String(opts.kpId));
+  const qs = params.toString();
+  return apiFetch<ErrorNotebookData>(`/student/error-notebook${qs ? '?' + qs : ''}`);
+}
+
 // ── WebSocket Helpers ───────────────────────────────────────
 
 export interface WSEvent {
@@ -437,4 +608,68 @@ export function createWSUrl(sessionId: number): string {
   const base = API_BASE.replace(/^http/, 'ws');
   const token = getToken();
   return `${base}/sessions/${sessionId}/stream${token ? '?token=' + token : ''}`;
+}
+
+// ── Data Export API ─────────────────────────────────────────
+
+/**
+ * Triggers a CSV file download by fetching an export endpoint.
+ * The response is a CSV blob; this function creates a temporary
+ * download link and clicks it programmatically.
+ */
+async function downloadCSV(path: string, fallbackFilename: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+    throw new Error('认证已过期，请重新登录');
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `导出失败 (${res.status})`);
+  }
+
+  // Extract filename from Content-Disposition if available
+  const disposition = res.headers.get('Content-Disposition');
+  let filename = fallbackFilename;
+  if (disposition) {
+    const match = disposition.match(/filename=(.+)/);
+    if (match) filename = match[1];
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function exportActivitySessions(activityId: number): Promise<void> {
+  return downloadCSV(`/export/activities/${activityId}/sessions`, `sessions_${activityId}.csv`);
+}
+
+export async function exportClassMastery(courseId: number): Promise<void> {
+  return downloadCSV(`/export/courses/${courseId}/mastery`, `mastery_${courseId}.csv`);
+}
+
+export async function exportErrorNotebookCSV(courseId: number): Promise<void> {
+  return downloadCSV(`/export/courses/${courseId}/error-notebook`, `error_notebook_${courseId}.csv`);
+}
+
+export async function exportInteractionLog(sessionId: number): Promise<void> {
+  return downloadCSV(`/export/sessions/${sessionId}/interactions`, `interactions_${sessionId}.csv`);
 }

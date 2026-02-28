@@ -54,6 +54,48 @@ type KnowledgePoint struct {
 	Difficulty  float64 `gorm:"default:0.5" json:"difficulty"`
 	IsKeyPoint  bool    `gorm:"default:false" json:"is_key_point"`
 
-	Chapter       Chapter        `gorm:"foreignKey:ChapterID" json:"-"`
-	MountedSkills []KPSkillMount `gorm:"foreignKey:KPID" json:"mounted_skills,omitempty"`
+	Chapter        Chapter         `gorm:"foreignKey:ChapterID" json:"-"`
+	MountedSkills  []KPSkillMount  `gorm:"foreignKey:KPID" json:"mounted_skills,omitempty"`
+	Misconceptions []Misconception `gorm:"foreignKey:KPID" json:"misconceptions,omitempty"`
+}
+
+// ── Misconception (常见误区) ────────────────────────────────
+
+// TrapType 误区类型枚举。
+type TrapType string
+
+const (
+	TrapTypeConceptual TrapType = "conceptual" // 概念性误解
+	TrapTypeProcedural TrapType = "procedural" // 操作性错误
+	TrapTypeIntuit     TrapType = "intuitive"  // 直觉性偏差
+	TrapTypeTransfer   TrapType = "transfer"   // 迁移性混淆（跨知识点概念混淆）
+)
+
+// Misconception 常见误区/认知陷阱表（同步存在于 PostgreSQL 和 Neo4j）。
+// Neo4j 关系: (KnowledgePoint)-[:HAS_TRAP]->(Misconception)
+type Misconception struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	KPID        uint      `gorm:"not null;index" json:"kp_id"`
+	Neo4jNodeID string    `gorm:"size:50;index" json:"neo4j_node_id"`
+	Description string    `gorm:"type:text;not null" json:"description"`
+	TrapType    TrapType  `gorm:"size:20;not null;default:conceptual" json:"trap_type"`
+	Severity    float64   `gorm:"default:0.5" json:"severity"` // 严重度 [0,1]，越高越常见/危害越大
+	CreatedAt   time.Time `json:"created_at"`
+
+	KnowledgePoint KnowledgePoint `gorm:"foreignKey:KPID" json:"-"`
+}
+
+// ── Cross-Disciplinary Link (跨学科联结) ────────────────────
+
+// CrossLink 跨学科联结表（记录 Neo4j 中 RELATES_TO 关系的 PG 镜像）。
+type CrossLink struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	FromKPID  uint      `gorm:"not null;index" json:"from_kp_id"`
+	ToKPID    uint      `gorm:"not null;index" json:"to_kp_id"`
+	LinkType  string    `gorm:"size:50;not null;default:analogy" json:"link_type"` // analogy | shared_model | application
+	Weight    float64   `gorm:"default:1.0" json:"weight"`                         // 关联强度 [0,1]
+	CreatedAt time.Time `json:"created_at"`
+
+	FromKP KnowledgePoint `gorm:"foreignKey:FromKPID" json:"-"`
+	ToKP   KnowledgePoint `gorm:"foreignKey:ToKPID" json:"-"`
 }

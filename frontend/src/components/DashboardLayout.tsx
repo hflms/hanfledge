@@ -4,6 +4,7 @@ import { useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { getMe, clearToken, type User } from '@/lib/api';
+import { PluginRegistryProvider } from '@/lib/plugin/PluginRegistry';
 import styles from './DashboardLayout.module.css';
 
 interface NavItem {
@@ -21,6 +22,8 @@ const TEACHER_NAV: NavItem[] = [
 const STUDENT_NAV: NavItem[] = [
     { icon: '📋', label: '学习活动', href: '/student/activities' },
     { icon: '📈', label: '我的掌握度', href: '/student/mastery' },
+    { icon: '🗺️', label: '知识图谱', href: '/student/knowledge-map' },
+    { icon: '📝', label: '错题本', href: '/student/error-notebook' },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -70,52 +73,54 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
     }
 
     return (
-        <div className={styles.layoutWrapper}>
-            {/* Sidebar */}
-            <aside className={styles.sidebar}>
-                <div className={styles.sidebarBrand}>
-                    <div className={styles.brandIcon}>🎓</div>
-                    <div className={styles.brandName}>Hanfledge</div>
-                </div>
-
-                <nav className={styles.sidebarNav}>
-                    <div className={styles.navSection}>
-                        <div className={styles.navLabel}>{sectionLabel}</div>
-                        {navItems.map(item => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`${styles.navItem} ${pathname.startsWith(item.href) ? styles.navItemActive : ''}`}
-                            >
-                                <span className={styles.navItemIcon}>{item.icon}</span>
-                                {item.label}
-                            </Link>
-                        ))}
+        <PluginRegistryProvider>
+            <div className={styles.layoutWrapper}>
+                {/* Sidebar */}
+                <aside className={styles.sidebar}>
+                    <div className={styles.sidebarBrand}>
+                        <div className={styles.brandIcon}>🎓</div>
+                        <div className={styles.brandName}>Hanfledge</div>
                     </div>
-                </nav>
-            </aside>
 
-            {/* Main */}
-            <div className={styles.mainArea}>
-                <header className={styles.header}>
-                    <div className={styles.headerTitle}>
-                        {navItems.find(n => pathname.startsWith(n.href))?.label || 'Hanfledge'}
-                    </div>
-                    <div className={styles.headerRight}>
-                        <div className={styles.userInfo}>
-                            <span className={styles.userName}>{user.display_name}</span>
-                            <span className={styles.userRole}>{ROLE_LABELS[primaryRole] || primaryRole}</span>
+                    <nav className={styles.sidebarNav}>
+                        <div className={styles.navSection}>
+                            <div className={styles.navLabel}>{sectionLabel}</div>
+                            {navItems.map(item => (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={`${styles.navItem} ${pathname.startsWith(item.href) ? styles.navItemActive : ''}`}
+                                >
+                                    <span className={styles.navItemIcon}>{item.icon}</span>
+                                    {item.label}
+                                </Link>
+                            ))}
                         </div>
-                        <button className={styles.logoutBtn} onClick={handleLogout}>
-                            退出
-                        </button>
-                    </div>
-                </header>
+                    </nav>
+                </aside>
 
-                <main className={styles.content}>
-                    {children}
-                </main>
+                {/* Main */}
+                <div className={styles.mainArea}>
+                    <header className={styles.header}>
+                        <div className={styles.headerTitle}>
+                            {navItems.find(n => pathname.startsWith(n.href))?.label || 'Hanfledge'}
+                        </div>
+                        <div className={styles.headerRight}>
+                            <div className={styles.userInfo}>
+                                <span className={styles.userName}>{user.display_name}</span>
+                                <span className={styles.userRole}>{ROLE_LABELS[primaryRole] || primaryRole}</span>
+                            </div>
+                            <button className={styles.logoutBtn} onClick={handleLogout}>
+                                退出
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className={styles.content}>
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+        </PluginRegistryProvider>
     );
 }

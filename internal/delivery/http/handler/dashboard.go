@@ -426,3 +426,118 @@ func (h *DashboardHandler) GetSelfMastery(c *gin.Context) {
 	c.Params = append(c.Params, gin.Param{Key: "id", Value: strconv.FormatUint(uint64(studentID), 10)})
 	h.GetStudentMastery(c)
 }
+
+// -- Error Notebook (错题本) --------------------------------
+
+// ErrorNotebookItem 错题本列表条目。
+type ErrorNotebookItem struct {
+	ID             uint       `json:"id"`
+	KPID           uint       `json:"kp_id"`
+	KPTitle        string     `json:"kp_title"`
+	ChapterTitle   string     `json:"chapter_title"`
+	SessionID      uint       `json:"session_id"`
+	StudentInput   string     `json:"student_input"`
+	CoachGuidance  string     `json:"coach_guidance"`
+	ErrorType      string     `json:"error_type"`
+	MasteryAtError float64    `json:"mastery_at_error"`
+	Resolved       bool       `json:"resolved"`
+	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
+	ArchivedAt     time.Time  `json:"archived_at"`
+}
+
+// ErrorNotebookResponse 错题本列表响应。
+type ErrorNotebookResponse struct {
+	Items         []ErrorNotebookItem `json:"items"`
+	TotalCount    int64               `json:"total_count"`
+	UnresolvedCnt int64               `json:"unresolved_count"`
+	ResolvedCnt   int64               `json:"resolved_count"`
+}
+
+// GetErrorNotebook returns the error notebook entries for the authenticated student.
+// GET /api/v1/student/error-notebook?resolved=false&kp_id=1
+func (h *DashboardHandler) GetErrorNotebook(c *gin.Context) {
+	studentID := middleware.GetUserID(c)
+
+	query := h.DB.Where("student_id = ?", studentID)
+
+	// Optional filter: resolved status
+	if resolvedStr := c.Query("resolved"); resolvedStr != "" {
+		if resolvedStr == "true" {
+			query = query.Where("resolved = ?", true)
+		} else if resolvedStr == "false" {
+			query = query.Where("resolved = ?", false)
+		}
+	}
+
+	// Optional filter: specific KP
+	if kpIDStr := c.Query("kp_id"); kpIDStr != "" {
+		kpID, err := strconv.ParseUint(kpIDStr, 10, 64)
+		if err == nil {
+			query = query.Where("kp_id = ?", kpID)
+		}
+	}
+
+	var entries []model.ErrorNotebookEntry
+	if err := query.Order("archived_at DESC").Find(&entries).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询错题本失败"})
+		return
+	}
+
+	// Count totals for the student
+	var totalCount, unresolvedCnt, resolvedCnt int64
+	h.DB.Model(&model.ErrorNotebookEntry{}).Where("student_id = ?", studentID).Count(&totalCount)
+	h.DB.Model(&model.ErrorNotebookEntry{}).Where("student_id = ? AND resolved = ?", studentID, false).Count(&unresolvedCnt)
+	resolvedCnt = totalCount - unresolvedCnt
+
+	// Enrich with KP and chapter titles
+	kpIDs := make([]uint, 0, len(entries))
+	for _, e := range entries {
+		kpIDs = append(kpIDs, e.KPID)
+	}
+
+	kpTitleMap := make(map[uint]string)
+	chapterTitleMap := make(map[uint]string)
+	if len(kpIDs) > 0 {
+		var kps []struct {
+			ID           uint   `gorm:"column:id"`
+			Title        string `gorm:"column:title"`
+			ChapterTitle string `gorm:"column:chapter_title"`
+		}
+		h.DB.Raw(`
+			SELECT kp.id, kp.title, c.title AS chapter_title
+			FROM knowledge_points kp
+			JOIN chapters c ON c.id = kp.chapter_id
+			WHERE kp.id IN ?
+		`, kpIDs).Scan(&kps)
+
+		for _, kp := range kps {
+			kpTitleMap[kp.ID] = kp.Title
+			chapterTitleMap[kp.ID] = kp.ChapterTitle
+		}
+	}
+
+	items := make([]ErrorNotebookItem, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, ErrorNotebookItem{
+			ID:             e.ID,
+			KPID:           e.KPID,
+			KPTitle:        kpTitleMap[e.KPID],
+			ChapterTitle:   chapterTitleMap[e.KPID],
+			SessionID:      e.SessionID,
+			StudentInput:   e.StudentInput,
+			CoachGuidance:  e.CoachGuidance,
+			ErrorType:      e.ErrorType,
+			MasteryAtError: e.MasteryAtError,
+			Resolved:       e.Resolved,
+			ResolvedAt:     e.ResolvedAt,
+			ArchivedAt:     e.ArchivedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, ErrorNotebookResponse{
+		Items:         items,
+		TotalCount:    totalCount,
+		UnresolvedCnt: unresolvedCnt,
+		ResolvedCnt:   resolvedCnt,
+	})
+}

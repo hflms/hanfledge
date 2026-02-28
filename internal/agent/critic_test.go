@@ -178,6 +178,72 @@ func TestParseCriticResponse(t *testing.T) {
 	}
 }
 
+// ── parseCriticResponse Safety Score Tests ──────────────────
+
+func TestParseCriticResponse_SafetyScore(t *testing.T) {
+	tests := []struct {
+		name        string
+		response    string
+		safetyScore float64
+	}{
+		{
+			"安全分数正常",
+			`{"leakage_score": 0.1, "depth_score": 0.8, "safety_score": 0.95, "approved": true, "feedback": "安全"}`,
+			0.95,
+		},
+		{
+			"安全分数低",
+			`{"leakage_score": 0.1, "depth_score": 0.8, "safety_score": 0.3, "approved": false, "feedback": "不安全"}`,
+			0.3,
+		},
+		{
+			"安全分数未提供默认为0",
+			`{"leakage_score": 0.1, "depth_score": 0.8, "approved": true, "feedback": "无safety字段"}`,
+			0.0,
+		},
+		{
+			"安全分数超范围被clamp",
+			`{"leakage_score": 0.1, "depth_score": 0.8, "safety_score": 1.5, "approved": true, "feedback": "超范围"}`,
+			1.0,
+		},
+		{
+			"安全分数负值被clamp",
+			`{"leakage_score": 0.1, "depth_score": 0.8, "safety_score": -0.5, "approved": true, "feedback": "负值"}`,
+			0.0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := parseCriticResponse(tc.response, 1)
+			if err != nil {
+				t.Fatalf("parseCriticResponse() error: %v", err)
+			}
+			if math.Abs(result.SafetyScore-tc.safetyScore) > 0.001 {
+				t.Errorf("SafetyScore = %f, want %f", result.SafetyScore, tc.safetyScore)
+			}
+		})
+	}
+}
+
+// TestParseCriticResponse_FailClosed verifies fail-closed behavior:
+// when parsing fails, the orchestrator receives an error (which triggers rejection).
+func TestParseCriticResponse_FailClosed(t *testing.T) {
+	invalidResponses := []string{
+		"这不是JSON",
+		"",
+		"[1,2,3]",
+		"{invalid json}",
+	}
+
+	for _, response := range invalidResponses {
+		_, err := parseCriticResponse(response, 1)
+		if err == nil {
+			t.Errorf("parseCriticResponse(%q) should return error for fail-closed behavior", response)
+		}
+	}
+}
+
 // ── buildReviewPrompt Tests ─────────────────────────────────
 
 func TestBuildReviewPrompt(t *testing.T) {

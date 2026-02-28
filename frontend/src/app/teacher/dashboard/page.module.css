@@ -275,3 +275,85 @@
     background: rgba(225, 112, 85, 0.15);
     color: var(--danger);
 }
+
+/* -- Skill Effectiveness Section ---------------------- */
+
+.skillEffectivenessSection {
+    margin-bottom: 32px;
+}
+
+/* -- Analysis Button ---------------------------------- */
+
+.analysisBtn {
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: var(--font-sans);
+    white-space: nowrap;
+}
+
+.analysisBtn:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* -- Export Buttons ------------------------------------------ */
+
+.exportGroup {
+    display: flex;
+    gap: 8px;
+}
+
+.exportBtn {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--success);
+    background: transparent;
+    border: 1px solid var(--success);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: var(--font-sans);
+    white-space: nowrap;
+}
+
+.exportBtn:hover:not(:disabled) {
+    background: var(--success);
+    color: #fff;
+}
+
+.exportBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.exportSmallBtn {
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: var(--font-sans);
+    margin-left: 6px;
+}
+
+.exportSmallBtn:hover:not(:disabled) {
+    border-color: var(--success);
+    color: var(--success);
+}
+
+.exportSmallBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
