@@ -266,6 +266,13 @@ func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMateria
 		systemContent += rolePlayCtx
 	}
 
+	// 自动出题技能: 注入出题状态上下文 (§7.13)
+	if isQuizActive(skillID) {
+		state := a.loadQuizState(tc.SessionID)
+		quizCtx := buildQuizContext(state)
+		systemContent += quizCtx
+	}
+
 	// 交错思考 (Interleaved Thinking) — 强制 <reasoning> 块 (§8.2.3)
 	systemContent += "\n" + cotReasoningDirective
 
@@ -642,4 +649,157 @@ func rolePlayActiveLabel(active bool) string {
 		return "沉浸中"
 	}
 	return "已退出"
+}
+
+// ── Quiz Generation Session State (§7.13) ───────────────────
+
+// quizIDs lists all valid skill IDs for the quiz-generation skill.
+var quizIDs = map[string]bool{
+	"general_assessment_quiz": true,
+	"quiz-generation":         true, // backward compat
+}
+
+// isQuizActive 判断当前技能是否为自动出题。
+func isQuizActive(skillID string) bool {
+	return quizIDs[skillID]
+}
+
+// loadQuizState 从 StudentSession.SkillState 加载自动出题会话状态。
+// 如果不存在或解析失败，返回初始状态。
+func (a *CoachAgent) loadQuizState(sessionID uint) QuizSessionState {
+	var session model.StudentSession
+	if err := a.db.Select("skill_state").First(&session, sessionID).Error; err != nil {
+		log.Printf("⚠️  [Coach] Load quiz state session=%d failed: %v", sessionID, err)
+		return defaultQuizState()
+	}
+
+	if session.SkillState == nil || *session.SkillState == "" || *session.SkillState == "null" {
+		return defaultQuizState()
+	}
+
+	var state QuizSessionState
+	if err := json.Unmarshal([]byte(*session.SkillState), &state); err != nil {
+		log.Printf("⚠️  [Coach] Parse quiz state session=%d failed: %v", sessionID, err)
+		return defaultQuizState()
+	}
+
+	return state
+}
+
+// saveQuizState 将自动出题会话状态保存到 StudentSession.SkillState。
+func (a *CoachAgent) saveQuizState(sessionID uint, state QuizSessionState) {
+	data, err := json.Marshal(state)
+	if err != nil {
+		log.Printf("⚠️  [Coach] Marshal quiz state failed: %v", err)
+		return
+	}
+	stateStr := string(data)
+	if err := a.db.Model(&model.StudentSession{}).Where("id = ?", sessionID).
+		Update("skill_state", stateStr).Error; err != nil {
+		log.Printf("⚠️  [Coach] Save quiz state session=%d failed: %v", sessionID, err)
+	}
+}
+
+// defaultQuizState 返回自动出题的初始会话状态。
+func defaultQuizState() QuizSessionState {
+	return QuizSessionState{
+		Phase:       QuizPhaseGenerating,
+		BatchCount:  0,
+		MaxPerBatch: 5, // 来自 metadata.json constraints.max_questions_per_batch
+	}
+}
+
+// buildQuizContext 构建自动出题技能的额外系统上下文。
+// 告知 LLM 当前的出题进度和阶段，使 LLM 能够正确推进流程。
+func buildQuizContext(state QuizSessionState) string {
+	var sb strings.Builder
+	sb.WriteString("\n【自动出题会话状态】\n")
+	sb.WriteString(fmt.Sprintf("- 当前阶段: %s\n", quizPhaseLabel(state.Phase)))
+	sb.WriteString(fmt.Sprintf("- 已生成批次: %d\n", state.BatchCount))
+	sb.WriteString(fmt.Sprintf("- 累计题目数: %d\n", state.TotalQuestions))
+	sb.WriteString(fmt.Sprintf("- 累计答对数: %d\n", state.CorrectCount))
+	if state.TotalQuestions > 0 {
+		accuracy := float64(state.CorrectCount) / float64(state.TotalQuestions) * 100
+		sb.WriteString(fmt.Sprintf("- 正确率: %.0f%%\n", accuracy))
+	}
+
+	// 阶段指令
+	switch state.Phase {
+	case QuizPhaseGenerating:
+		sb.WriteString(fmt.Sprintf("\n指令：请根据当前知识点和学生掌握度，生成一批题目（最多 %d 道）。\n", state.MaxPerBatch))
+		sb.WriteString("题目必须以 <quiz>JSON</quiz> 格式输出，包含 mcq_single、mcq_multiple 或 fill_blank 类型。\n")
+		sb.WriteString("在 JSON 之前，可以简短地介绍本次测验的主题。\n")
+	case QuizPhaseAnswering:
+		sb.WriteString("\n指令：学生正在作答。等待学生提交答案。\n")
+		sb.WriteString("如果学生提问或请求提示，根据支架等级给予适当引导，但不要透露答案。\n")
+	case QuizPhaseGrading:
+		sb.WriteString("\n指令：请根据学生提交的答案逐题批改。\n")
+		sb.WriteString("对每道题标注正误，对错误的题目解释原因，对正确的给予肯定。\n")
+		sb.WriteString("最后汇总得分并给出学习建议。\n")
+	case QuizPhaseReviewing:
+		sb.WriteString("\n指令：批改已完成。如果学生要求继续出题，可以生成新一批题目。\n")
+		sb.WriteString("如果学生有疑问，详细解答。\n")
+	}
+
+	return sb.String()
+}
+
+// quizPhaseLabel 将阶段枚举转换为中文标签。
+func quizPhaseLabel(phase QuizPhase) string {
+	switch phase {
+	case QuizPhaseGenerating:
+		return "生成题目"
+	case QuizPhaseAnswering:
+		return "等待作答"
+	case QuizPhaseGrading:
+		return "批改中"
+	case QuizPhaseReviewing:
+		return "查看结果"
+	default:
+		return string(phase)
+	}
+}
+
+// AdvanceQuizPhase 根据交互结果推进自动出题的阶段状态。
+// 在 orchestrator 的 HandleTurn 完成后调用。
+//
+// 状态转换:
+//
+//	generating → answering  (Coach 输出含题目的回复后)
+//	answering  → grading    (学生提交答案后)
+//	grading    → reviewing  (批改完成后)
+//	reviewing  → generating (学生请求继续出题)
+func (a *CoachAgent) AdvanceQuizPhase(sessionID uint, questionsGenerated int, correctAnswers int) {
+	state := a.loadQuizState(sessionID)
+
+	switch state.Phase {
+	case QuizPhaseGenerating:
+		// Coach 输出了题目 → 进入等待作答
+		if questionsGenerated > 0 {
+			state.BatchCount++
+			state.TotalQuestions += questionsGenerated
+			state.Phase = QuizPhaseAnswering
+			log.Printf("📝 [Quiz] Session=%d: %d questions generated (batch %d), awaiting answers",
+				sessionID, questionsGenerated, state.BatchCount)
+		}
+
+	case QuizPhaseAnswering:
+		// 学生提交答案 → 进入批改
+		state.Phase = QuizPhaseGrading
+		log.Printf("📝 [Quiz] Session=%d: student submitted answers, grading", sessionID)
+
+	case QuizPhaseGrading:
+		// 批改完成 → 进入查看结果
+		state.CorrectCount += correctAnswers
+		state.Phase = QuizPhaseReviewing
+		log.Printf("📝 [Quiz] Session=%d: grading complete, %d correct (total %d/%d)",
+			sessionID, correctAnswers, state.CorrectCount, state.TotalQuestions)
+
+	case QuizPhaseReviewing:
+		// 学生请求继续 → 回到生成阶段
+		state.Phase = QuizPhaseGenerating
+		log.Printf("📝 [Quiz] Session=%d: student requests more questions", sessionID)
+	}
+
+	a.saveQuizState(sessionID, state)
 }

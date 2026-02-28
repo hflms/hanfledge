@@ -1,0 +1,35 @@
+{
+  "id": "general_assessment_quiz",
+  "name": "自动出题",
+  "description": "AI 根据知识点自动生成选择题(MCQ)和填空题，通过即时测评帮助学生检验理解程度。支持单选、多选、填空三种题型，自动批改并提供详细解析。",
+  "version": "1.0.0",
+  "author": "system",
+  "category": "assessment",
+  "subjects": ["math", "physics", "chemistry", "biology", "chinese", "english", "history", "geography"],
+  "tags": ["自动出题", "即时测评", "选择题", "填空题", "知识检测"],
+  "scaffolding_levels": ["high", "medium", "low"],
+  "constraints": {
+    "must_match_knowledge_point": true,
+    "must_provide_explanation": true,
+    "max_questions_per_batch": 5,
+    "difficulty_adapts_to_mastery": true,
+    "distractors_must_be_plausible": true,
+    "never_repeat_identical_question": true
+  },
+  "tools": {
+    "leveler": {
+      "enabled": true,
+      "description": "根据学生掌握度动态调整题目难度"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "mastery_score >= 0.3",
+    "deactivate_when": "mastery_score >= 0.95"
+  },
+  "evaluation_dimensions": [
+    "question_relevance",
+    "distractor_quality",
+    "difficulty_calibration",
+    "explanation_clarity"
+  ]
+}

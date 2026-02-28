@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
@@ -163,6 +164,9 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 
 	// ── Stage 6.6: 角色扮演状态更新 ──
 	o.updateRolePlayStateIfActive(tc, finalResponse)
+
+	// ── Stage 6.7: 自动出题阶段推进 (§7.13) ──
+	o.advanceQuizPhaseIfActive(tc, finalResponse)
 
 	// ── Stage 7: 错题本自动归档 (§5.2 Step 3, item 3) ───
 	o.archiveErrorIfIncorrect(tc, finalResponse)
@@ -659,6 +663,67 @@ func (o *AgentOrchestrator) updateRolePlayStateIfActive(tc *TurnContext, respons
 	// 如果角色已选定，仅记录日志
 	log.Printf("🎭 [RolePlay] Session=%d: character=%s, scenario_switches=%d/%d, active=%v",
 		tc.SessionID, state.CharacterName, state.ScenarioSwitches, state.MaxSwitches, state.Active)
+}
+
+// ── Quiz Phase Management (§7.13) ──────────────────────────
+
+// advanceQuizPhaseIfActive 当活跃技能为自动出题时，推进会话阶段。
+// 使用启发式方法从回复内容推断阶段转换:
+//   - Coach 回复中包含 <quiz> 标签 → 生成了题目，转入 answering
+//   - 学生提交答案后 → 转入 grading
+//   - 批改完成后 → 转入 reviewing
+func (o *AgentOrchestrator) advanceQuizPhaseIfActive(tc *TurnContext, response *DraftResponse) {
+	if response == nil || !isQuizActive(response.SkillID) {
+		return
+	}
+
+	state := o.coach.loadQuizState(tc.SessionID)
+
+	switch state.Phase {
+	case QuizPhaseGenerating:
+		// 检查回复中是否包含 <quiz> 标签（题目已生成）
+		if strings.Contains(response.Content, "<quiz>") {
+			// 计算生成的题目数（简单统计 "id" 出现次数）
+			questionCount := strings.Count(response.Content, `"type"`)
+			if questionCount == 0 {
+				questionCount = 1
+			}
+			o.coach.AdvanceQuizPhase(tc.SessionID, questionCount, 0)
+
+			// 发送题目数据到前端
+			if tc.OnScaffold != nil {
+				tc.OnScaffold("quiz_questions", map[string]interface{}{
+					"batch":          state.BatchCount + 1,
+					"question_count": questionCount,
+				})
+			}
+		}
+
+	case QuizPhaseAnswering:
+		// 学生已提交答案 → 推进到批改
+		o.coach.AdvanceQuizPhase(tc.SessionID, 0, 0)
+
+	case QuizPhaseGrading:
+		// 批改完成 → 推进到查看结果
+		// 从 Critic 审查推断正确数（粗略）
+		correctCount := 0
+		if tc.Review != nil && tc.Review.DepthScore >= 0.5 {
+			correctCount = 1 // 简化: 细粒度计数需要解析题目结果 JSON
+		}
+		o.coach.AdvanceQuizPhase(tc.SessionID, 0, correctCount)
+
+		// 发送批改结果到前端
+		if tc.OnScaffold != nil {
+			tc.OnScaffold("quiz_result", map[string]interface{}{
+				"correct_count":   state.CorrectCount + correctCount,
+				"total_questions": state.TotalQuestions,
+			})
+		}
+
+	case QuizPhaseReviewing:
+		// 学生请求继续出题 → 回到生成阶段
+		o.coach.AdvanceQuizPhase(tc.SessionID, 0, 0)
+	}
 }
 
 // ── Error Notebook Auto-Archiving (§5.2 Step 3, item 3) ────

@@ -23,6 +23,7 @@ import type { SkillUIRenderer } from '@/lib/plugin/types';
 import SocraticRenderer from '@/lib/plugin/renderers/SocraticRenderer';
 import FallacyRenderer from '@/lib/plugin/renderers/FallacyRenderer';
 import RolePlayRenderer from '@/lib/plugin/renderers/RolePlayRenderer';
+import QuizRenderer from '@/lib/plugin/renderers/QuizRenderer';
 
 // -- Renderer Definitions ----------------------------------------
 
@@ -59,12 +60,24 @@ const rolePlayRenderer: SkillUIRenderer = {
     Component: RolePlayRenderer,
 };
 
+const quizRenderer: SkillUIRenderer = {
+    skillId: 'general_assessment_quiz',
+    metadata: {
+        name: '自动出题',
+        version: '1.0.0',
+        description: '智能出题 — 根据知识点自动生成选择题和填空题',
+        supportedInteractionModes: ['text'],
+    },
+    Component: QuizRenderer,
+};
+
 // -- All Built-in Renderers --------------------------------------
 
 const BUILTIN_RENDERERS: SkillUIRenderer[] = [
     socraticRenderer,
     fallacyRenderer,
     rolePlayRenderer,
+    quizRenderer,
 ];
 
 // -- Registration Hook -------------------------------------------

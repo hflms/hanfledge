@@ -104,6 +104,28 @@ type FallacySessionState struct {
 	CurrentTrapDesc string       `json:"current_trap_desc,omitempty"` // 当前嵌入的谬误描述（内部追踪用）
 }
 
+// ── Quiz Session State (§7.13) ──────────────────────────────
+
+// QuizPhase 自动出题技能的阶段枚举。
+type QuizPhase string
+
+const (
+	QuizPhaseGenerating QuizPhase = "generating" // AI 正在生成题目
+	QuizPhaseAnswering  QuizPhase = "answering"  // 学生正在作答
+	QuizPhaseGrading    QuizPhase = "grading"    // AI 正在批改
+	QuizPhaseReviewing  QuizPhase = "reviewing"  // 展示批改结果与解析
+)
+
+// QuizSessionState 自动出题技能的会话级状态，序列化为 JSONB 存储在 StudentSession.SkillState 中。
+type QuizSessionState struct {
+	Phase           QuizPhase `json:"phase"`                       // 当前阶段
+	BatchCount      int       `json:"batch_count"`                 // 本会话已生成的题目批次数
+	TotalQuestions  int       `json:"total_questions"`             // 本会话累计题目数
+	CorrectCount    int       `json:"correct_count"`               // 学生累计答对数
+	MaxPerBatch     int       `json:"max_per_batch"`               // 每批最大题目数
+	CurrentQuizJSON string    `json:"current_quiz_json,omitempty"` // 当前批次的题目 JSON（内部追踪用）
+}
+
 // RetrievedChunk 混合检索召回的文档片段。
 type RetrievedChunk struct {
 	Content    string  `json:"content"`
@@ -175,6 +197,8 @@ const (
 	EventTurnComplete      = "turn_complete"
 	EventFallacyIdentified = "fallacy_identified" // 谬误侦探: 学生成功识别谬误
 	EventRolePlayCharacter = "roleplay_character" // 角色扮演: 角色身份确认/切换
+	EventQuizQuestions     = "quiz_questions"     // 自动出题: 题目数据推送
+	EventQuizResult        = "quiz_result"        // 自动出题: 批改结果推送
 )
 
 // ThinkingPayload agent_thinking 事件的载荷。
