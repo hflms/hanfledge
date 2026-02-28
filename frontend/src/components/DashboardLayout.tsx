@@ -20,6 +20,7 @@ const TEACHER_NAV: NavItem[] = [
 
 const STUDENT_NAV: NavItem[] = [
     { icon: '📋', label: '学习活动', href: '/student/activities' },
+    { icon: '📈', label: '我的掌握度', href: '/student/mastery' },
 ];
 
 const ROLE_LABELS: Record<string, string> = {

@@ -15,10 +15,10 @@
 | Phase 2: 课程与知识引擎 | ✅ 已完成 | 100% | `dfc176a` |
 | Phase 3: 技能系统 | ✅ 已完成 | 100% | — |
 | Phase 4: AI 对话引擎 | ✅ 已完成 | 100% | — |
-| Phase 5: 学情仪表盘 | ⬜ 未开始 | 0% | — |
+| Phase 5: 学情仪表盘 | ✅ 已完成 | 100% | — |
 | Phase 6: 集成联调与部署 | ⬜ 未开始 | 0% | — |
 
-**总进度: 59 / 73 tasks (81%)**
+**总进度: 65 / 73 tasks (89%)**
 
 ---
 
@@ -210,27 +210,27 @@
 
 ---
 
-## Phase 5: 学情仪表盘 ⬜
+## Phase 5: 学情仪表盘 ✅
 
 ### 后端
-- [ ] T-5.1: `GET /api/v1/dashboard/knowledge-radar`
+- [x] T-5.1: `GET /api/v1/dashboard/knowledge-radar`
   - 聚合全班 mastery_score (按知识点)
   - 返回雷达图格式: `{labels: [...], values: [...]}`
-- [ ] T-5.2: `GET /api/v1/students/:id/mastery`
+- [x] T-5.2: `GET /api/v1/students/:id/mastery`
   - 个人所有知识点掌握度
   - 历史趋势 (按时间排序的 mastery 变化)
-- [ ] T-5.3: `GET /api/v1/activities/:id/sessions`
+- [x] T-5.3: `GET /api/v1/activities/:id/sessions`
   - 活动统计: 完成率, 平均时长, 平均掌握度
 
 ### 前端
-- [ ] T-5.4: **教师 Dashboard** (`/teacher/dashboard`)
+- [x] T-5.4: **教师 Dashboard** (`/teacher/dashboard`)
   - 全班知识漏洞雷达图 (ECharts)
   - 活动参与统计卡片 (完成率, 平均时长)
   - 最近活动列表
-- [ ] T-5.5: **学生掌握度详情**
+- [x] T-5.5: **学生掌握度详情** (`/student/mastery`)
   - 个人 mastery 变化趋势折线图
-  - 知识点掌握度热力图/进度条
-- [ ] T-5.6: 安装 ECharts (`npm install echarts echarts-for-react`)
+  - 知识点掌握度进度条
+- [x] T-5.6: 安装 ECharts (`npm install echarts echarts-for-react`)
 
 ---
 

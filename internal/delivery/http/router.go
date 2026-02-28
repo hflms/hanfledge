@@ -30,6 +30,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 	skillHandler := handler.NewSkillHandler(db, registry)
 	activityHandler := handler.NewActivityHandler(db, orchestrator)
 	sessionHandler := handler.NewSessionHandler(db, orchestrator)
+	dashboardHandler := handler.NewDashboardHandler(db)
 
 	// API v1 group
 	v1 := r.Group("/api/v1")
@@ -106,7 +107,19 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 			chapters.DELETE("/:id/skills/:mount_id", skillHandler.UnmountSkill)
 		}
 
-		// TODO Phase 5: Dashboard routes
+		// ── Dashboard Analytics (TEACHER) — Phase 5 ────
+		dashboard := protected.Group("/dashboard")
+		dashboard.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		{
+			dashboard.GET("/knowledge-radar", dashboardHandler.GetKnowledgeRadar)
+		}
+
+		// ── Student Mastery (TEACHER) — Phase 5 ─────────
+		students := protected.Group("/students")
+		students.Use(middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		{
+			students.GET("/:id/mastery", dashboardHandler.GetStudentMastery)
+		}
 
 		// ── Learning Activities (TEACHER) — Phase 4 ──────
 		activities := protected.Group("/activities")
@@ -115,6 +128,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 			activities.POST("", activityHandler.CreateActivity)
 			activities.GET("", activityHandler.ListActivities)
 			activities.POST("/:id/publish", activityHandler.PublishActivity)
+			activities.GET("/:id/sessions", dashboardHandler.GetActivitySessions) // Phase 5
 		}
 
 		// ── Student Routes — Phase 4 ────────────────────
@@ -122,6 +136,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, karag *usecase.KARAGEngine, regi
 		student.Use(middleware.RBAC(db, model.RoleStudent, model.RoleSysAdmin))
 		{
 			student.GET("/activities", activityHandler.StudentListActivities)
+			student.GET("/mastery", dashboardHandler.GetSelfMastery) // Phase 5
 		}
 
 		// ── Activity Join & Sessions (any authenticated) ─

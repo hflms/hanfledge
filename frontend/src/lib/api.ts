@@ -334,6 +334,97 @@ export async function getSession(sessionId: number): Promise<SessionDetail> {
   return apiFetch<SessionDetail>(`/sessions/${sessionId}`);
 }
 
+// ── Dashboard Analytics API — Phase 5 ───────────────────────
+
+export interface KnowledgeRadarData {
+  course_id: number;
+  course_title: string;
+  labels: string[];
+  values: number[];
+  student_count: number;
+}
+
+export interface StudentMasteryItem {
+  kp_id: number;
+  kp_title: string;
+  chapter_title: string;
+  mastery_score: number;
+  attempt_count: number;
+  correct_count: number;
+  last_attempt_at?: string;
+  updated_at: string;
+}
+
+export interface MasteryHistoryPoint {
+  date: string;
+  avg_mastery: number;
+  attempt_count: number;
+}
+
+export interface StudentMasteryData {
+  student_id: number;
+  student_name: string;
+  items: StudentMasteryItem[];
+  history: MasteryHistoryPoint[];
+}
+
+export interface SessionSummary {
+  session_id: number;
+  student_id: number;
+  student_name: string;
+  status: string;
+  scaffold_level: string;
+  started_at: string;
+  ended_at?: string;
+  duration_min: number;
+  mastery_score: number;
+}
+
+export interface ActivitySessionStats {
+  activity_id: number;
+  activity_title: string;
+  total_sessions: number;
+  active_sessions: number;
+  completed_sessions: number;
+  completion_rate: number;
+  avg_duration_min: number;
+  avg_mastery: number;
+  sessions: SessionSummary[];
+}
+
+export async function getKnowledgeRadar(courseId: number, classId?: number): Promise<KnowledgeRadarData> {
+  const params = new URLSearchParams({ course_id: String(courseId) });
+  if (classId) params.set('class_id', String(classId));
+  return apiFetch<KnowledgeRadarData>(`/dashboard/knowledge-radar?${params}`);
+}
+
+export async function getStudentMastery(studentId: number, courseId?: number): Promise<StudentMasteryData> {
+  const params = new URLSearchParams();
+  if (courseId) params.set('course_id', String(courseId));
+  const qs = params.toString();
+  return apiFetch<StudentMasteryData>(`/students/${studentId}/mastery${qs ? '?' + qs : ''}`);
+}
+
+export async function getActivitySessions(activityId: number): Promise<ActivitySessionStats> {
+  return apiFetch<ActivitySessionStats>(`/activities/${activityId}/sessions`);
+}
+
+export async function getSelfMastery(courseId?: number): Promise<StudentMasteryData> {
+  const params = new URLSearchParams();
+  if (courseId) params.set('course_id', String(courseId));
+  const qs = params.toString();
+  return apiFetch<StudentMasteryData>(`/student/mastery${qs ? '?' + qs : ''}`);
+}
+
+// ── Teacher Activity API ────────────────────────────────────
+
+export async function listTeacherActivities(courseId?: number): Promise<LearningActivity[]> {
+  const params = new URLSearchParams();
+  if (courseId) params.set('course_id', String(courseId));
+  const qs = params.toString();
+  return apiFetch<LearningActivity[]>(`/activities${qs ? '?' + qs : ''}`);
+}
+
 // ── WebSocket Helpers ───────────────────────────────────────
 
 export interface WSEvent {
