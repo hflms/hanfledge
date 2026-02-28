@@ -13,6 +13,7 @@ import {
     exportErrorNotebookCSV,
     exportActivitySessions,
     exportInteractionLog,
+    previewActivity,
     type Course,
     type LearningActivity,
     type KnowledgeRadarData,
@@ -122,6 +123,17 @@ export default function TeacherDashboardPage() {
             toast(`导出失败: ${err instanceof Error ? err.message : '未知错误'}`, 'error');
         } finally {
             setExporting(null);
+        }
+    };
+
+    // Handle sandbox preview — creates sandbox session and navigates to it
+    const handlePreview = async (activityId: number) => {
+        try {
+            const result = await previewActivity(activityId);
+            router.push(`/student/session/${result.session_id}`);
+        } catch (err) {
+            console.error('Preview failed', err);
+            toast(`预览失败: ${err instanceof Error ? err.message : '未知错误'}`, 'error');
         }
     };
 
@@ -297,6 +309,13 @@ export default function TeacherDashboardPage() {
                                 </td>
                                 <td>{new Date(act.created_at).toLocaleDateString('zh-CN')}</td>
                                 <td>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        onClick={() => handlePreview(act.id)}
+                                        title="以学生视角预览活动"
+                                    >
+                                        预览
+                                    </button>
                                     <button
                                         className="btn btn-ghost btn-sm"
                                         onClick={() => handleActivityClick(act.id)}

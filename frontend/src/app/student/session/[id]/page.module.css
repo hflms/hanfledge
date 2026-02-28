@@ -425,3 +425,23 @@
         display: none;
     }
 }
+
+/* -- Sandbox Banner ------------------------------------- */
+.sandboxBanner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: linear-gradient(90deg, #fff3cd, #ffeeba);
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #856404;
+    flex-shrink: 0;
+}
+
+.sandboxBannerIcon {
+    font-size: 16px;
+}

@@ -155,6 +155,79 @@ func (h *ActivityHandler) PublishActivity(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "活动已发布"})
 }
 
+// ── Teacher: Sandbox Preview (design.md §5.1 Step 3) ────────
+
+// PreviewActivity allows a teacher to preview a learning activity in sandbox mode.
+// Creates a sandbox session with IsSandbox=true, allowing the teacher to experience
+// the activity as a student. Sandbox sessions are excluded from analytics and mastery updates.
+// POST /api/v1/activities/:id/preview
+func (h *ActivityHandler) PreviewActivity(c *gin.Context) {
+	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的活动 ID"})
+		return
+	}
+
+	teacherID := middleware.GetUserID(c)
+
+	// Verify activity exists
+	var activity model.LearningActivity
+	if err := h.DB.First(&activity, activityID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "学习活动不存在"})
+		return
+	}
+
+	// Verify teacher owns this activity
+	if activity.TeacherID != teacherID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权预览此活动"})
+		return
+	}
+
+	// Check for existing active sandbox session (reuse if exists)
+	var existingSession model.StudentSession
+	err = h.DB.Where("student_id = ? AND activity_id = ? AND is_sandbox = ? AND status = ?",
+		teacherID, activityID, true, model.SessionStatusActive).
+		First(&existingSession).Error
+	if err == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "已有进行中的沙盒会话",
+			"session_id": existingSession.ID,
+			"is_sandbox": true,
+		})
+		return
+	}
+
+	// Parse KP IDs to find first target KP
+	var kpIDs []uint
+	json.Unmarshal([]byte(activity.KPIDS), &kpIDs)
+	firstKP := uint(0)
+	if len(kpIDs) > 0 {
+		firstKP = kpIDs[0]
+	}
+
+	// Create sandbox session — StudentID = teacherID (teacher acts as student)
+	session := model.StudentSession{
+		StudentID:  teacherID,
+		ActivityID: uint(activityID),
+		CurrentKP:  firstKP,
+		Scaffold:   model.ScaffoldHigh,
+		IsSandbox:  true,
+		Status:     model.SessionStatusActive,
+		StartedAt:  time.Now(),
+	}
+
+	if err := h.DB.Create(&session).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建沙盒会话失败"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message":    "沙盒预览会话已创建",
+		"session_id": session.ID,
+		"is_sandbox": true,
+	})
+}
+
 // ── Student: Activity List & Join ───────────────────────────
 
 // StudentListActivities returns published activities available to a student.
@@ -198,7 +271,7 @@ func (h *ActivityHandler) StudentListActivities(c *gin.Context) {
 		result[i].LearningActivity = a
 
 		var session model.StudentSession
-		err := h.DB.Where("student_id = ? AND activity_id = ?", studentID, a.ID).
+		err := h.DB.Where("student_id = ? AND activity_id = ? AND is_sandbox = ?", studentID, a.ID, false).
 			First(&session).Error
 		if err == nil {
 			result[i].HasSession = true

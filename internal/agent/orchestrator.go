@@ -156,8 +156,12 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	// ── Stage 5.5: Write L2+L3 Cache ────────────────────
 	o.writeResponseToCache(tc, material, finalResponse)
 
-	// ── Stage 6: BKT 掌握度更新 + 支架衰减 ──────────────
-	o.updateMasteryAndFadeScaffold(tc)
+	// ── Stage 6: BKT 掌握度更新 + 支架衰减 (skip in sandbox) ──
+	if !tc.IsSandbox {
+		o.updateMasteryAndFadeScaffold(tc)
+	} else {
+		log.Printf("🧪 [Sandbox] Skipping mastery update for sandbox session=%d", tc.SessionID)
+	}
 
 	// ── Stage 6.5: 谬误侦探阶段推进 (§5.2 Step 2, item 5) ──
 	o.advanceFallacyPhaseIfActive(tc, finalResponse)
@@ -168,8 +172,12 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	// ── Stage 6.7: 自动出题阶段推进 (§7.13) ──
 	o.advanceQuizPhaseIfActive(tc, finalResponse)
 
-	// ── Stage 7: 错题本自动归档 (§5.2 Step 3, item 3) ───
-	o.archiveErrorIfIncorrect(tc, finalResponse)
+	// ── Stage 7: 错题本自动归档 (§5.2 Step 3, item 3; skip in sandbox) ──
+	if !tc.IsSandbox {
+		o.archiveErrorIfIncorrect(tc, finalResponse)
+	} else {
+		log.Printf("🧪 [Sandbox] Skipping error notebook for sandbox session=%d", tc.SessionID)
+	}
 
 	elapsed := time.Since(start)
 	log.Printf("✅ [Agent] Turn complete: session=%d tokens=%d elapsed=%s",

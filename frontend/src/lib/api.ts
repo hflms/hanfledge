@@ -331,6 +331,7 @@ export interface StudentSession {
   status: string;
   started_at: string;
   ended_at?: string;
+  is_sandbox?: boolean;
 }
 
 export interface Interaction {
@@ -354,6 +355,12 @@ export async function listStudentActivities(): Promise<LearningActivity[]> {
 
 export async function joinActivity(activityId: number): Promise<{ message: string; session_id: number }> {
   return apiFetch<{ message: string; session_id: number }>(`/activities/${activityId}/join`, {
+    method: 'POST',
+  });
+}
+
+export async function previewActivity(activityId: number): Promise<{ message: string; session_id: number; is_sandbox: boolean }> {
+  return apiFetch<{ message: string; session_id: number; is_sandbox: boolean }>(`/activities/${activityId}/preview`, {
     method: 'POST',
   });
 }

@@ -232,6 +232,7 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 		ActivityID: session.ActivityID,
 		UserInput:  payload.Text,
 		Scaffold:   session.Scaffold,
+		IsSandbox:  session.IsSandbox,
 
 		OnThinking: func(status string) {
 			h.sendEvent(ws, agent.EventAgentThinking, agent.ThinkingPayload{
@@ -252,7 +253,8 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 			})
 
 			// ── Achievement Evaluation (design.md §5.2 Step 4) ──
-			if h.Achievement != nil {
+			// Skip for sandbox sessions — teacher previews should not earn achievements
+			if h.Achievement != nil && !session.IsSandbox {
 				h.evaluateAchievementsOnScaffold(action, data, studentID)
 			}
 		},
@@ -263,7 +265,8 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 			})
 
 			// ── Deep Inquiry Achievement (design.md §5.2 Step 4) ──
-			if h.Achievement != nil {
+			// Skip for sandbox sessions — teacher previews should not earn achievements
+			if h.Achievement != nil && !session.IsSandbox {
 				go h.Achievement.EvaluateDeepInquiry(studentID, session.ID)
 			}
 		},

@@ -701,11 +701,22 @@ export default function SessionPage() {
     return (
         <div className="fade-in">
             <div className={styles.chatContainer}>
+                {/* Sandbox Banner */}
+                {session.is_sandbox && (
+                    <div className={styles.sandboxBanner}>
+                        <span className={styles.sandboxBannerIcon}>🔬</span>
+                        沙盒预览模式 — 当前为教师预览视角，学习数据不会被记录
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className={styles.chatHeader}>
                     <div>
-                        <Link href="/student/activities" className={styles.backLink}>
-                            &larr; 返回活动列表
+                        <Link
+                            href={session.is_sandbox ? '/teacher/dashboard' : '/student/activities'}
+                            className={styles.backLink}
+                        >
+                            &larr; {session.is_sandbox ? '返回教师仪表盘' : '返回活动列表'}
                         </Link>
                         <div className={styles.chatTitle}>AI 学习对话</div>
                     </div>

@@ -237,6 +237,7 @@ type TurnContext struct {
 	ActivityID uint
 	UserInput  string
 	Scaffold   ScaffoldLevel
+	IsSandbox  bool // 沙盒预览模式 — 跳过 BKT 掌握度更新和错题本归档 (design.md §5.1 Step 3)
 
 	// 管道中间产物
 	Prescription *LearningPrescription

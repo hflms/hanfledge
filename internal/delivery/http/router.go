@@ -171,6 +171,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 			activities.POST("", activityHandler.CreateActivity)
 			activities.GET("", activityHandler.ListActivities)
 			activities.POST("/:id/publish", activityHandler.PublishActivity)
+			activities.POST("/:id/preview", activityHandler.PreviewActivity)      // Sandbox preview
 			activities.GET("/:id/sessions", dashboardHandler.GetActivitySessions) // Phase 5
 		}
 

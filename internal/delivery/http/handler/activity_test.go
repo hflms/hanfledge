@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/domain/model"
 )
 
@@ -152,5 +155,173 @@ func TestPublishValidation_OnlyDraftAllowed(t *testing.T) {
 					tc.status, canPublish, tc.publishable)
 			}
 		})
+	}
+}
+
+// -- PreviewActivity Handler Tests (Sandbox) ------------------
+
+func TestPreviewActivity_CreatesSession(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13900001001", "pass", "王老师", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "力学基础")
+	act := seedActivity(t, db, teacher.ID, course.ID, "牛顿定律")
+	// Set KPIDS so the preview can parse a target KP
+	db.Model(&act).Update("kp_ids", "[1,2]")
+
+	h := NewActivityHandler(db, nil)
+
+	w, c := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
+		teacher.ID, gin.Params{{Key: "id", Value: "1"}})
+	h.PreviewActivity(c)
+
+	assertStatus(t, w, 201)
+	assertBodyContains(t, w, "session_id")
+	assertBodyContains(t, w, "is_sandbox")
+
+	// Verify session was created with IsSandbox=true
+	var session model.StudentSession
+	if err := db.Where("student_id = ? AND is_sandbox = ?", teacher.ID, true).First(&session).Error; err != nil {
+		t.Fatal("sandbox session not found in database")
+	}
+	if session.ActivityID != act.ID {
+		t.Errorf("session.ActivityID = %d, want %d", session.ActivityID, act.ID)
+	}
+	if session.StudentID != teacher.ID {
+		t.Errorf("session.StudentID = %d, want teacher.ID=%d", session.StudentID, teacher.ID)
+	}
+}
+
+func TestPreviewActivity_RequiresOwnership(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13900001002", "pass", "王老师", model.UserStatusActive)
+	otherTeacher := seedUser(t, db, "13900001003", "pass", "李老师", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "力学基础")
+	act := seedActivity(t, db, teacher.ID, course.ID, "牛顿定律")
+
+	h := NewActivityHandler(db, nil)
+
+	// otherTeacher tries to preview teacher's activity
+	w, c := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
+		otherTeacher.ID, gin.Params{{Key: "id", Value: fmt.Sprintf("%d", act.ID)}})
+	h.PreviewActivity(c)
+
+	assertStatus(t, w, 403)
+	assertBodyContains(t, w, "无权预览此活动")
+}
+
+func TestPreviewActivity_ReusesExistingSandbox(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13900001004", "pass", "王老师", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "力学基础")
+	act := seedActivity(t, db, teacher.ID, course.ID, "牛顿定律")
+
+	h := NewActivityHandler(db, nil)
+
+	// First preview — creates a session
+	w1, c1 := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
+		teacher.ID, gin.Params{{Key: "id", Value: fmt.Sprintf("%d", act.ID)}})
+	h.PreviewActivity(c1)
+	assertStatus(t, w1, 201)
+
+	var resp1 map[string]interface{}
+	json.Unmarshal(w1.Body.Bytes(), &resp1)
+	firstSessionID := resp1["session_id"]
+
+	// Second preview — should reuse the same session
+	w2, c2 := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
+		teacher.ID, gin.Params{{Key: "id", Value: fmt.Sprintf("%d", act.ID)}})
+	h.PreviewActivity(c2)
+	assertStatus(t, w2, 200) // 200, not 201 — reused existing
+
+	var resp2 map[string]interface{}
+	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	if resp2["session_id"] != firstSessionID {
+		t.Errorf("expected reused session_id=%v, got=%v", firstSessionID, resp2["session_id"])
+	}
+	assertBodyContains(t, w2, "已有进行中的沙盒会话")
+}
+
+func TestPreviewActivity_WorksOnDraftActivity(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13900001005", "pass", "王老师", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "力学基础")
+	act := seedActivity(t, db, teacher.ID, course.ID, "草稿活动")
+	// Activity starts as draft (no status set in seedActivity, verify)
+	db.Model(&act).Update("status", model.ActivityStatusDraft)
+
+	h := NewActivityHandler(db, nil)
+
+	w, c := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
+		teacher.ID, gin.Params{{Key: "id", Value: fmt.Sprintf("%d", act.ID)}})
+	h.PreviewActivity(c)
+
+	// Should succeed — preview works on drafts
+	assertStatus(t, w, 201)
+	assertBodyContains(t, w, "session_id")
+}
+
+func TestPreviewActivity_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13900001006", "pass", "王老师", model.UserStatusActive)
+
+	h := NewActivityHandler(db, nil)
+
+	w, c := newTestContextWithParams("POST", "/api/v1/activities/abc/preview", "",
+		teacher.ID, gin.Params{{Key: "id", Value: "abc"}})
+	h.PreviewActivity(c)
+
+	assertStatus(t, w, 400)
+	assertBodyContains(t, w, "无效的活动 ID")
+}
+
+func TestPreviewActivity_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13900001007", "pass", "王老师", model.UserStatusActive)
+
+	h := NewActivityHandler(db, nil)
+
+	w, c := newTestContextWithParams("POST", "/api/v1/activities/999/preview", "",
+		teacher.ID, gin.Params{{Key: "id", Value: "999"}})
+	h.PreviewActivity(c)
+
+	assertStatus(t, w, 404)
+	assertBodyContains(t, w, "学习活动不存在")
+}
+
+func TestSandboxSessionsExcludedFromDashboard(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13900001008", "pass", "王老师", model.UserStatusActive)
+	student := seedUser(t, db, "13900001009", "pass", "张同学", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "力学基础")
+	act := seedActivity(t, db, teacher.ID, course.ID, "牛顿定律")
+
+	// Create a normal session (student)
+	seedSession(t, db, student.ID, act.ID, 0, model.SessionStatusActive)
+
+	// Create a sandbox session (teacher preview)
+	sandboxSession := model.StudentSession{
+		StudentID:  teacher.ID,
+		ActivityID: act.ID,
+		Scaffold:   model.ScaffoldHigh,
+		IsSandbox:  true,
+		Status:     model.SessionStatusActive,
+	}
+	db.Create(&sandboxSession)
+
+	// Verify that only 1 non-sandbox session exists when querying with sandbox exclusion
+	var count int64
+	db.Model(&model.StudentSession{}).
+		Where("activity_id = ? AND is_sandbox = ?", act.ID, false).
+		Count(&count)
+	if count != 1 {
+		t.Errorf("expected 1 non-sandbox session, got %d", count)
+	}
+
+	// Verify total count is 2 (with sandbox)
+	db.Model(&model.StudentSession{}).
+		Where("activity_id = ?", act.ID).
+		Count(&count)
+	if count != 2 {
+		t.Errorf("expected 2 total sessions, got %d", count)
 	}
 }

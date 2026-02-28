@@ -318,9 +318,9 @@ func (h *DashboardHandler) GetActivitySessions(c *gin.Context) {
 		return
 	}
 
-	// Get all sessions for this activity
+	// Get all sessions for this activity (exclude sandbox sessions)
 	var sessions []model.StudentSession
-	h.DB.Where("activity_id = ?", activityID).
+	h.DB.Where("activity_id = ? AND is_sandbox = ?", activityID, false).
 		Order("started_at DESC").
 		Find(&sessions)
 

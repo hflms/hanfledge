@@ -392,10 +392,10 @@ func (h *AnalyticsHandler) GetSkillEffectiveness(c *gin.Context) {
 		return
 	}
 
-	// Get all session IDs for these activities
+	// Get all session IDs for these activities (exclude sandbox sessions)
 	var sessionIDs []uint
 	h.DB.Model(&model.StudentSession{}).
-		Where("activity_id IN ?", activityIDs).
+		Where("activity_id IN ? AND is_sandbox = ?", activityIDs, false).
 		Pluck("id", &sessionIDs)
 
 	if len(sessionIDs) == 0 {
@@ -441,7 +441,7 @@ func (h *AnalyticsHandler) GetSkillEffectiveness(c *gin.Context) {
 	var sessionCounts []sessionSkillCount
 	h.DB.Model(&model.StudentSession{}).
 		Select("active_skill, COUNT(*) as session_count").
-		Where("activity_id IN ? AND active_skill != ''", activityIDs).
+		Where("activity_id IN ? AND active_skill != '' AND is_sandbox = ?", activityIDs, false).
 		Group("active_skill").
 		Scan(&sessionCounts)
 
