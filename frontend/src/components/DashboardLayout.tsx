@@ -1,0 +1,120 @@
+'use client';
+
+import { useEffect, useState, ReactNode } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
+import { getMe, clearToken, type User } from '@/lib/api';
+import styles from './DashboardLayout.module.css';
+
+interface NavItem {
+    icon: string;
+    label: string;
+    href: string;
+}
+
+const TEACHER_NAV: NavItem[] = [
+    { icon: '📚', label: '课程管理', href: '/teacher/courses' },
+    { icon: '🧩', label: '技能商店', href: '/teacher/skills' },
+    { icon: '📊', label: '学情仪表盘', href: '/teacher/dashboard' },
+];
+
+const STUDENT_NAV: NavItem[] = [
+    { icon: '📋', label: '学习活动', href: '/student/activities' },
+];
+
+const ROLE_LABELS: Record<string, string> = {
+    SYS_ADMIN: '系统管理员',
+    SCHOOL_ADMIN: '学校管理员',
+    TEACHER: '教师',
+    STUDENT: '学生',
+};
+
+interface DashboardLayoutProps {
+    children: ReactNode;
+    variant?: 'teacher' | 'student';
+}
+
+export default function DashboardLayout({ children, variant }: DashboardLayoutProps) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const [user, setUser] = useState<User | null>(null);
+
+    // Auto-detect variant from pathname if not provided
+    const layoutVariant = variant || (pathname.startsWith('/student') ? 'student' : 'teacher');
+    const navItems = layoutVariant === 'student' ? STUDENT_NAV : TEACHER_NAV;
+    const sectionLabel = layoutVariant === 'student' ? '学习中心' : '教学管理';
+
+    useEffect(() => {
+        getMe()
+            .then(setUser)
+            .catch(() => {
+                clearToken();
+                router.push('/login');
+            });
+    }, [router]);
+
+    const handleLogout = () => {
+        clearToken();
+        router.push('/login');
+    };
+
+    const primaryRole = user?.school_roles?.[0]?.role?.name || (layoutVariant === 'student' ? 'STUDENT' : 'TEACHER');
+
+    if (!user) {
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+                <div className="spinner" />
+            </div>
+        );
+    }
+
+    return (
+        <div className={styles.layoutWrapper}>
+            {/* Sidebar */}
+            <aside className={styles.sidebar}>
+                <div className={styles.sidebarBrand}>
+                    <div className={styles.brandIcon}>🎓</div>
+                    <div className={styles.brandName}>Hanfledge</div>
+                </div>
+
+                <nav className={styles.sidebarNav}>
+                    <div className={styles.navSection}>
+                        <div className={styles.navLabel}>{sectionLabel}</div>
+                        {navItems.map(item => (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`${styles.navItem} ${pathname.startsWith(item.href) ? styles.navItemActive : ''}`}
+                            >
+                                <span className={styles.navItemIcon}>{item.icon}</span>
+                                {item.label}
+                            </Link>
+                        ))}
+                    </div>
+                </nav>
+            </aside>
+
+            {/* Main */}
+            <div className={styles.mainArea}>
+                <header className={styles.header}>
+                    <div className={styles.headerTitle}>
+                        {navItems.find(n => pathname.startsWith(n.href))?.label || 'Hanfledge'}
+                    </div>
+                    <div className={styles.headerRight}>
+                        <div className={styles.userInfo}>
+                            <span className={styles.userName}>{user.display_name}</span>
+                            <span className={styles.userRole}>{ROLE_LABELS[primaryRole] || primaryRole}</span>
+                        </div>
+                        <button className={styles.logoutBtn} onClick={handleLogout}>
+                            退出
+                        </button>
+                    </div>
+                </header>
+
+                <main className={styles.content}>
+                    {children}
+                </main>
+            </div>
+        </div>
+    );
+}

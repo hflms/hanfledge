@@ -1,0 +1,108 @@
+.pageHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+}
+
+.pageTitle {
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.courseGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.courseCard {
+    cursor: pointer;
+}
+
+.courseCardTop {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.courseTitle {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.courseSubject {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.courseMeta {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.metaItem {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.metaValue {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.emptyState {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-muted);
+}
+
+.emptyIcon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.emptyText {
+    font-size: 15px;
+    margin-bottom: 24px;
+}
+
+/* Modal */
+.modalOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+}
+
+.modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: var(--shadow-lg);
+}
+
+.modalTitle {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 24px;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+}

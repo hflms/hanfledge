@@ -1,0 +1,33 @@
+{
+  "id": "socratic-questioning",
+  "name": "苏格拉底式引导",
+  "description": "通过连续追问和反问引导学生自主发现答案，而非直接给出结论。AI 扮演苏格拉底的角色，以问题链逐步启发学生的思维深度。",
+  "version": "1.0.0",
+  "author": "system",
+  "category": "inquiry-based",
+  "subjects": ["math", "physics", "chemistry", "biology", "chinese", "english", "history", "geography"],
+  "tags": ["启发式教学", "问题引导", "深度思维", "自主发现"],
+  "scaffolding_levels": ["high", "medium", "low"],
+  "constraints": {
+    "never_reveal_answer": true,
+    "must_end_with_question": true,
+    "max_hints_before_reveal": 5,
+    "encourage_self_reflection": true
+  },
+  "tools": {
+    "leveler": {
+      "enabled": true,
+      "description": "根据学生年级调整提问复杂度"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "mastery_score < 0.6",
+    "deactivate_when": "mastery_score >= 0.8"
+  },
+  "evaluation_dimensions": [
+    "question_depth",
+    "student_reasoning_quality",
+    "answer_convergence",
+    "scaffolding_effectiveness"
+  ]
+}

@@ -1,6 +1,6 @@
 # Hanfledge MVP V1.0 — TODO Tasks
 
-**Last Updated:** 2026-02-27 22:27
+**Last Updated:** 2026-02-28 14:00
 **Tech Stack:** Go (Gin+GORM) / Next.js / PostgreSQL (pgvector) / Neo4j / Redis
 **Reference:** [design.md](./design.md)
 
@@ -12,13 +12,13 @@
 |---|---|---|---|
 | Phase 0: 项目骨架 | ✅ 已完成 | 100% | `67ed390` |
 | Phase 1: 用户与权限系统 | ✅ 已完成 | 100% | `490e294` |
-| Phase 2: 课程与知识引擎 | 🔧 进行中 | 75% | `dfc176a` |
-| Phase 3: 技能系统 | ⬜ 未开始 | 0% | — |
-| Phase 4: AI 对话引擎 | ⬜ 未开始 | 0% | — |
+| Phase 2: 课程与知识引擎 | ✅ 已完成 | 100% | `dfc176a` |
+| Phase 3: 技能系统 | ✅ 已完成 | 100% | — |
+| Phase 4: AI 对话引擎 | ✅ 已完成 | 100% | — |
 | Phase 5: 学情仪表盘 | ⬜ 未开始 | 0% | — |
 | Phase 6: 集成联调与部署 | ⬜ 未开始 | 0% | — |
 
-**总进度: 31 / 73 tasks (42%)**
+**总进度: 59 / 73 tasks (81%)**
 
 ---
 
@@ -86,121 +86,124 @@
   - `CreatedAt`/`UpdatedAt` 从 `string` 改为 `time.Time`
 
 ### 前端 — 待完成
-- [ ] T-2.15: **登录页面** (`/login`)
+- [x] T-2.15: **登录页面** (`/login`)
   - 手机号 + 密码表单，调用 `/auth/login`
   - JWT 存储到 cookie/localStorage
   - 登录后按角色路由 (教师→Dashboard, 学生→活动列表)
   - 现代化 UI: 渐变背景, 毛玻璃卡片
-- [ ] T-2.16: **主布局 Layout** (`/teacher/layout`, `/student/layout`)
+- [x] T-2.16: **主布局 Layout** (`/teacher/layout`, `/student/layout`)
   - 左侧导航栏 (教师/学生差异化菜单)
   - 顶部 Header (用户名, 角色标签, 登出)
   - 面包屑导航
   - 响应式: 移动端折叠侧边栏
-- [ ] T-2.17: **教师课程管理** (`/teacher/courses`)
+- [x] T-2.17: **教师课程管理** (`/teacher/courses`)
   - 课程列表 (卡片/表格视图)
   - 创建课程对话框 (表单)
   - 课程状态标签 (draft/published/archived)
-- [ ] T-2.18: **教材上传** (`/teacher/courses/[id]/materials`)
+- [x] T-2.18: **教材上传** (`/teacher/courses/[id]/materials`)
   - PDF 拖拽上传区域
   - 上传进度条
   - 文档处理状态轮询展示 (uploaded → processing → completed)
-- [ ] T-2.19: **大纲编辑器** (`/teacher/courses/[id]/outline`)
+- [x] T-2.19: **大纲编辑器** (`/teacher/courses/[id]/outline`)
   - 树形组件展示章节 → 知识点层级
   - 节点编辑 (标题, 难度, 是否重点)
   - 知识点上显示已挂载的技能标签
 
 ---
 
-## Phase 3: 技能系统 ⬜
+## Phase 3: 技能系统 ✅
 
 ### 后端
-- [ ] T-3.1: **Plugin Registry 基础版**
+- [x] T-3.1: **Plugin Registry 基础版**
   - 启动时扫描 `/plugins/skills/` 目录
   - 读取 `backend/metadata.json`，注册到内存 Map
   - 提供 `GetSkill(id)`, `ListSkills(filter)` 方法
-- [ ] T-3.2: **SkillPlugin 接口定义** (design.md §7.3)
+- [x] T-3.2: **SkillPlugin 接口定义** (design.md §7.3)
   - `Match(ctx, intent) (float64, error)`
   - `LoadConstraints(ctx) (*SkillConstraints, error)`
   - `LoadTemplates(ctx, ids) ([]Template, error)`
   - `Evaluate(ctx, interaction) (*SkillEvalResult, error)`
-- [ ] T-3.3: **苏格拉底引导技能实现**
+- [x] T-3.3: **苏格拉底引导技能实现**
   - `plugins/skills/socratic-questioning/backend/metadata.json`
   - `plugins/skills/socratic-questioning/backend/SKILL.md`
   - Match: 检测概念困惑类意图
   - LoadConstraints: 返回引导式提问约束
-- [ ] T-3.4: `GET /api/v1/skills` — 技能列表 (支持 subject/level 过滤)
-- [ ] T-3.5: `POST /api/v1/chapters/:id/skills` — 挂载技能 (创建 KPSkillMount)
-- [ ] T-3.6: `DELETE /api/v1/chapters/:id/skills/:mount_id` — 卸载技能
+- [x] T-3.4: `GET /api/v1/skills` — 技能列表 (支持 subject/level 过滤)
+- [x] T-3.5: `POST /api/v1/chapters/:id/skills` — 挂载技能 (创建 KPSkillMount)
+- [x] T-3.6: `DELETE /api/v1/chapters/:id/skills/:mount_id` — 卸载技能
 
 ### 前端
-- [ ] T-3.7: **Skill Store 页面** (`/teacher/skills`)
+- [x] T-3.7: **Skill Store 页面** (`/teacher/skills`)
   - 技能卡片列表 (名称, 描述, 适用学科, 类型图标)
   - 按学科/类型筛选
-- [ ] T-3.8: **大纲树上的技能挂载交互**
-  - 知识点节点 "+" 按钮 → 弹出技能选择面板
-  - 拖拽或点选挂载
-  - 已挂载技能显示为标签
-- [ ] T-3.9: **技能参数配置面板**
+- [x] T-3.8: **大纲树上的技能挂载交互**
+  - 章节节点 "+" 按钮 → 弹出技能选择面板
+  - 点选挂载，已挂载标记禁用
+  - 已挂载技能显示为可点击标签 (含支架等级)
+- [x] T-3.9: **技能参数配置面板**
   - 支架强度选择 (高/中/低)
   - 渐进规则编辑 (mastery 阈值触发降级)
+  - PATCH /api/v1/chapters/:id/skills/:mount_id 更新配置
+  - 卸载按钮集成在配置面板中
 
 ---
 
-## Phase 4: AI 对话引擎 ⬜
+## Phase 4: AI 对话引擎 ✅
 
 ### 后端 — Agent 编排
-- [ ] T-4.1: **AgentOrchestrator 骨架** (design.md §9.1)
+- [x] T-4.1: **AgentOrchestrator 骨架** (design.md §9.1)
   - goroutine + channel 通信管道
   - Strategist → Designer → Coach → Critic 编排
-- [ ] T-4.2: **StrategistAgent**
+- [x] T-4.2: **StrategistAgent**
   - 查询学生 `StudentKPMastery`
   - 生成 `LearningPrescription` (目标知识点序列, 初始支架, 推荐技能)
-- [ ] T-4.3: **DesignerAgent**
+- [x] T-4.3: **DesignerAgent**
   - 调用 RRF 混合检索
   - 组装个性化学习上下文 (知识材料 + 学生画像)
-- [ ] T-4.4: **CoachAgent**
+- [x] T-4.4: **CoachAgent**
   - 加载对应 Skill 的 SKILL.md 约束
   - 多轮对话状态管理 (历史消息)
   - 流式 LLM 调用 (Ollama streaming)
-- [ ] T-4.5: **CriticAgent**
+- [x] T-4.5: **CriticAgent**
   - Actor-Critic 审查: 是否泄露答案? 启发深度是否足够?
   - 不合格则打回 Coach 重新生成
 
 ### 后端 — 检索与会话
-- [ ] T-4.6: **RRF 混合检索** (design.md §8.1)
+- [x] T-4.6: **RRF 混合检索** (design.md §8.1)
   - pgvector 语义检索 Top-50
   - Neo4j Cypher 图谱检索 Top-50
   - RRF 倒数排名融合 → Top-10
-- [ ] T-4.7: **学习活动 CRUD**
+- [x] T-4.7: **学习活动 CRUD**
   - `POST /api/v1/activities` — 教师发布活动 (关联课程+知识点+班级)
   - `GET /api/v1/activities` — 学生查看可参与活动
   - `POST /api/v1/activities/:id/join` — 学生加入活动，创建 Session
-- [ ] T-4.8: **WebSocket Handler** (design.md §14.2)
+- [x] T-4.8: **WebSocket Handler** (design.md §14.2)
   - `ws://<host>/api/v1/sessions/:id/stream`
   - 客户端事件: `user_message`
   - 服务端事件: `agent_thinking`, `token_delta`, `ui_scaffold_change`, `turn_complete`
-- [ ] T-4.9: **BKT 算法实现** (design.md §9.2)
+- [x] T-4.9: **BKT 算法实现** (design.md §9.2)
   - 贝叶斯后验更新 `UpdateMastery(prior, correct) → float64`
   - 每次学生回答后更新 `StudentKPMastery`
-- [ ] T-4.10: **支架渐隐逻辑**
+- [x] T-4.10: **支架渐隐逻辑**
   - mastery ≥ 0.6 → medium, ≥ 0.8 → low
   - 发送 `ui_scaffold_change` 事件通知前端
+  - BKT 掌握度更新后自动检查阈值跨越
 
 ### 前端
-- [ ] T-4.11: **学生活动列表** (`/student/activities`)
+- [x] T-4.11: **学生活动列表** (`/student/activities`)
   - 可用活动卡片 (课程名, 知识点范围, 截止日期)
   - 已完成/进行中状态标记
-- [ ] T-4.12: **AI 对话主页面** (`/student/session/[id]`)
+- [x] T-4.12: **AI 对话主页面** (`/student/session/[id]`)
   - WebSocket 连接管理 (连接/断线重连)
   - 流式打字机效果 (逐 token 渲染)
   - 消息气泡 (学生蓝色/AI 白色)
   - 输入框 + 发送按钮
-- [ ] T-4.13: **支架 UI 组件** (design.md §7.13)
+- [x] T-4.13: **支架 UI 组件** (design.md §7.13)
   - 高支架: 分步引导面板 + 关键词高亮
   - 中支架: 底部关键词 Tag 提示
   - 低支架: 纯空白输入框
   - 根据 `ui_scaffold_change` 动态切换
-- [ ] T-4.14: **Agent 思考状态展示**
+- [x] T-4.14: **Agent 思考状态展示**
   - "Strategist 正在分析学情..." 加载动画
   - "Designer 正在检索知识图谱..." 进度指示
   - "Coach 正在组织回复..." 打字指示器

@@ -6,9 +6,11 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/config"
 	delivery "github.com/hflms/hanfledge/internal/delivery/http"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/repository/postgres"
 	"github.com/hflms/hanfledge/internal/usecase"
@@ -55,8 +57,17 @@ func main() {
 	// ── Use Cases ───────────────────────────────────────
 	karagEngine := usecase.NewKARAGEngine(db, neo4jClient, llmClient)
 
+	// ── Plugin Registry ─────────────────────────────────
+	registry := plugin.NewRegistry()
+	if err := registry.LoadSkills("plugins/skills"); err != nil {
+		log.Printf("⚠️  Plugin loading failed (non-fatal): %v", err)
+	}
+
+	// ── Agent Orchestrator ──────────────────────────────
+	orchestrator := agent.NewAgentOrchestrator(db, llmClient, neo4jClient, karagEngine, registry)
+
 	// ── Router Setup ────────────────────────────────────
-	router := delivery.NewRouter(db, cfg, karagEngine)
+	router := delivery.NewRouter(db, cfg, karagEngine, registry, orchestrator)
 
 	// ── Start Server ────────────────────────────────────
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)

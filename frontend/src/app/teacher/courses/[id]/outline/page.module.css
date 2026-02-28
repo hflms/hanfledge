@@ -1,0 +1,608 @@
+.pageHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+}
+
+.backLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    margin-bottom: 8px;
+    transition: color 0.15s;
+}
+
+.backLink:hover {
+    color: var(--text-primary);
+}
+
+.pageTitle {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.twoCol {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+@media (max-width: 900px) {
+    .twoCol {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* === Outline Tree === */
+.outlinePanel {
+    min-height: 400px;
+}
+
+.chapterNode {
+    margin-bottom: 16px;
+}
+
+.chapterHeader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.chapterHeader:hover {
+    background: var(--bg-card-hover);
+}
+
+.chapterIcon {
+    font-size: 16px;
+}
+
+.chapterTitle {
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.chapterOrder {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.kpList {
+    margin-left: 24px;
+    border-left: 2px solid var(--border);
+    padding-left: 16px;
+    margin-top: 4px;
+}
+
+.kpItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+}
+
+.kpItem:hover {
+    background: var(--bg-card);
+}
+
+.kpDot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.kpDotKey {
+    background: var(--warning);
+    box-shadow: 0 0 6px rgba(253, 203, 110, 0.4);
+}
+
+.kpTitle {
+    font-size: 13px;
+    flex: 1;
+}
+
+.kpDifficulty {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.skillTag {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(108, 92, 231, 0.15);
+    color: var(--accent-light);
+}
+
+.skillTagInteractive {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s;
+}
+
+.skillTagInteractive:hover {
+    background: rgba(108, 92, 231, 0.3);
+    box-shadow: 0 0 0 1px var(--accent-light);
+}
+
+.scaffoldBadge {
+    font-size: 8px;
+    padding: 0 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 0.7;
+}
+
+.kpSkills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* === Skill Mount Button === */
+.mountBtn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--accent-light);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+
+.mountBtn:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+/* === Skill Picker Dropdown === */
+.skillPicker {
+    margin-top: 4px;
+    margin-left: 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    animation: slideDown 0.15s ease;
+}
+
+.pickerHeader {
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+}
+
+.pickerLoading {
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
+.pickerEmpty {
+    padding: 20px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.pickerList {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.pickerItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+}
+
+.pickerItem:hover:not(:disabled) {
+    background: rgba(108, 92, 231, 0.08);
+}
+
+.pickerItem:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.pickerItemMounted {
+    opacity: 0.5;
+}
+
+.pickerIcon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.pickerName {
+    flex: 1;
+    font-weight: 500;
+}
+
+.pickerMountedLabel {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 1px 6px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.emptyOutline {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* === Upload Panel === */
+.uploadPanel {
+    position: sticky;
+    top: calc(var(--header-height) + 32px);
+}
+
+.uploadZone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-md);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.uploadZone:hover {
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.05);
+}
+
+.uploadZoneDragging {
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.1);
+    box-shadow: var(--shadow-glow);
+}
+
+.uploadIcon {
+    font-size: 32px;
+    margin-bottom: 12px;
+}
+
+.uploadText {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.uploadHint {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.docList {
+    margin-top: 20px;
+}
+
+.docItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.docName {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.docPages {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* === Skill Config Modal === */
+.configOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+}
+
+.configModal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 480px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+}
+
+.configHeader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.configTitle {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.configSkillId {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(108, 92, 231, 0.15);
+    color: var(--accent-light);
+    font-family: monospace;
+}
+
+.configCloseBtn {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s;
+}
+
+.configCloseBtn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.configBody {
+    padding: 20px 24px;
+}
+
+.configSection {
+    margin-bottom: 20px;
+}
+
+.configSection:last-child {
+    margin-bottom: 0;
+}
+
+.configLabel {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+
+.configHint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 0 0 10px 0;
+    line-height: 1.5;
+}
+
+.levelSelector {
+    display: flex;
+    gap: 8px;
+}
+
+.levelBtn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 8px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--text-secondary);
+}
+
+.levelBtn:hover {
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.05);
+}
+
+.levelBtnActive {
+    border-color: var(--accent);
+    background: rgba(108, 92, 231, 0.1);
+    color: var(--accent-light);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.levelIcon {
+    font-size: 20px;
+}
+
+.levelName {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ruleRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.ruleLabel {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 72px;
+    flex-shrink: 0;
+}
+
+.ruleInput {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.ruleInput:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.ruleSelect {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.ruleSelect:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.configFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+}
+
+.unmountBtn {
+    padding: 8px 14px;
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--danger, #e74c3c);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.unmountBtn:hover:not(:disabled) {
+    background: rgba(231, 76, 60, 0.1);
+    border-color: var(--danger, #e74c3c);
+}
+
+.unmountBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.configActions {
+    display: flex;
+    gap: 8px;
+}
+
+.cancelBtn {
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cancelBtn:hover {
+    background: var(--bg-card);
+}
+
+.saveBtn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.saveBtn:hover:not(:disabled) {
+    background: var(--accent-light);
+}
+
+.saveBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

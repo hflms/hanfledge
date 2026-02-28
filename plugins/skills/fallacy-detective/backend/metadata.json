@@ -1,0 +1,37 @@
+{
+  "id": "fallacy-detective",
+  "name": "谬误侦探",
+  "description": "AI 在解释中故意埋入学科常见误区，训练学生的批判性思维和辨别能力。学生需找出错误并论证理由。",
+  "version": "1.0.0",
+  "author": "system",
+  "category": "critical-thinking",
+  "subjects": ["math", "physics", "chemistry", "biology"],
+  "tags": ["批判性思维", "误区辨识", "深度理解"],
+  "scaffolding_levels": ["high", "medium", "low"],
+  "constraints": {
+    "never_reveal_answer": true,
+    "misconception_must_be_plausible": true,
+    "must_reveal_trap_after_identification": true,
+    "max_embedded_fallacies_per_session": 3
+  },
+  "tools": {
+    "leveler": {
+      "enabled": true,
+      "description": "适配目标年级阅读水平"
+    },
+    "make_it_relevant": {
+      "enabled": true,
+      "description": "结合时事热点增强代入感"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "mastery_score >= 0.8",
+    "deactivate_when": "critical_thinking_score >= 0.9"
+  },
+  "evaluation_dimensions": [
+    "trap_plausibility",
+    "student_identification_accuracy",
+    "reasoning_quality",
+    "actionability"
+  ]
+}

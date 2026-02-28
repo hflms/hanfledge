@@ -155,3 +155,110 @@ func (c *Client) GetPrerequisites(ctx context.Context, kpID uint) ([]map[string]
 	}
 	return prereqs, nil
 }
+
+// ── Graph Search for RRF Retrieval ──────────────────────────
+
+// GraphSearchResult 图谱搜索结果。
+type GraphSearchResult struct {
+	KPID      string  `json:"kp_id"`
+	KPTitle   string  `json:"kp_title"`
+	ChunkID   uint    `json:"chunk_id,omitempty"`
+	Content   string  `json:"content,omitempty"`
+	Relation  string  `json:"relation"`  // "target" | "prerequisite" | "sibling"
+	Depth     int     `json:"depth"`     // graph hop distance
+	Relevance float64 `json:"relevance"` // graph-based relevance score [0,1]
+}
+
+// SearchRelatedKPs finds knowledge points related to the given KP IDs
+// by traversing REQUIRES and sibling (same chapter) relationships.
+// Used as the graph-based retrieval component in RRF hybrid search.
+func (c *Client) SearchRelatedKPs(ctx context.Context, kpIDs []uint, limit int) ([]GraphSearchResult, error) {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	// Build Neo4j ID list
+	neo4jIDs := make([]string, len(kpIDs))
+	for i, id := range kpIDs {
+		neo4jIDs[i] = fmt.Sprintf("kp_%d", id)
+	}
+
+	// Query: find related KPs via REQUIRES (both directions) and HAS_KP siblings
+	result, err := session.Run(ctx, `
+		UNWIND $kpIds AS targetId
+		MATCH (target:KnowledgePoint {id: targetId})
+		
+		// Direct prerequisites and dependents (1-2 hops)
+		OPTIONAL MATCH path1 = (target)-[:REQUIRES*1..2]-(related1:KnowledgePoint)
+		
+		// Sibling KPs in the same chapter
+		OPTIONAL MATCH (target)<-[:HAS_KP]-(ch:Chapter)-[:HAS_KP]->(related2:KnowledgePoint)
+		WHERE related2.id <> target.id
+		
+		WITH targetId, 
+		     collect(DISTINCT {
+		       id: related1.id, 
+		       title: related1.title, 
+		       difficulty: related1.difficulty,
+		       relation: 'prerequisite', 
+		       depth: length(path1)
+		     }) AS prereqs,
+		     collect(DISTINCT {
+		       id: related2.id, 
+		       title: related2.title, 
+		       difficulty: related2.difficulty,
+		       relation: 'sibling', 
+		       depth: 1
+		     }) AS siblings
+		
+		UNWIND (prereqs + siblings) AS node
+		WITH DISTINCT node
+		WHERE node.id IS NOT NULL
+		RETURN node.id AS id, node.title AS title, node.difficulty AS difficulty,
+		       node.relation AS relation, node.depth AS depth
+		ORDER BY node.depth ASC
+		LIMIT $limit
+	`, map[string]interface{}{
+		"kpIds": neo4jIDs,
+		"limit": limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graph search failed: %w", err)
+	}
+
+	var results []GraphSearchResult
+	for result.Next(ctx) {
+		record := result.Record()
+		id, _ := record.Get("id")
+		title, _ := record.Get("title")
+		difficulty, _ := record.Get("difficulty")
+		relation, _ := record.Get("relation")
+		depth, _ := record.Get("depth")
+
+		// Calculate relevance: closer nodes are more relevant
+		depthInt := 1
+		if d, ok := depth.(int64); ok {
+			depthInt = int(d)
+		}
+		relevance := 1.0 / float64(1+depthInt) // 1/(1+depth): depth 0→1.0, 1→0.5, 2→0.33
+
+		diffVal := 0.5
+		if d, ok := difficulty.(float64); ok {
+			diffVal = d
+		}
+		_ = diffVal // available for future scoring
+
+		idStr, _ := id.(string)
+		titleStr, _ := title.(string)
+		relationStr, _ := relation.(string)
+
+		results = append(results, GraphSearchResult{
+			KPID:      idStr,
+			KPTitle:   titleStr,
+			Relation:  relationStr,
+			Depth:     depthInt,
+			Relevance: relevance,
+		})
+	}
+
+	return results, nil
+}
