@@ -51,6 +51,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
 	analyticsHandler := handler.NewAnalyticsHandler(deps.DB, deps.PIIRedactor)
 	exportHandler := handler.NewExportHandler(deps.DB)
+	achievementHandler := handler.NewAchievementHandler(deps.DB)
 
 	// API v1 group
 	v1 := r.Group("/api/v1")
@@ -178,9 +179,11 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		student.Use(middleware.RBAC(deps.DB, model.RoleStudent, model.RoleSysAdmin))
 		{
 			student.GET("/activities", activityHandler.StudentListActivities)
-			student.GET("/mastery", dashboardHandler.GetSelfMastery)          // Phase 5
-			student.GET("/knowledge-map", kgHandler.GetStudentKnowledgeMap)   // Knowledge Map
-			student.GET("/error-notebook", dashboardHandler.GetErrorNotebook) // Error Notebook
+			student.GET("/mastery", dashboardHandler.GetSelfMastery)                     // Phase 5
+			student.GET("/knowledge-map", kgHandler.GetStudentKnowledgeMap)              // Knowledge Map
+			student.GET("/error-notebook", dashboardHandler.GetErrorNotebook)            // Error Notebook
+			student.GET("/achievements", achievementHandler.GetMyAchievements)           // Achievements
+			student.GET("/achievements/definitions", achievementHandler.ListDefinitions) // Achievement defs
 		}
 
 		// ── Activity Join & Sessions (any authenticated) ─

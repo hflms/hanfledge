@@ -48,6 +48,8 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		&model.Interaction{},
 		&model.StudentKPMastery{},
 		&model.ErrorNotebookEntry{},
+		&model.AchievementDefinition{},
+		&model.StudentAchievement{},
 	)
 	if err != nil {
 		t.Fatalf("AutoMigrate failed: %v", err)

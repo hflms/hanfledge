@@ -33,11 +33,17 @@ type SessionHandler struct {
 	DB             *gorm.DB
 	Orchestrator   *agent.AgentOrchestrator
 	InjectionGuard *safety.InjectionGuard
+	Achievement    *AchievementHandler
 }
 
 // NewSessionHandler creates a new SessionHandler.
 func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard) *SessionHandler {
-	return &SessionHandler{DB: db, Orchestrator: orchestrator, InjectionGuard: injectionGuard}
+	return &SessionHandler{
+		DB:             db,
+		Orchestrator:   orchestrator,
+		InjectionGuard: injectionGuard,
+		Achievement:    NewAchievementHandler(db),
+	}
 }
 
 // -- WebSocket Constants ----------------------------------------
@@ -244,12 +250,22 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 				Action: action,
 				Data:   data,
 			})
+
+			// ── Achievement Evaluation (design.md §5.2 Step 4) ──
+			if h.Achievement != nil {
+				h.evaluateAchievementsOnScaffold(action, data, studentID)
+			}
 		},
 
 		OnTurnComplete: func(totalTokens int) {
 			h.sendEvent(ws, agent.EventTurnComplete, agent.TurnCompletePayload{
 				TotalTokens: totalTokens,
 			})
+
+			// ── Deep Inquiry Achievement (design.md §5.2 Step 4) ──
+			if h.Achievement != nil {
+				go h.Achievement.EvaluateDeepInquiry(studentID, session.ID)
+			}
 		},
 	}
 
@@ -287,4 +303,39 @@ func truncateStr(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+// -- Achievement Evaluation Helpers ----------------------------------------
+
+// evaluateAchievementsOnScaffold triggers achievement checks based on scaffold events.
+// - "scaffold_change" with mastery >= 0.8 → streak breaker
+// - "fallacy_identified" → fallacy hunter
+func (h *SessionHandler) evaluateAchievementsOnScaffold(action string, data interface{}, studentID uint) {
+	dataMap, ok := data.(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	switch action {
+	case "scaffold_change":
+		// Check if mastery crossed the 0.8 threshold
+		if mastery, ok := dataMap["mastery"].(float64); ok && mastery >= 0.8 {
+			go h.Achievement.EvaluateStreakBreaker(studentID)
+		}
+
+	case "fallacy_identified":
+		// Extract cumulative identified count
+		if count, ok := dataMap["identified_count"]; ok {
+			var c int
+			switch v := count.(type) {
+			case float64:
+				c = int(v)
+			case int:
+				c = v
+			}
+			if c > 0 {
+				go h.Achievement.EvaluateFallacyHunter(studentID, c)
+			}
+		}
+	}
 }

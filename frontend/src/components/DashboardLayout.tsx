@@ -22,6 +22,7 @@ const TEACHER_NAV: NavItem[] = [
 const STUDENT_NAV: NavItem[] = [
     { icon: '📋', label: '学习活动', href: '/student/activities' },
     { icon: '📈', label: '我的掌握度', href: '/student/mastery' },
+    { icon: '🏆', label: '我的成就', href: '/student/achievements' },
     { icon: '🗺️', label: '知识图谱', href: '/student/knowledge-map' },
     { icon: '📝', label: '错题本', href: '/student/error-notebook' },
 ];

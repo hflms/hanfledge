@@ -596,6 +596,46 @@ export async function getErrorNotebook(opts?: { resolved?: boolean; kpId?: numbe
   return apiFetch<ErrorNotebookData>(`/student/error-notebook${qs ? '?' + qs : ''}`);
 }
 
+// ── Achievement API (design.md §5.2 Step 4) ──────────────────
+
+export interface AchievementProgress {
+  id: number;
+  type: string;           // streak_breaker | deep_inquiry | fallacy_hunter
+  tier: string;           // bronze | silver | gold | diamond
+  name: string;
+  description: string;
+  icon: string;
+  threshold: number;
+  progress: number;
+  unlocked: boolean;
+  unlocked_at?: string;
+}
+
+export interface StudentAchievementsData {
+  total_unlocked: number;
+  total_count: number;
+  achievements: AchievementProgress[];
+}
+
+export async function getMyAchievements(): Promise<StudentAchievementsData> {
+  return apiFetch<StudentAchievementsData>('/student/achievements');
+}
+
+export interface AchievementDefinition {
+  id: number;
+  type: string;
+  tier: string;
+  name: string;
+  description: string;
+  icon: string;
+  threshold: number;
+  sort_order: number;
+}
+
+export async function getAchievementDefinitions(): Promise<AchievementDefinition[]> {
+  return apiFetch<AchievementDefinition[]>('/student/achievements/definitions');
+}
+
 // ── WebSocket Helpers ───────────────────────────────────────
 
 export interface WSEvent {
