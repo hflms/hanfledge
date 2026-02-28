@@ -173,11 +173,14 @@ type SkillTemplate struct {
 
 // RegisteredSkill represents a skill registered in the Registry.
 // Contains the metadata layer, trigger layer path, and reference layer path.
+// For DB-backed custom skills, SkillMDContent is populated instead of SkillMDPath.
 type RegisteredSkill struct {
-	Metadata      SkillMetadata `json:"metadata"`
-	BasePath      string        `json:"-"`
-	SkillMDPath   string        `json:"-"`
-	TemplatesPath string        `json:"-"`
-	State         PluginState   `json:"state"`
-	Impl          SkillPlugin   `json:"-"` // nil for declarative-only skills
+	Metadata       SkillMetadata `json:"metadata"`
+	BasePath       string        `json:"-"`
+	SkillMDPath    string        `json:"-"`
+	SkillMDContent string        `json:"-"` // DB-backed: SKILL.md content stored in memory
+	TemplatesPath  string        `json:"-"`
+	State          PluginState   `json:"state"`
+	IsCustom       bool          `json:"is_custom"` // true for teacher-created skills
+	Impl           SkillPlugin   `json:"-"`         // nil for declarative-only skills
 }

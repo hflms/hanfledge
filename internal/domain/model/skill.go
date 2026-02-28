@@ -61,3 +61,67 @@ type ActivityClassAssignment struct {
 	ActivityID uint `gorm:"not null;index" json:"activity_id"`
 	ClassID    uint `gorm:"not null;index" json:"class_id"`
 }
+
+// ============================
+// 教师自定义技能 (design.md §6.4)
+// ============================
+
+// CustomSkillStatus 自定义技能状态枚举。
+type CustomSkillStatus string
+
+const (
+	CustomSkillStatusDraft     CustomSkillStatus = "draft"     // 草稿
+	CustomSkillStatusPublished CustomSkillStatus = "published" // 已发布（仅创建者可用）
+	CustomSkillStatusShared    CustomSkillStatus = "shared"    // 已分享（校级或平台级）
+	CustomSkillStatusArchived  CustomSkillStatus = "archived"  // 已归档
+)
+
+// CustomSkillVisibility 自定义技能可见范围。
+type CustomSkillVisibility string
+
+const (
+	VisibilityPrivate  CustomSkillVisibility = "private"  // 仅创建者
+	VisibilitySchool   CustomSkillVisibility = "school"   // 校内共享
+	VisibilityPlatform CustomSkillVisibility = "platform" // 全平台共享
+)
+
+// CustomSkill 教师自定义技能表。
+// 教师通过可视化表单创建，存储在数据库中（区别于内置技能存储在文件系统）。
+// SkillID 字段遵循三段式命名: {subject}_{scenario}_{method}
+type CustomSkill struct {
+	ID          uint                  `gorm:"primaryKey" json:"id"`
+	SkillID     string                `gorm:"size:100;uniqueIndex;not null" json:"skill_id"`
+	TeacherID   uint                  `gorm:"not null;index" json:"teacher_id"`
+	SchoolID    uint                  `gorm:"index" json:"school_id"`
+	Name        string                `gorm:"size:200;not null" json:"name"`
+	Description string                `gorm:"size:1000" json:"description"`
+	Category    string                `gorm:"size:50" json:"category"`
+	Subjects    string                `gorm:"type:jsonb;default:'[]'" json:"subjects"`
+	Tags        string                `gorm:"type:jsonb;default:'[]'" json:"tags"`
+	SkillMD     string                `gorm:"type:text;not null" json:"skill_md"`
+	ToolsConfig string                `gorm:"type:jsonb;default:'{}'" json:"tools_config"`
+	Templates   string                `gorm:"type:jsonb;default:'[]'" json:"templates"`
+	Status      CustomSkillStatus     `gorm:"size:20;default:draft;not null" json:"status"`
+	Visibility  CustomSkillVisibility `gorm:"size:20;default:private;not null" json:"visibility"`
+	Version     int                   `gorm:"default:1;not null" json:"version"`
+	UsageCount  int                   `gorm:"default:0" json:"usage_count"`
+	CreatedAt   string                `json:"created_at"`
+	UpdatedAt   string                `json:"updated_at"`
+
+	Teacher User `gorm:"foreignKey:TeacherID" json:"-"`
+}
+
+// CustomSkillVersion 自定义技能版本历史表。
+// 每次更新已发布的技能时，旧版本存入此表用于回滚。
+type CustomSkillVersion struct {
+	ID            uint   `gorm:"primaryKey" json:"id"`
+	CustomSkillID uint   `gorm:"not null;index" json:"custom_skill_id"`
+	Version       int    `gorm:"not null" json:"version"`
+	SkillMD       string `gorm:"type:text;not null" json:"skill_md"`
+	ToolsConfig   string `gorm:"type:jsonb" json:"tools_config"`
+	Templates     string `gorm:"type:jsonb" json:"templates"`
+	ChangeLog     string `gorm:"size:500" json:"change_log"`
+	CreatedAt     string `json:"created_at"`
+
+	CustomSkill CustomSkill `gorm:"foreignKey:CustomSkillID" json:"-"`
+}

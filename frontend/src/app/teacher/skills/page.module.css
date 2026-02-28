@@ -53,6 +53,168 @@
     border-color: var(--accent);
 }
 
+/* -- Create Button ------------------------------------------ */
+
+.createBtn {
+    padding: 8px 18px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+}
+
+.createBtn:hover {
+    opacity: 0.9;
+}
+
+/* -- Main Tabs (Built-in / Custom) -------------------------- */
+
+.mainTabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+}
+
+.mainTab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+}
+
+.mainTab:hover {
+    color: var(--text-primary);
+}
+
+.mainTabActive {
+    color: var(--accent-light);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+}
+
+.mainTabCount {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 100px;
+    background: var(--bg-primary);
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.mainTabActive .mainTabCount {
+    background: rgba(108, 92, 231, 0.15);
+    color: var(--accent-light);
+}
+
+/* -- Status Badges ------------------------------------------ */
+
+.statusBadge {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.statusDraft {
+    background: rgba(128, 128, 128, 0.12);
+    color: var(--text-muted);
+}
+
+.statusPublished {
+    background: rgba(0, 184, 148, 0.12);
+    color: var(--success);
+}
+
+.statusShared {
+    background: rgba(108, 92, 231, 0.12);
+    color: var(--accent-light);
+}
+
+.statusArchived {
+    background: rgba(255, 107, 107, 0.08);
+    color: var(--text-muted);
+}
+
+/* -- Custom Skill Actions ----------------------------------- */
+
+.customActions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+
+.actionBtn {
+    padding: 8px 18px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.actionBtn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.actionBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.actionPublish {
+    background: rgba(0, 184, 148, 0.08);
+    border-color: rgba(0, 184, 148, 0.3);
+    color: var(--success);
+}
+
+.actionPublish:hover {
+    background: rgba(0, 184, 148, 0.16);
+}
+
+.actionShare {
+    background: rgba(108, 92, 231, 0.08);
+    border-color: rgba(108, 92, 231, 0.3);
+    color: var(--accent-light);
+}
+
+.actionShare:hover {
+    background: rgba(108, 92, 231, 0.16);
+}
+
+.actionDanger {
+    background: rgba(255, 107, 107, 0.06);
+    border-color: rgba(255, 107, 107, 0.2);
+    color: var(--error);
+}
+
+.actionDanger:hover {
+    background: rgba(255, 107, 107, 0.12);
+}
+
 /* -- Teaching Stage Tabs ------------------------------------ */
 
 .stageTabs {

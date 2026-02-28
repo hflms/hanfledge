@@ -720,3 +720,128 @@ export async function exportErrorNotebookCSV(courseId: number): Promise<void> {
 export async function exportInteractionLog(sessionId: number): Promise<void> {
   return downloadCSV(`/export/sessions/${sessionId}/interactions`, `interactions_${sessionId}.csv`);
 }
+
+// ── Custom Skill API (design.md §6.4) ──────────────────────
+
+export type CustomSkillStatus = 'draft' | 'published' | 'shared' | 'archived';
+export type CustomSkillVisibility = 'private' | 'school' | 'platform';
+
+export interface CustomSkillTemplate {
+  id: string;
+  file_name: string;
+  content: string;
+}
+
+export interface CustomSkill {
+  id: number;
+  skill_id: string;
+  teacher_id: number;
+  school_id: number;
+  name: string;
+  description: string;
+  category: string;
+  subjects: string;      // JSON array string
+  tags: string;           // JSON array string
+  skill_md: string;
+  tools_config: string;   // JSON object string
+  templates: string;      // JSON array string
+  status: CustomSkillStatus;
+  visibility: CustomSkillVisibility;
+  version: number;
+  usage_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomSkillVersion {
+  id: number;
+  custom_skill_id: number;
+  version: number;
+  skill_md: string;
+  tools_config: string;
+  templates: string;
+  change_log: string;
+  created_at: string;
+}
+
+export interface CreateCustomSkillData {
+  skill_id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  subjects?: string[];
+  tags?: string[];
+  skill_md: string;
+  tools_config?: Record<string, SkillToolConfig>;
+  templates?: CustomSkillTemplate[];
+}
+
+export interface UpdateCustomSkillData {
+  name?: string;
+  description?: string;
+  category?: string;
+  subjects?: string[];
+  tags?: string[];
+  skill_md?: string;
+  tools_config?: Record<string, SkillToolConfig>;
+  templates?: CustomSkillTemplate[];
+  change_log?: string;
+}
+
+export async function createCustomSkill(data: CreateCustomSkillData): Promise<CustomSkill> {
+  return apiFetch<CustomSkill>('/custom-skills', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listCustomSkills(opts?: {
+  status?: CustomSkillStatus;
+  visibility?: CustomSkillVisibility;
+}): Promise<CustomSkill[]> {
+  const params = new URLSearchParams();
+  if (opts?.status) params.set('status', opts.status);
+  if (opts?.visibility) params.set('visibility', opts.visibility);
+  const qs = params.toString();
+  return apiFetch<CustomSkill[]>(`/custom-skills${qs ? '?' + qs : ''}`);
+}
+
+export async function getCustomSkill(id: number): Promise<CustomSkill> {
+  return apiFetch<CustomSkill>(`/custom-skills/${id}`);
+}
+
+export async function updateCustomSkill(id: number, data: UpdateCustomSkillData): Promise<CustomSkill> {
+  return apiFetch<CustomSkill>(`/custom-skills/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCustomSkill(id: number): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/custom-skills/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function publishCustomSkill(id: number): Promise<{ message: string; skill: CustomSkill }> {
+  return apiFetch<{ message: string; skill: CustomSkill }>(`/custom-skills/${id}/publish`, {
+    method: 'POST',
+  });
+}
+
+export async function shareCustomSkill(id: number, visibility: 'school' | 'platform'): Promise<{ message: string; skill: CustomSkill }> {
+  return apiFetch<{ message: string; skill: CustomSkill }>(`/custom-skills/${id}/share`, {
+    method: 'POST',
+    body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function archiveCustomSkill(id: number): Promise<{ message: string; skill: CustomSkill }> {
+  return apiFetch<{ message: string; skill: CustomSkill }>(`/custom-skills/${id}/archive`, {
+    method: 'POST',
+  });
+}
+
+export async function listCustomSkillVersions(id: number): Promise<CustomSkillVersion[]> {
+  return apiFetch<CustomSkillVersion[]>(`/custom-skills/${id}/versions`);
+}

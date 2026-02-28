@@ -143,6 +143,29 @@ func (r *Registry) RegisterSkillWithMetadata(meta SkillMetadata) {
 	}
 }
 
+// RegisterCustomSkill registers a teacher-created custom skill from database.
+// Unlike filesystem skills, custom skills store their SKILL.md content in memory.
+// The skill is immediately available for LoadConstraints and GetSkill queries.
+func (r *Registry) RegisterCustomSkill(meta SkillMetadata, skillMDContent string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.skills[meta.ID] = &RegisteredSkill{
+		Metadata:       meta,
+		SkillMDContent: skillMDContent,
+		State:          PluginStateRunning,
+		IsCustom:       true,
+	}
+}
+
+// UnregisterSkill removes a skill from the registry by ID.
+// Used when a custom skill is archived or deleted.
+func (r *Registry) UnregisterSkill(skillID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.skills, skillID)
+}
+
 // ShutdownAll gracefully shuts down all programmatic plugins.
 func (r *Registry) ShutdownAll(ctx context.Context) {
 	r.mu.RLock()
@@ -272,8 +295,10 @@ func (r *Registry) ListSkills(subject, category string) []*RegisteredSkill {
 	return result
 }
 
-// LoadConstraints reads the SKILL.md file for a given skill (lazy loading).
+// LoadConstraints reads the SKILL.md content for a given skill (lazy loading).
 // For programmatic plugins, delegates to the SkillPlugin.LoadConstraints method.
+// For DB-backed custom skills, returns the in-memory SkillMDContent.
+// For filesystem skills, reads from the SKILL.md file.
 func (r *Registry) LoadConstraints(skillID string) (*SkillConstraints, error) {
 	skill, ok := r.GetSkill(skillID)
 	if !ok {
@@ -283,6 +308,14 @@ func (r *Registry) LoadConstraints(skillID string) (*SkillConstraints, error) {
 	// If the skill has a programmatic implementation, use it
 	if skill.Impl != nil {
 		return skill.Impl.LoadConstraints(context.Background())
+	}
+
+	// DB-backed custom skill: return in-memory content
+	if skill.SkillMDContent != "" {
+		return &SkillConstraints{
+			SkillID:     skillID,
+			RawMarkdown: skill.SkillMDContent,
+		}, nil
 	}
 
 	// Declarative: read from filesystem

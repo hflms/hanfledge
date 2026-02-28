@@ -52,6 +52,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	analyticsHandler := handler.NewAnalyticsHandler(deps.DB, deps.PIIRedactor)
 	exportHandler := handler.NewExportHandler(deps.DB)
 	achievementHandler := handler.NewAchievementHandler(deps.DB)
+	customSkillHandler := handler.NewCustomSkillHandler(deps.DB, deps.Registry)
 
 	// API v1 group
 	v1 := r.Group("/api/v1")
@@ -128,6 +129,21 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 			chapters.POST("/:id/skills", skillHandler.MountSkill)
 			chapters.PATCH("/:id/skills/:mount_id", skillHandler.UpdateSkillConfig)
 			chapters.DELETE("/:id/skills/:mount_id", skillHandler.UnmountSkill)
+		}
+
+		// Custom Skill CRUD (TEACHER) — Phase 4 / §6.4
+		customSkills := protected.Group("/custom-skills")
+		customSkills.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
+		{
+			customSkills.POST("", customSkillHandler.CreateCustomSkill)
+			customSkills.GET("", customSkillHandler.ListCustomSkills)
+			customSkills.GET("/:id", customSkillHandler.GetCustomSkill)
+			customSkills.PUT("/:id", customSkillHandler.UpdateCustomSkill)
+			customSkills.DELETE("/:id", customSkillHandler.DeleteCustomSkill)
+			customSkills.POST("/:id/publish", customSkillHandler.PublishCustomSkill)
+			customSkills.POST("/:id/share", customSkillHandler.ShareCustomSkill)
+			customSkills.POST("/:id/archive", customSkillHandler.ArchiveCustomSkill)
+			customSkills.GET("/:id/versions", customSkillHandler.ListVersions)
 		}
 
 		// ── Knowledge Graph Enrichment (TEACHER) — Phase B ─

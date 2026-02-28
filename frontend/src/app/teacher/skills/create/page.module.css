@@ -1,0 +1,685 @@
+/* -- Layout ------------------------------------------------- */
+
+.page {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.pageHeader {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.backBtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.backBtn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.pageTitle {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.pageSubtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* -- Steps Progress ----------------------------------------- */
+
+.stepsBar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+}
+
+.step:hover {
+    border-color: var(--accent);
+    color: var(--text-secondary);
+}
+
+.stepActive {
+    background: rgba(108, 92, 231, 0.12);
+    border-color: var(--accent);
+    color: var(--accent-light);
+    font-weight: 600;
+}
+
+.stepDone {
+    color: var(--success);
+    border-color: rgba(0, 184, 148, 0.3);
+}
+
+.stepNum {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.stepActive .stepNum {
+    background: var(--accent);
+    color: #fff;
+}
+
+.stepDone .stepNum {
+    background: var(--success);
+    color: #fff;
+}
+
+.stepLabel {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* -- Form Panels -------------------------------------------- */
+
+.formPanel {
+    animation: fadeIn 0.2s ease;
+}
+
+.formRow {
+    margin-bottom: 20px;
+}
+
+.formLabel {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.formRequired::after {
+    content: ' *';
+    color: var(--error);
+}
+
+.formHint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.formInput {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: border-color 0.15s;
+}
+
+.formInput:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.formInput::placeholder {
+    color: var(--text-muted);
+}
+
+.formTextarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.15s;
+    line-height: 1.5;
+}
+
+.formTextarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.formTextarea::placeholder {
+    color: var(--text-muted);
+}
+
+.formSelect {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.formSelect:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.formRow2Col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.formError {
+    font-size: 12px;
+    color: var(--error);
+    margin-top: 4px;
+}
+
+/* -- Skill ID Builder --------------------------------------- */
+
+.skillIdBuilder {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.skillIdBuilder select {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.skillIdBuilder select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.skillIdBuilder input {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.skillIdBuilder input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.skillIdSep {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-family: monospace;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.skillIdPreview {
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--accent-light);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.skillIdPreview code {
+    color: var(--accent-light);
+}
+
+/* -- Multi-select Chips ------------------------------------- */
+
+.chipGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.chip:hover {
+    border-color: var(--accent);
+}
+
+.chipSelected {
+    background: rgba(108, 92, 231, 0.12);
+    border-color: var(--accent);
+    color: var(--accent-light);
+    font-weight: 500;
+}
+
+/* -- Tag Input ---------------------------------------------- */
+
+.tagInputWrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    min-height: 38px;
+    align-items: center;
+    cursor: text;
+    transition: border-color 0.15s;
+}
+
+.tagInputWrapper:focus-within {
+    border-color: var(--accent);
+}
+
+.tagChip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(108, 92, 231, 0.12);
+    color: var(--accent-light);
+    font-size: 12px;
+}
+
+.tagChipRemove {
+    background: none;
+    border: none;
+    color: var(--accent-light);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+
+.tagChipRemove:hover {
+    opacity: 1;
+}
+
+.tagInput {
+    flex: 1;
+    min-width: 100px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+}
+
+.tagInput::placeholder {
+    color: var(--text-muted);
+}
+
+/* -- Constraint Editor (Step 2) ----------------------------- */
+
+.constraintEditor {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    min-height: 400px;
+}
+
+.constraintEditorPane {
+    display: flex;
+    flex-direction: column;
+}
+
+.paneHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.paneTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.tokenCounter {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: 100px;
+    background: var(--bg-primary);
+}
+
+.tokenWarn {
+    color: var(--warning);
+    background: rgba(253, 203, 110, 0.15);
+}
+
+.tokenOver {
+    color: var(--error);
+    background: rgba(255, 107, 107, 0.12);
+}
+
+.skillMdTextarea {
+    flex: 1;
+    min-height: 380px;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+    resize: none;
+    line-height: 1.6;
+    transition: border-color 0.15s;
+    tab-size: 2;
+}
+
+.skillMdTextarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.skillMdTextarea::placeholder {
+    color: var(--text-muted);
+    font-family: inherit;
+}
+
+.previewPane {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-height: 450px;
+}
+
+.previewEmpty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 13px;
+    gap: 8px;
+}
+
+.templateBtn {
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--accent);
+    background: rgba(108, 92, 231, 0.08);
+    color: var(--accent-light);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.templateBtn:hover {
+    background: rgba(108, 92, 231, 0.16);
+}
+
+/* -- Tools Config (Step 3) ---------------------------------- */
+
+.toolConfigList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.toolConfigItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    transition: border-color 0.15s;
+}
+
+.toolConfigItem:has(.toolToggle:checked) {
+    border-color: rgba(0, 184, 148, 0.3);
+}
+
+.toolToggle {
+    margin-top: 2px;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+.toolConfigInfo {
+    flex: 1;
+}
+
+.toolConfigName {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.toolConfigDesc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* -- Templates (Step 4) ------------------------------------- */
+
+.templateList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.templateCard {
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.templateCardHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.templateCardHeader input {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.templateCardHeader input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.removeBtn {
+    background: transparent;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    color: var(--error);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.removeBtn:hover {
+    background: rgba(255, 107, 107, 0.08);
+}
+
+.templateTextarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: 'SFMono-Regular', 'Consolas', monospace;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.templateTextarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.addBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 100%;
+}
+
+.addBtn:hover {
+    border-color: var(--accent);
+    color: var(--accent-light);
+}
+
+/* -- Bottom Bar --------------------------------------------- */
+
+.bottomBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.btnSecondary {
+    padding: 8px 20px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btnSecondary:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.btnGroup {
+    display: flex;
+    gap: 10px;
+}
+
+.btnPrimary {
+    padding: 8px 24px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btnPrimary:hover {
+    opacity: 0.9;
+}
+
+.btnPrimary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* -- Animations --------------------------------------------- */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

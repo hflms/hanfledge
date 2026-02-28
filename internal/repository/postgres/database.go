@@ -37,6 +37,18 @@ func AutoMigrate(db *gorm.DB) error {
 	// Enable pgvector extension
 	db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
 
+	// Fix empty string values in timestamp columns before migration.
+	// If columns were previously text/varchar, empty strings cannot be cast to timestamptz.
+	fixTimestampSQL := []string{
+		`UPDATE courses SET created_at = NULL WHERE created_at = '' OR created_at IS NOT NULL AND created_at::text = ''`,
+		`UPDATE courses SET updated_at = NULL WHERE updated_at = '' OR updated_at IS NOT NULL AND updated_at::text = ''`,
+	}
+	for _, sql := range fixTimestampSQL {
+		if err := db.Exec(sql).Error; err != nil {
+			log.Printf("⚠️  Timestamp fix query skipped (table may not exist yet): %v", err)
+		}
+	}
+
 	err := db.AutoMigrate(
 		// 用户与权限
 		&model.User{},
@@ -68,6 +80,9 @@ func AutoMigrate(db *gorm.DB) error {
 		// 成就系统
 		&model.AchievementDefinition{},
 		&model.StudentAchievement{},
+		// 自定义技能
+		&model.CustomSkill{},
+		&model.CustomSkillVersion{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)
