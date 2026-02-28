@@ -1,0 +1,19 @@
+{
+  "id": "fallacy-detective-renderer",
+  "name": "谬误侦探交互渲染器",
+  "version": "1.0.0",
+  "type": "skill_renderer",
+  "skillId": "general_assessment_fallacy",
+  "trust_level": "domain",
+  "author": "hanfledge-team",
+  "description": "挑战式学习 — 识别、标记并纠正知识性错误",
+  "entry": "@/lib/plugin/renderers/FallacyRenderer",
+  "slots": ["student.interaction.main"],
+  "supported_interaction_modes": ["text"],
+  "permissions": [
+    "getStudentContext",
+    "getKnowledgePoint",
+    "sendMessageToAgent",
+    "reportInteractionEvent"
+  ]
+}

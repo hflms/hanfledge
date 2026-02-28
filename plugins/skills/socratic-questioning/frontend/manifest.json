@@ -1,0 +1,19 @@
+{
+  "id": "socratic-renderer",
+  "name": "苏格拉底式问答渲染器",
+  "version": "1.0.0",
+  "type": "skill_renderer",
+  "skillId": "general_concept_socratic",
+  "trust_level": "domain",
+  "author": "hanfledge-team",
+  "description": "多轮对话式教学，通过提问引导学生自主发现知识",
+  "entry": "@/lib/plugin/renderers/SocraticRenderer",
+  "slots": ["student.interaction.main"],
+  "supported_interaction_modes": ["text"],
+  "permissions": [
+    "getStudentContext",
+    "getKnowledgePoint",
+    "sendMessageToAgent",
+    "reportInteractionEvent"
+  ]
+}

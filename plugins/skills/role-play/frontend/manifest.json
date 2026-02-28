@@ -1,0 +1,19 @@
+{
+  "id": "role-play-renderer",
+  "name": "角色扮演渲染器",
+  "version": "1.0.0",
+  "type": "skill_renderer",
+  "skillId": "general_review_roleplay",
+  "trust_level": "domain",
+  "author": "hanfledge-team",
+  "description": "沉浸式学习 — 与历史人物或学科专家对话",
+  "entry": "@/lib/plugin/renderers/RolePlayRenderer",
+  "slots": ["student.interaction.main"],
+  "supported_interaction_modes": ["text"],
+  "permissions": [
+    "getStudentContext",
+    "getKnowledgePoint",
+    "sendMessageToAgent",
+    "reportInteractionEvent"
+  ]
+}

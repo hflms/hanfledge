@@ -1,0 +1,19 @@
+{
+  "id": "quiz-renderer",
+  "name": "自动出题渲染器",
+  "version": "1.0.0",
+  "type": "skill_renderer",
+  "skillId": "general_assessment_quiz",
+  "trust_level": "domain",
+  "author": "hanfledge-team",
+  "description": "智能出题 — 根据知识点自动生成选择题和填空题",
+  "entry": "@/lib/plugin/renderers/QuizRenderer",
+  "slots": ["student.interaction.main"],
+  "supported_interaction_modes": ["text"],
+  "permissions": [
+    "getStudentContext",
+    "getKnowledgePoint",
+    "sendMessageToAgent",
+    "reportInteractionEvent"
+  ]
+}
