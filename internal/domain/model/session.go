@@ -34,7 +34,7 @@ type StudentSession struct {
 type Interaction struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	SessionID  uint      `gorm:"not null;index" json:"session_id"`
-	Role       string    `gorm:"size:20;not null" json:"role"` // "student" | "coach" | "system"
+	Role       string    `gorm:"size:20;not null" json:"role"` // "student" | "coach" | "system" | "teacher"
 	Content    string    `gorm:"type:text;not null" json:"content"`
 	SkillID    string    `gorm:"size:100" json:"skill_id"`
 	TokensUsed int       `gorm:"default:0" json:"tokens_used"`

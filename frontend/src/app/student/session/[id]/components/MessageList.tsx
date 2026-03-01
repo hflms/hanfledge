@@ -8,7 +8,7 @@ const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
 export interface ChatMessage {
     id: string;
-    role: 'student' | 'coach' | 'system';
+    role: 'student' | 'coach' | 'system' | 'teacher';
     content: string;
     timestamp: number;
 }
@@ -41,6 +41,7 @@ export default function MessageList({ messages, streamingContent, thinkingStatus
                     key={msg.id}
                     className={`${styles.messageBubble} ${
                         msg.role === 'student' ? styles.messageStudent :
+                        msg.role === 'teacher' ? styles.messageTeacher :
                         msg.role === 'coach' ? styles.messageCoach :
                         styles.messageSystem
                     }`}
@@ -48,12 +49,12 @@ export default function MessageList({ messages, streamingContent, thinkingStatus
                     {msg.role !== 'system' && (
                         <div className={styles.messageHeader}>
                             <span className={`${styles.roleIcon} ${
-                                msg.role === 'student' ? styles.roleStudent : styles.roleCoach
+                                msg.role === 'student' ? styles.roleStudent : msg.role === 'teacher' ? styles.roleTeacher : styles.roleCoach
                             }`}>
-                                {msg.role === 'student' ? 'S' : 'AI'}
+                                {msg.role === 'student' ? 'S' : msg.role === 'teacher' ? 'T' : 'AI'}
                             </span>
                             <span className={styles.roleLabel}>
-                                {msg.role === 'student' ? '我' : 'AI 导师'}
+                                {msg.role === 'student' ? '我' : msg.role === 'teacher' ? '人类教师 (接管)' : 'AI 导师'}
                             </span>
                         </div>
                     )}

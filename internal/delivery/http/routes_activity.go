@@ -35,4 +35,6 @@ func registerActivityRoutes(
 
 	// WebSocket Session Stream — Phase 4
 	protected.GET("/sessions/:id/stream", sessionHandler.StreamSession)
+	// Teacher Intervention - Phase 6
+	protected.POST("/sessions/:id/intervention", teacherRoles, sessionHandler.HandleIntervention)
 }

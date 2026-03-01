@@ -134,7 +134,40 @@ export default function SessionPage() {
                 break;
             }
 
+
+            case 'system_message': {
+                const payload = event.payload as { content: string };
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        id: `sys-${Date.now()}`,
+                        role: 'system',
+                        content: payload.content,
+                        timestamp: Date.now(),
+                    }
+                ]);
+                break;
+            }
+
+            case 'teacher_takeover': {
+                const payload = event.payload as { id: number, content: string, created_at: string };
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        id: `t-${payload.id || Date.now()}`,
+                        role: 'teacher',
+                        content: payload.content,
+                        timestamp: payload.created_at ? new Date(payload.created_at).getTime() : Date.now(),
+                    }
+                ]);
+                // Clear any ongoing AI thinking/streaming since teacher interrupted
+                setThinkingStatus(null);
+                setStreamingContent('');
+                break;
+            }
+
             case 'turn_complete': {
+
                 setThinkingStatus(null);
                 setSending(false);
 

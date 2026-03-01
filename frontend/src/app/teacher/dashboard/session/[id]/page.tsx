@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
     getInquiryTree,
     getInteractionLog,
+    sendIntervention,
     type InquiryTreeResponse,
     type InquiryTreeNode,
     type InteractionLogResponse,
@@ -56,11 +57,71 @@ const TURN_TYPE_MAP: Record<string, { label: string; color: string }> = {
 
 const ROLE_LABELS: Record<string, string> = {
     student: '学生',
+    teacher: '教师',
     coach: 'AI 教练',
     system: '系统',
 };
 
+
+
+// -- Intervention Panel Component -----------------------------
+
+function InterventionPanel({ sessionId, onSent }: { sessionId: number, onSent: () => void }) {
+    const [content, setContent] = useState('');
+    const [sending, setSending] = useState(false);
+
+    const handleSend = async (type: 'takeover' | 'whisper') => {
+        if (!content.trim()) return;
+        setSending(true);
+        try {
+            await sendIntervention(sessionId, type, content);
+            setContent('');
+            onSent(); // Refresh data
+            alert('发送成功');
+        } catch (err: any) {
+            alert('发送失败: ' + err.message);
+        } finally {
+            setSending(false);
+        }
+    };
+
+    return (
+        <div className={styles.interventionPanel}>
+            <div className={styles.interventionHeader}>
+                🛠️ 教师实时干预
+                <span>active</span>
+            </div>
+            <textarea
+                className={styles.interventionInput}
+                placeholder="输入要对学生说的话，或对AI下达的指令..."
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                disabled={sending}
+            />
+            <div className={styles.interventionActions}>
+                <button
+                    className={styles.btnTakeover}
+                    onClick={() => handleSend('takeover')}
+                    disabled={sending || !content.trim()}
+                    title="直接以老师身份发给学生，中断AI当前回复"
+                >
+                    直接回复学生 (Takeover)
+                </button>
+                <button
+                    className={styles.btnWhisper}
+                    onClick={() => handleSend('whisper')}
+                    disabled={sending || !content.trim()}
+                    title="作为系统指令发给AI，AI将据此生成下一条消息"
+                >
+                    悄悄指示AI (Whisper)
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // -- Main Component -------------------------------------------
+
 
 export default function SessionAnalyticsPage() {
     const params = useParams();
@@ -158,6 +219,9 @@ export default function SessionAnalyticsPage() {
                     </div>
                 </div>
             )}
+
+            {/* Intervention Panel */}
+            {treeData && (<InterventionPanel sessionId={sessionId} onSent={loadData} />)}
 
             {/* Tab Navigation */}
             <div className={styles.tabBar}>
@@ -299,7 +363,7 @@ function InteractionLog({ data }: { data: InteractionLogResponse }) {
                 {data.interactions.map((entry) => (
                     <div
                         key={entry.id}
-                        className={`${styles.logEntry} ${entry.role === 'student' ? styles.logEntryStudent : styles.logEntryCoach}`}
+                        className={`${styles.logEntry} ${entry.role === 'student' ? styles.logEntryStudent : entry.role === 'teacher' ? styles.logEntryTeacher : styles.logEntryCoach}`}
                         onClick={() => setSelectedEntry(entry)}
                         onKeyDown={handleCardKeyDown}
                         role="button"

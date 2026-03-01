@@ -248,6 +248,10 @@
     border-left: 3px solid var(--success);
 }
 
+.logEntryTeacher {
+    border-left: 3px solid var(--warning);
+}
+
 .logEntryHeader {
     display: flex;
     align-items: center;
@@ -429,4 +433,84 @@
         margin-left: 0;
         margin-top: 4px;
     }
+}
+
+/* Intervention Panel */
+.interventionPanel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.interventionHeader {
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+
+.interventionHeader span {
+    background: var(--warning);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.interventionInput {
+    width: 100%;
+    min-height: 80px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-body);
+    color: var(--text-primary);
+    font-family: inherit;
+    resize: vertical;
+}
+
+.interventionInput:focus {
+    outline: none;
+    border-color: var(--warning);
+}
+
+.interventionActions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.btnTakeover, .btnWhisper {
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    border: none;
+    color: white;
+}
+
+.btnTakeover {
+    background: var(--warning);
+}
+
+.btnWhisper {
+    background: var(--info);
+}
+
+.btnTakeover:hover, .btnWhisper:hover {
+    opacity: 0.9;
+}
+
+.btnTakeover:disabled, .btnWhisper:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }

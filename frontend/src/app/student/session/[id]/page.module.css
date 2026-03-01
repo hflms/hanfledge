@@ -95,6 +95,11 @@
     color: #fff;
 }
 
+.roleTeacher {
+    background: rgba(253, 203, 110, 0.2);
+    color: var(--warning);
+}
+
 .roleCoach {
     background: rgba(108, 92, 231, 0.2);
     color: var(--accent-light);
@@ -115,6 +120,14 @@
     background: var(--accent);
     color: #fff;
     border-bottom-right-radius: 4px;
+}
+
+.messageTeacher {
+    align-self: flex-start;
+    background: var(--bg-card);
+    border: 1px solid var(--warning);
+    color: var(--text-primary);
+    border-bottom-left-radius: 4px;
 }
 
 .messageCoach {

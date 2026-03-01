@@ -943,3 +943,12 @@ export async function uninstallPlugin(id: number): Promise<void> {
 export async function listInstalledPlugins(schoolId: number): Promise<InstalledPlugin[]> {
   return apiFetch(`/marketplace/installed?school_id=${schoolId}`);
 }
+
+// ── Teacher Intervention API — Phase 6 ───────────────────────
+
+export async function sendIntervention(sessionId: number, type: 'takeover' | 'whisper', content: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/sessions/${sessionId}/intervention`, {
+    method: 'POST',
+    body: JSON.stringify({ type, content }),
+  });
+}

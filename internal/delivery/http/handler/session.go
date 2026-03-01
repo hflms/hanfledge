@@ -35,6 +35,9 @@ var slogSession = logger.L("Session")
 
 // SessionHandler handles WebSocket session streaming.
 type SessionHandler struct {
+	ActiveSessions map[uint]*wsConn
+	sessionsMu     sync.RWMutex
+
 	DB             *gorm.DB
 	Orchestrator   *agent.AgentOrchestrator
 	InjectionGuard *safety.InjectionGuard
@@ -54,6 +57,7 @@ func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injec
 		Achievement:    NewAchievementHandler(db),
 		ASR:            asrProvider,
 		upgrader:       newUpgrader(corsOrigins, ginMode),
+		ActiveSessions: make(map[uint]*wsConn),
 	}
 }
 
@@ -176,6 +180,16 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 	defer rawWS.Close()
 
 	ws := &wsConn{conn: rawWS}
+
+	// Register active session
+	h.sessionsMu.Lock()
+	h.ActiveSessions[uint(sessionID)] = ws
+	h.sessionsMu.Unlock()
+	defer func() {
+		h.sessionsMu.Lock()
+		delete(h.ActiveSessions, uint(sessionID))
+		h.sessionsMu.Unlock()
+	}()
 
 	slogSession.Info("websocket connected", "session", sessionID, "student", studentID)
 

@@ -330,14 +330,16 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 	now := time.Now()
 
 	// 保存学生输入
-	studentMsg := model.Interaction{
-		SessionID: tc.SessionID,
-		Role:      "student",
-		Content:   tc.UserInput,
-		CreatedAt: now,
-	}
-	if err := o.db.WithContext(tc.Ctx).Create(&studentMsg).Error; err != nil {
-		return fmt.Errorf("save student interaction: %w", err)
+	if tc.UserInput != "" {
+		studentMsg := model.Interaction{
+			SessionID: tc.SessionID,
+			Role:      "student",
+			Content:   tc.UserInput,
+			CreatedAt: now,
+		}
+		if err := o.db.WithContext(tc.Ctx).Create(&studentMsg).Error; err != nil {
+			return fmt.Errorf("save student interaction: %w", err)
+		}
 	}
 
 	// 保存 Coach 回复

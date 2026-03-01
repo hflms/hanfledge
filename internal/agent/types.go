@@ -234,6 +234,8 @@ const (
 	EventVoiceEnd          = "voice_end"          // 语音输入结束
 	EventVoiceResult       = "voice_result"       // 语音识别结果
 	EventAvatarAction      = "avatar_action"      // 3D Avatar 动作指令
+	EventTeacherTakeover   = "teacher_takeover"   // 教师接管: 直接向学生发送消息
+	EventTeacherWhisper    = "teacher_whisper"    // 教师指令: 教师向AI下达的隐藏指令
 )
 
 // ThinkingPayload agent_thinking 事件的载荷。
