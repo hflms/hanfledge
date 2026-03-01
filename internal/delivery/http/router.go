@@ -11,6 +11,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/asr"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/i18n"
+	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/plugin"
@@ -50,6 +51,7 @@ type RouterDeps struct {
 	Translator     *i18n.Translator
 	EventBus       *plugin.EventBus
 	ASRProvider    asr.ASRProvider // 语音识别 (nil-safe)
+	LLMProvider    llm.LLMProvider // AI Recommendations
 }
 
 // NewRouter creates and configures the Gin router with all routes.
@@ -89,7 +91,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	authHandler := handler.NewAuthHandler(userRepo, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours, deps.EventBus)
 	userHandler := handler.NewUserHandler(deps.DB)
 	courseHandler := handler.NewCourseHandler(courseRepo, docRepo, deps.KARAG, deps.RedisCache, deps.FileStorage)
-	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry)
+	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry, deps.LLMProvider)
 	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus)
 	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
 	dashboardHandler := handler.NewDashboardHandler(courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)

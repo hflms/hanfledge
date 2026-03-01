@@ -2,24 +2,28 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/plugin"
 	"gorm.io/gorm"
 )
 
 // SkillHandler handles skill-related requests (Skill Store + mounting).
 type SkillHandler struct {
-	DB       *gorm.DB
-	Registry *plugin.Registry
+	DB          *gorm.DB
+	Registry    *plugin.Registry
+	LLMProvider llm.LLMProvider
 }
 
 // NewSkillHandler creates a new SkillHandler.
-func NewSkillHandler(db *gorm.DB, registry *plugin.Registry) *SkillHandler {
-	return &SkillHandler{DB: db, Registry: registry}
+func NewSkillHandler(db *gorm.DB, registry *plugin.Registry, llmProvider llm.LLMProvider) *SkillHandler {
+	return &SkillHandler{DB: db, Registry: registry, LLMProvider: llmProvider}
 }
 
 // ── Skill Store ─────────────────────────────────────────────
@@ -301,4 +305,200 @@ func (h *SkillHandler) UpdateSkillConfig(c *gin.Context) {
 // marshalJSON is a helper to marshal map to JSON bytes.
 func marshalJSON(v interface{}) ([]byte, error) {
 	return json.Marshal(v)
+}
+
+// ── AI Auto-Mount ───────────────────────────────────────────
+
+// RecommendMount represents an AI recommended skill mount.
+type RecommendMount struct {
+	KPID          uint                `json:"kp_id"`
+	KPTitle       string              `json:"kp_title"`
+	SkillID       string              `json:"skill_id"`
+	SkillName     string              `json:"skill_name"`
+	ScaffoldLevel model.ScaffoldLevel `json:"scaffold_level"`
+	Reason        string              `json:"reason"`
+}
+
+// RecommendSkills uses AI to recommend skill mappings for a course.
+// POST /api/v1/courses/:id/skills/recommend
+func (h *SkillHandler) RecommendSkills(c *gin.Context) {
+	courseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
+
+	// 1. Fetch Course and Knowledge Points
+	var course model.Course
+	if err := h.DB.Preload("Chapters.KnowledgePoints").First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
+		return
+	}
+
+	// 2. Fetch available skills
+	skills := h.Registry.ListSkills(course.Subject, "")
+	if len(skills) == 0 {
+		skills = h.Registry.ListSkills("", "") // fallback to all if none match subject
+	}
+
+	// 3. Build prompt for AI
+	type SimpleKP struct {
+		ID    uint   `json:"id"`
+		Title string `json:"title"`
+	}
+	type SimpleSkill struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Desc string `json:"description"`
+	}
+
+	var kps []SimpleKP
+	for _, ch := range course.Chapters {
+		for _, kp := range ch.KnowledgePoints {
+			kps = append(kps, SimpleKP{ID: kp.ID, Title: kp.Title})
+		}
+	}
+
+	if len(kps) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "课程下没有知识点，请先上传教材生成大纲"})
+		return
+	}
+
+	var available []SimpleSkill
+	skillMap := make(map[string]string)
+	for _, s := range skills {
+		available = append(available, SimpleSkill{ID: s.Metadata.ID, Name: s.Metadata.Name, Desc: s.Metadata.Description})
+		skillMap[s.Metadata.ID] = s.Metadata.Name
+	}
+
+	kpJSON, _ := json.Marshal(kps)
+	skillJSON, _ := json.Marshal(available)
+
+	prompt := fmt.Sprintf(`You are an AI assistant helping a teacher design a course.
+Here are the Knowledge Points (KPs) for the course "%s":
+%s
+
+Here are the available pedagogical skills:
+%s
+
+Please recommend up to 10 skill mounts for these knowledge points. Focus on key points.
+Output ONLY a valid JSON array of objects with the following keys:
+- "kp_id": integer
+- "skill_id": string
+- "scaffold_level": string (one of "high", "medium", "low")
+- "reason": string (why this skill fits this KP)
+
+JSON output:`, course.Title, string(kpJSON), string(skillJSON))
+
+	// 4. Call LLM
+	resp, err := h.LLMProvider.Chat(c.Request.Context(), []llm.ChatMessage{
+		{Role: "system", Content: "You are a helpful educational AI. You respond ONLY with valid JSON, without markdown formatting like ```json or ```."},
+		{Role: "user", Content: prompt},
+	}, &llm.ChatOptions{Temperature: 0.2})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 分析失败: " + err.Error()})
+		return
+	}
+
+	// 5. Parse response (try to extract JSON array if wrapped)
+	rawJSON := resp
+	start := strings.Index(rawJSON, "[")
+	end := strings.LastIndex(rawJSON, "]")
+	if start != -1 && end != -1 && end > start {
+		rawJSON = rawJSON[start : end+1]
+	}
+
+	var mounts []RecommendMount
+	if err := json.Unmarshal([]byte(rawJSON), &mounts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "解析 AI 响应失败: " + err.Error()})
+		return
+	}
+
+	// 6. Enrich with names
+	kpNameMap := make(map[uint]string)
+	for _, kp := range kps {
+		kpNameMap[kp.ID] = kp.Title
+	}
+
+	for i := range mounts {
+		mounts[i].KPTitle = kpNameMap[mounts[i].KPID]
+		mounts[i].SkillName = skillMap[mounts[i].SkillID]
+	}
+
+	c.JSON(http.StatusOK, gin.H{"recommendations": mounts})
+}
+
+// BatchMountRequest represents a list of skill mounts.
+type BatchMountRequest struct {
+	Mounts []struct {
+		KPID          uint                `json:"kp_id" binding:"required"`
+		SkillID       string              `json:"skill_id" binding:"required"`
+		ScaffoldLevel model.ScaffoldLevel `json:"scaffold_level"`
+	} `json:"mounts" binding:"required"`
+}
+
+// BatchMountSkills applies a batch of skill mounts to a course's knowledge points.
+// POST /api/v1/courses/:id/skills/batch-mount
+func (h *SkillHandler) BatchMountSkills(c *gin.Context) {
+	courseID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
+
+	var req BatchMountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求数据格式错误: " + err.Error()})
+		return
+	}
+
+	var savedCount int
+
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		for _, m := range req.Mounts {
+			// Ensure KP belongs to the course
+			var count int64
+			if err := tx.Model(&model.KnowledgePoint{}).
+				Joins("JOIN chapters ON chapters.id = knowledge_points.chapter_id").
+				Where("knowledge_points.id = ? AND chapters.course_id = ?", m.KPID, courseID).
+				Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				continue // Skip if KP is not in this course
+			}
+
+			level := m.ScaffoldLevel
+			if level == "" {
+				level = model.ScaffoldHigh
+			}
+
+			// Upsert logic (if exists, skip or update. Let's just create if not exists)
+			var existing model.KPSkillMount
+			if err := tx.Where("kp_id = ? AND skill_id = ?", m.KPID, m.SkillID).First(&existing).Error; err == nil {
+				// Already mounted, skip
+				continue
+			}
+
+			newMount := model.KPSkillMount{
+				KPID:            m.KPID,
+				SkillID:         m.SkillID,
+				ScaffoldLevel:   level,
+				ConstraintsJSON: "{}",
+			}
+			if err := tx.Create(&newMount).Error; err != nil {
+				return err
+			}
+			savedCount++
+		}
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "批量挂载失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "批量挂载成功", "count": savedCount})
 }

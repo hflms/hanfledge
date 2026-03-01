@@ -22,3 +22,10 @@
   - 支持渲染 `role: 'teacher'` 的消息，使用不同的样式（如蓝色高亮、教师头像）。
 - [ ] `frontend/src/lib/api.ts`: 
   - 添加 `sendIntervention(sessionId, type, content)`。
+
+## Batching & AI-Recommended Skill Mounting
+- [x] Backend: Add `LLMProvider` to `SkillHandler` deps via `RouterDeps`
+- [x] Backend: Add `POST /api/v1/courses/:id/skills/recommend` handler using LLM.
+- [x] Backend: Add `POST /api/v1/courses/:id/skills/batch-mount` handler.
+- [x] Frontend: Add UI for AI Recommendation Modal in Outline Page.
+- [x] Frontend: Handle state for selected mounts and batch applying them.

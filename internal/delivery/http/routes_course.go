@@ -33,6 +33,10 @@ func registerCourseRoutes(
 		courses.POST("/:id/search", courseHandler.SearchCourse)
 		courses.DELETE("/:id/documents/:doc_id", courseHandler.DeleteDocument)
 		courses.POST("/:id/documents/:doc_id/retry", courseHandler.RetryDocument)
+
+		// AI Auto-Mount
+		courses.POST("/:id/skills/recommend", skillHandler.RecommendSkills)
+		courses.POST("/:id/skills/batch-mount", skillHandler.BatchMountSkills)
 	}
 
 	// Skill Store — Phase 3

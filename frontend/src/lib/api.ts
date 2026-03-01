@@ -328,6 +328,30 @@ export async function updateSkillConfig(chapterId: number, mountId: number, data
   });
 }
 
+// ── AI Auto-Mount API ───────────────────────────────────────
+
+export interface RecommendMount {
+  kp_id: number;
+  kp_title: string;
+  skill_id: string;
+  skill_name: string;
+  scaffold_level: string;
+  reason: string;
+}
+
+export async function recommendSkills(courseId: number): Promise<{ recommendations: RecommendMount[] }> {
+  return apiFetch<{ recommendations: RecommendMount[] }>(`/courses/${courseId}/skills/recommend`, {
+    method: 'POST',
+  });
+}
+
+export async function batchMountSkills(courseId: number, mounts: { kp_id: number; skill_id: string; scaffold_level: string }[]): Promise<{ message: string; count: number }> {
+  return apiFetch<{ message: string; count: number }>(`/courses/${courseId}/skills/batch-mount`, {
+    method: 'POST',
+    body: JSON.stringify({ mounts }),
+  });
+}
+
 // ── Student Activity API ────────────────────────────────────
 
 export interface LearningActivity {

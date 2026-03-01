@@ -241,6 +241,7 @@ func main() {
 		Translator:     translator,
 		EventBus:       eventBus,
 		ASRProvider:    asrProvider,
+		LLMProvider:    llmProvider,
 	})
 
 	// ── Start Server (Graceful Shutdown) ───────────────

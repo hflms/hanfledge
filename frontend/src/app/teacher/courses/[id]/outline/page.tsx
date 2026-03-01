@@ -6,7 +6,8 @@ import Link from 'next/link';
 import {
     getCourseOutline, uploadMaterial, getDocuments,
     listSkills, mountSkill, unmountSkill, updateSkillConfig,
-    type Course, type Document, type SkillMetadata, type MountedSkill,
+    recommendSkills, batchMountSkills,
+    type Course, type Document, type SkillMetadata, type MountedSkill, type RecommendMount
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { DOCUMENT_STATUS_LABEL, CATEGORY_ICONS } from '@/lib/constants';
@@ -42,6 +43,12 @@ export default function OutlinePage() {
     const [configThreshold, setConfigThreshold] = useState<string>('');
     const [configDegradeTo, setConfigDegradeTo] = useState<string>('');
     const [configSaving, setConfigSaving] = useState(false);
+
+    // -- AI Auto-Mount state -----------------------------------------
+    const [recommending, setRecommending] = useState(false);
+    const [recommendations, setRecommendations] = useState<RecommendMount[] | null>(null);
+    const [selectedMounts, setSelectedMounts] = useState<Set<string>>(new Set());
+    const [batchMounting, setBatchMounting] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -192,6 +199,62 @@ export default function OutlinePage() {
         }
     };
 
+    // -- AI Auto-Mount handlers ---------------------------------------
+
+    const handleRecommend = async () => {
+        setRecommending(true);
+        try {
+            const res = await recommendSkills(courseId);
+            setRecommendations(res.recommendations || []);
+            // auto select all initially
+            const allSet = new Set<string>();
+            (res.recommendations || []).forEach((r, i) => allSet.add(i.toString()));
+            setSelectedMounts(allSet);
+        } catch (err) {
+            console.error('Failed to get recommendations', err);
+            toast('AI 分析失败，请重试', 'error');
+        } finally {
+            setRecommending(false);
+        }
+    };
+
+    const handleBatchMount = async () => {
+        if (!recommendations) return;
+        const mountsToApply = recommendations
+            .filter((_, i) => selectedMounts.has(i.toString()))
+            .map(r => ({ kp_id: r.kp_id, skill_id: r.skill_id, scaffold_level: r.scaffold_level }));
+        
+        if (mountsToApply.length === 0) {
+            toast('请选择至少一项挂载', 'warning');
+            return;
+        }
+
+        setBatchMounting(true);
+        try {
+            const res = await batchMountSkills(courseId, mountsToApply);
+            toast(`成功批量挂载 ${res.count} 个技能`, 'success');
+            setRecommendations(null);
+            // Refresh outline
+            const data = await getCourseOutline(courseId);
+            setCourse(data.course);
+        } catch (err) {
+            console.error('Batch mount failed', err);
+            toast('批量挂载失败', 'error');
+        } finally {
+            setBatchMounting(false);
+        }
+    };
+
+    const toggleMountSelection = (indexStr: string) => {
+        const newSet = new Set(selectedMounts);
+        if (newSet.has(indexStr)) {
+            newSet.delete(indexStr);
+        } else {
+            newSet.add(indexStr);
+        }
+        setSelectedMounts(newSet);
+    };
+
     // Close skill picker on outside click
     useEffect(() => {
         if (!pickerChapterId) return;
@@ -230,7 +293,19 @@ export default function OutlinePage() {
             <div className={styles.twoCol}>
                 {/* Left: Outline Tree */}
                 <div className={styles.outlinePanel}>
-                    <h3 style={{ marginBottom: 16, fontSize: 15, fontWeight: 600 }}>📋 课程大纲</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>📋 课程大纲</h3>
+                        {chapters.length > 0 && (
+                            <button 
+                                className={`btn btn-secondary ${styles.autoMountBtn}`} 
+                                onClick={handleRecommend}
+                                disabled={recommending}
+                                style={{ padding: '4px 12px', fontSize: 13 }}
+                            >
+                                {recommending ? '🤖 AI 分析中...' : '🤖 AI 自动挂载技能'}
+                            </button>
+                        )}
+                    </div>
 
                     {chapters.length === 0 ? (
                         <div className={styles.emptyOutline}>
@@ -473,6 +548,74 @@ export default function OutlinePage() {
                                     disabled={configSaving}
                                 >
                                     {configSaving ? '保存中...' : '保存配置'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* AI Recommendation Modal */}
+            {recommendations && (
+                <div className={styles.configOverlay} onClick={() => setRecommendations(null)}>
+                    <div className={styles.configModal} style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
+                        <div className={styles.configHeader}>
+                            <h3 className={styles.configTitle}>🤖 AI 技能挂载建议</h3>
+                            <button className={styles.configCloseBtn} onClick={() => setRecommendations(null)}>✕</button>
+                        </div>
+                        
+                        <div className={styles.configBody} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                            <p className={styles.configHint} style={{ marginBottom: 16 }}>
+                                AI 根据知识点特性和难度，推荐了以下技能挂载方案。您可以取消勾选不需要的挂载。
+                            </p>
+
+                            {recommendations.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: 32, color: 'var(--color-text-secondary)' }}>
+                                    未找到合适的挂载建议。
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    {recommendations.map((rec, idx) => (
+                                        <div key={idx} style={{ 
+                                            display: 'flex', gap: 12, padding: 12, 
+                                            border: '1px solid var(--color-border)', 
+                                            borderRadius: 8, 
+                                            background: selectedMounts.has(idx.toString()) ? 'var(--color-bg-primary)' : 'var(--color-bg-secondary)',
+                                            opacity: selectedMounts.has(idx.toString()) ? 1 : 0.6
+                                        }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedMounts.has(idx.toString())}
+                                                onChange={() => toggleMountSelection(idx.toString())}
+                                                style={{ marginTop: 4 }}
+                                            />
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 500, marginBottom: 4 }}>
+                                                    {rec.kp_title} <span style={{ color: 'var(--color-text-secondary)', fontWeight: 'normal' }}>— {rec.skill_name}</span>
+                                                </div>
+                                                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+                                                    <strong>推荐理由：</strong>{rec.reason}
+                                                </div>
+                                                <span className={styles.scaffoldBadge}>
+                                                    支架: {rec.scaffold_level === 'high' ? '高' : rec.scaffold_level === 'medium' ? '中' : '低'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className={styles.configFooter}>
+                            <div />
+                            <div className={styles.configActions}>
+                                <button className={styles.cancelBtn} onClick={() => setRecommendations(null)}>取消</button>
+                                <button
+                                    className={styles.saveBtn}
+                                    onClick={handleBatchMount}
+                                    disabled={batchMounting || selectedMounts.size === 0}
+                                >
+                                    {batchMounting ? '挂载中...' : `确认批量挂载 (${selectedMounts.size})`}
                                 </button>
                             </div>
                         </div>
