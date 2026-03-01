@@ -1,0 +1,1936 @@
+basePath: /api/v1
+definitions:
+  handler.ActivitySessionStats:
+    properties:
+      active_sessions:
+        type: integer
+      activity_id:
+        type: integer
+      activity_title:
+        type: string
+      avg_duration_min:
+        type: number
+      avg_mastery:
+        type: number
+      completed_sessions:
+        type: integer
+      completion_rate:
+        type: number
+      sessions:
+        items:
+          $ref: '#/definitions/handler.SessionSummary'
+        type: array
+      total_sessions:
+        type: integer
+    type: object
+  handler.BatchCreateRequest:
+    properties:
+      users:
+        items:
+          $ref: '#/definitions/handler.CreateUserRequest'
+        minItems: 1
+        type: array
+    required:
+    - users
+    type: object
+  handler.CreateActivityRequest:
+    properties:
+      allow_retry:
+        type: boolean
+      class_ids:
+        items:
+          type: integer
+        type: array
+      course_id:
+        type: integer
+      deadline:
+        type: string
+      kp_ids:
+        items:
+          type: integer
+        type: array
+      max_attempts:
+        type: integer
+      skill_config:
+        additionalProperties: true
+        type: object
+      title:
+        type: string
+    required:
+    - course_id
+    - kp_ids
+    - title
+    type: object
+  handler.CreateCourseRequest:
+    properties:
+      description:
+        type: string
+      grade_level:
+        type: integer
+      school_id:
+        type: integer
+      subject:
+        type: string
+      title:
+        type: string
+    required:
+    - grade_level
+    - school_id
+    - subject
+    - title
+    type: object
+  handler.CreateUserRequest:
+    properties:
+      display_name:
+        type: string
+      email:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      phone:
+        type: string
+      role:
+        $ref: '#/definitions/model.RoleName'
+      school_id:
+        type: integer
+    required:
+    - display_name
+    - password
+    - phone
+    - role
+    type: object
+  handler.ErrorNotebookItem:
+    properties:
+      archived_at:
+        type: string
+      chapter_title:
+        type: string
+      coach_guidance:
+        type: string
+      error_type:
+        type: string
+      id:
+        type: integer
+      kp_id:
+        type: integer
+      kp_title:
+        type: string
+      mastery_at_error:
+        type: number
+      resolved:
+        type: boolean
+      resolved_at:
+        type: string
+      session_id:
+        type: integer
+      student_input:
+        type: string
+    type: object
+  handler.ErrorNotebookResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/handler.ErrorNotebookItem'
+        type: array
+      resolved_count:
+        type: integer
+      total_count:
+        type: integer
+      unresolved_count:
+        type: integer
+    type: object
+  handler.ErrorResponse:
+    properties:
+      error:
+        example: 操作失败
+        type: string
+    type: object
+  handler.KnowledgeRadarResponse:
+    properties:
+      course_id:
+        type: integer
+      course_title:
+        type: string
+      labels:
+        items:
+          type: string
+        type: array
+      student_count:
+        type: integer
+      values:
+        items:
+          type: number
+        type: array
+    type: object
+  handler.LoginRequest:
+    properties:
+      password:
+        type: string
+      phone:
+        type: string
+    required:
+    - password
+    - phone
+    type: object
+  handler.LoginResponse:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/model.User'
+    type: object
+  handler.MasteryHistoryPoint:
+    properties:
+      attempt_count:
+        type: integer
+      avg_mastery:
+        type: number
+      date:
+        type: string
+    type: object
+  handler.PaginatedResponse:
+    properties:
+      items: {}
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  handler.SearchRequest:
+    properties:
+      query:
+        type: string
+      top_k:
+        type: integer
+    required:
+    - query
+    type: object
+  handler.SessionSummary:
+    properties:
+      duration_min:
+        type: number
+      ended_at:
+        type: string
+      mastery_score:
+        type: number
+      scaffold_level:
+        type: string
+      session_id:
+        type: integer
+      started_at:
+        type: string
+      status:
+        type: string
+      student_id:
+        type: integer
+      student_name:
+        type: string
+    type: object
+  handler.StudentMasteryItem:
+    properties:
+      attempt_count:
+        type: integer
+      chapter_title:
+        type: string
+      correct_count:
+        type: integer
+      kp_id:
+        type: integer
+      kp_title:
+        type: string
+      last_attempt_at:
+        type: string
+      mastery_score:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  handler.StudentMasteryResponse:
+    properties:
+      history:
+        items:
+          $ref: '#/definitions/handler.MasteryHistoryPoint'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/handler.StudentMasteryItem'
+        type: array
+      student_id:
+        type: integer
+      student_name:
+        type: string
+    type: object
+  model.ActivityClassAssignment:
+    properties:
+      activity_id:
+        type: integer
+      class_id:
+        type: integer
+      id:
+        type: integer
+    type: object
+  model.ActivityStatus:
+    enum:
+    - draft
+    - published
+    - closed
+    type: string
+    x-enum-varnames:
+    - ActivityStatusDraft
+    - ActivityStatusPublished
+    - ActivityStatusClosed
+  model.Chapter:
+    properties:
+      course_id:
+        type: integer
+      id:
+        type: integer
+      knowledge_points:
+        items:
+          $ref: '#/definitions/model.KnowledgePoint'
+        type: array
+      parent_id:
+        type: integer
+      sort_order:
+        type: integer
+      title:
+        type: string
+    type: object
+  model.Class:
+    properties:
+      academic_year:
+        type: string
+      created_at:
+        type: string
+      grade_level:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+      school_id:
+        type: integer
+      students:
+        items:
+          $ref: '#/definitions/model.ClassStudent'
+        type: array
+    type: object
+  model.ClassStudent:
+    properties:
+      class_id:
+        type: integer
+      id:
+        type: integer
+      student_id:
+        type: integer
+    type: object
+  model.Course:
+    properties:
+      chapters:
+        items:
+          $ref: '#/definitions/model.Chapter'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      grade_level:
+        type: integer
+      id:
+        type: integer
+      school_id:
+        type: integer
+      status:
+        $ref: '#/definitions/model.CourseStatus'
+      subject:
+        type: string
+      teacher_id:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.CourseStatus:
+    enum:
+    - draft
+    - published
+    - archived
+    type: string
+    x-enum-varnames:
+    - CourseStatusDraft
+    - CourseStatusPublished
+    - CourseStatusArchived
+  model.DocStatus:
+    enum:
+    - uploaded
+    - processing
+    - completed
+    - failed
+    type: string
+    x-enum-varnames:
+    - DocStatusUploaded
+    - DocStatusProcessing
+    - DocStatusCompleted
+    - DocStatusFailed
+  model.Document:
+    properties:
+      chunks:
+        items:
+          $ref: '#/definitions/model.DocumentChunk'
+        type: array
+      course_id:
+        type: integer
+      created_at:
+        type: string
+      file_name:
+        type: string
+      file_path:
+        type: string
+      file_size:
+        type: integer
+      id:
+        type: integer
+      mime_type:
+        type: string
+      page_count:
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/model.DocStatus'
+        description: uploaded, processing, completed, failed
+      updated_at:
+        type: string
+    type: object
+  model.DocumentChunk:
+    properties:
+      chunk_index:
+        type: integer
+      content:
+        type: string
+      course_id:
+        type: integer
+      created_at:
+        type: string
+      document_id:
+        type: integer
+      id:
+        type: integer
+      page_number:
+        type: integer
+      token_count:
+        type: integer
+    type: object
+  model.InstalledPlugin:
+    properties:
+      config:
+        description: JSON config overrides
+        type: string
+      created_at:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: integer
+      plugin_id:
+        type: string
+      school_id:
+        type: integer
+      updated_at:
+        type: string
+      version:
+        type: string
+    type: object
+  model.KPSkillMount:
+    properties:
+      constraints_json:
+        type: string
+      id:
+        type: integer
+      kp_id:
+        type: integer
+      priority:
+        type: integer
+      progressive_rule:
+        type: string
+      scaffold_level:
+        $ref: '#/definitions/model.ScaffoldLevel'
+      skill_id:
+        type: string
+    type: object
+  model.KnowledgePoint:
+    properties:
+      chapter_id:
+        type: integer
+      difficulty:
+        type: number
+      id:
+        type: integer
+      is_key_point:
+        type: boolean
+      misconceptions:
+        items:
+          $ref: '#/definitions/model.Misconception'
+        type: array
+      mounted_skills:
+        items:
+          $ref: '#/definitions/model.KPSkillMount'
+        type: array
+      neo4j_node_id:
+        type: string
+      title:
+        type: string
+    type: object
+  model.LearningActivity:
+    properties:
+      allow_retry:
+        type: boolean
+      assigned_classes:
+        items:
+          $ref: '#/definitions/model.ActivityClassAssignment'
+        type: array
+      course_id:
+        type: integer
+      created_at:
+        type: string
+      deadline:
+        type: string
+      id:
+        type: integer
+      kp_ids:
+        type: string
+      max_attempts:
+        type: integer
+      published_at:
+        type: string
+      skill_config:
+        type: string
+      status:
+        $ref: '#/definitions/model.ActivityStatus'
+      teacher_id:
+        type: integer
+      title:
+        type: string
+    type: object
+  model.MarketplacePlugin:
+    properties:
+      author:
+        type: string
+      author_id:
+        type: integer
+      category:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      downloads:
+        type: integer
+      icon_url:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      package_url:
+        type: string
+      plugin_id:
+        type: string
+      rating:
+        type: number
+      rating_count:
+        type: integer
+      repo_url:
+        type: string
+      reviewed_at:
+        type: string
+      reviewed_by:
+        type: integer
+      status:
+        description: pending, approved, rejected, deprecated
+        type: string
+      tags:
+        description: JSON array stored as text
+        type: string
+      trust_level:
+        description: core, domain, community
+        type: string
+      type:
+        description: skill, editor, theme, etc.
+        type: string
+      updated_at:
+        type: string
+      version:
+        type: string
+    type: object
+  model.Misconception:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      kp_id:
+        type: integer
+      neo4j_node_id:
+        type: string
+      severity:
+        description: 严重度 [0,1]，越高越常见/危害越大
+        type: number
+      trap_type:
+        $ref: '#/definitions/model.TrapType'
+    type: object
+  model.Role:
+    properties:
+      id:
+        type: integer
+      name:
+        $ref: '#/definitions/model.RoleName'
+    type: object
+  model.RoleName:
+    enum:
+    - SYS_ADMIN
+    - SCHOOL_ADMIN
+    - TEACHER
+    - STUDENT
+    type: string
+    x-enum-varnames:
+    - RoleSysAdmin
+    - RoleSchoolAdmin
+    - RoleTeacher
+    - RoleStudent
+  model.ScaffoldLevel:
+    enum:
+    - high
+    - medium
+    - low
+    type: string
+    x-enum-varnames:
+    - ScaffoldHigh
+    - ScaffoldMedium
+    - ScaffoldLow
+  model.School:
+    properties:
+      classes:
+        description: 关联
+        items:
+          $ref: '#/definitions/model.Class'
+        type: array
+      code:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      region:
+        type: string
+      status:
+        $ref: '#/definitions/model.SchoolStatus'
+      updated_at:
+        type: string
+    type: object
+  model.SchoolStatus:
+    enum:
+    - active
+    - inactive
+    type: string
+    x-enum-varnames:
+    - SchoolStatusActive
+    - SchoolStatusInactive
+  model.TrapType:
+    enum:
+    - conceptual
+    - procedural
+    - intuitive
+    - transfer
+    type: string
+    x-enum-comments:
+      TrapTypeConceptual: 概念性误解
+      TrapTypeIntuit: 直觉性偏差
+      TrapTypeProcedural: 操作性错误
+      TrapTypeTransfer: 迁移性混淆（跨知识点概念混淆）
+    x-enum-descriptions:
+    - 概念性误解
+    - 操作性错误
+    - 直觉性偏差
+    - 迁移性混淆（跨知识点概念混淆）
+    x-enum-varnames:
+    - TrapTypeConceptual
+    - TrapTypeProcedural
+    - TrapTypeIntuit
+    - TrapTypeTransfer
+  model.User:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      display_name:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      phone:
+        type: string
+      school_roles:
+        description: 关联
+        items:
+          $ref: '#/definitions/model.UserSchoolRole'
+        type: array
+      status:
+        $ref: '#/definitions/model.UserStatus'
+      updated_at:
+        type: string
+    type: object
+  model.UserSchoolRole:
+    properties:
+      id:
+        type: integer
+      role:
+        $ref: '#/definitions/model.Role'
+      role_id:
+        type: integer
+      school:
+        $ref: '#/definitions/model.School'
+      school_id:
+        description: SYS_ADMIN 时为 nil
+        type: integer
+      user_id:
+        type: integer
+    type: object
+  model.UserStatus:
+    enum:
+    - active
+    - inactive
+    - banned
+    type: string
+    x-enum-varnames:
+    - UserStatusActive
+    - UserStatusInactive
+    - UserStatusBanned
+host: localhost:8080
+info:
+  contact: {}
+  description: AI-Native EdTech Platform — Knowledge-Augmented RAG + Multi-Agent Orchestration
+  title: Hanfledge API
+  version: 0.1.0
+paths:
+  /activities:
+    get:
+      description: 返回当前教师创建的学习活动列表（支持分页和筛选）
+      parameters:
+      - description: 课程 ID
+        in: query
+        name: course_id
+        type: integer
+      - description: 活动状态（draft/published）
+        in: query
+        name: status
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PaginatedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 教师活动列表
+      tags:
+      - Activities
+    post:
+      consumes:
+      - application/json
+      description: 教师创建新的学习活动，可指定知识点、技能配置、截止日期和班级分配
+      parameters:
+      - description: 活动创建参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateActivityRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.LearningActivity'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建学习活动
+      tags:
+      - Activities
+  /activities/{id}/join:
+    post:
+      description: 学生加入指定学习活动，若已有进行中的会话则返回该会话
+      parameters:
+      - description: 活动 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 已有进行中会话
+          schema:
+            additionalProperties: true
+            type: object
+        "201":
+          description: 新创建会话
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 加入学习活动
+      tags:
+      - Activities
+  /activities/{id}/preview:
+    post:
+      description: 教师以学生视角预览学习活动，创建沙盒会话（不计入分析统计）
+      parameters:
+      - description: 活动 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 已有沙盒会话
+          schema:
+            additionalProperties: true
+            type: object
+        "201":
+          description: 新创建沙盒会话
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 沙盒预览活动
+      tags:
+      - Activities
+  /activities/{id}/publish:
+    post:
+      description: 将草稿状态的学习活动发布，使其对学生可见
+      parameters:
+      - description: 活动 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 发布学习活动
+      tags:
+      - Activities
+  /activities/{id}/sessions:
+    get:
+      description: 返回指定学习活动的会话列表与统计数据（完成率、平均时长、掌握度等）
+      parameters:
+      - description: 活动 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ActivitySessionStats'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 活动会话统计
+      tags:
+      - Dashboard
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 通过手机号和密码进行身份验证，返回 JWT token
+      parameters:
+      - description: 登录请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 用户登录
+      tags:
+      - Auth
+  /auth/me:
+    get:
+      description: 返回已认证用户的个人信息和角色列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.User'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取当前用户信息
+      tags:
+      - Auth
+  /classes:
+    get:
+      description: 返回班级的分页列表，可按学校筛选
+      parameters:
+      - description: 学校 ID
+        in: query
+        name: school_id
+        type: integer
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PaginatedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 班级列表
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      description: 在指定学校下创建新班级
+      parameters:
+      - description: 班级信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.Class'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Class'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建班级
+      tags:
+      - Admin
+  /courses:
+    get:
+      description: 返回当前教师的课程列表（支持分页和学校筛选）
+      parameters:
+      - description: 学校 ID
+        in: query
+        name: school_id
+        type: integer
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PaginatedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 课程列表
+      tags:
+      - Courses
+    post:
+      consumes:
+      - application/json
+      description: 为当前教师创建一门新课程
+      parameters:
+      - description: 课程信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateCourseRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Course'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建课程
+      tags:
+      - Courses
+  /courses/{id}/documents:
+    get:
+      description: 返回课程下所有上传文档的处理状态
+      parameters:
+      - description: 课程 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Document'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 文档处理状态
+      tags:
+      - Courses
+  /courses/{id}/documents/{doc_id}:
+    delete:
+      description: 删除文档及其关联的分块和存储文件
+      parameters:
+      - description: 课程 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 文档 ID
+        in: path
+        name: doc_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 删除文档
+      tags:
+      - Courses
+  /courses/{id}/documents/{doc_id}/retry:
+    post:
+      description: 重新触发 KA-RAG 管线处理失败的文档
+      parameters:
+      - description: 课程 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 文档 ID
+        in: path
+        name: doc_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 重试文档处理
+      tags:
+      - Courses
+  /courses/{id}/materials:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传 PDF 文件并异步触发 KA-RAG 知识抽取管线
+      parameters:
+      - description: 课程 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: PDF 文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 上传教学材料
+      tags:
+      - Courses
+  /courses/{id}/outline:
+    get:
+      description: 返回 AI 生成的课程大纲（章节 + 知识点）及文档状态
+      parameters:
+      - description: 课程 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取课程大纲
+      tags:
+      - Courses
+  /courses/{id}/search:
+    post:
+      consumes:
+      - application/json
+      description: 在课程文档中进行语义检索，返回相关知识片段
+      parameters:
+      - description: 课程 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 搜索请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 课程语义搜索
+      tags:
+      - Courses
+  /dashboard/knowledge-radar:
+    get:
+      description: 返回班级维度的知识点掌握度聚合数据，用于雷达图可视化
+      parameters:
+      - description: 课程 ID
+        in: query
+        name: course_id
+        required: true
+        type: integer
+      - description: 班级 ID
+        in: query
+        name: class_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.KnowledgeRadarResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 知识雷达图
+      tags:
+      - Dashboard
+  /health:
+    get:
+      description: 轻量级健康检查，用于 Docker HEALTHCHECK 和负载均衡器
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Liveness 探针
+      tags:
+      - Health
+  /health/ready:
+    get:
+      description: 深度检查 PostgreSQL、Neo4j、Redis 等依赖组件的可用性
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Readiness 探针
+      tags:
+      - Health
+  /marketplace/install:
+    post:
+      consumes:
+      - application/json
+      description: 为指定学校安装已审核通过的插件
+      parameters:
+      - description: 安装参数（school_id, plugin_id）
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 安装插件
+      tags:
+      - Marketplace
+  /marketplace/installed:
+    get:
+      description: 返回指定学校已安装的所有插件
+      parameters:
+      - description: 学校 ID
+        in: query
+        name: school_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.InstalledPlugin'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 已安装插件列表
+      tags:
+      - Marketplace
+  /marketplace/installed/{id}:
+    delete:
+      description: 从学校移除已安装的插件
+      parameters:
+      - description: 已安装插件记录 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 卸载插件
+      tags:
+      - Marketplace
+  /marketplace/plugins:
+    get:
+      description: 返回已审核通过的插件列表（支持分页、类型/分类/关键词筛选）
+      parameters:
+      - description: 插件类型（如 skill）
+        in: query
+        name: type
+        type: string
+      - description: 插件分类（如 diagnosis）
+        in: query
+        name: category
+        type: string
+      - description: 搜索关键词
+        in: query
+        name: q
+        type: string
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PaginatedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 插件列表
+      tags:
+      - Marketplace
+    post:
+      consumes:
+      - application/json
+      description: 提交新插件到市场，初始状态为待审核
+      parameters:
+      - description: 插件信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.MarketplacePlugin'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 提交插件
+      tags:
+      - Marketplace
+  /marketplace/plugins/{plugin_id}:
+    get:
+      description: 返回指定插件的详细信息及最近 10 条评价
+      parameters:
+      - description: 插件 ID
+        in: path
+        name: plugin_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 插件详情
+      tags:
+      - Marketplace
+  /schools:
+    get:
+      description: 返回所有学校的分页列表
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PaginatedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 学校列表
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      description: 创建新的学校记录
+      parameters:
+      - description: 学校信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.School'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.School'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建学校
+      tags:
+      - Admin
+  /sessions/{id}:
+    get:
+      description: 返回指定会话的详情及最近 50 条对话记录
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 会话详情
+      tags:
+      - Sessions
+  /sessions/{id}/stream:
+    get:
+      description: 升级为 WebSocket 连接，实现双向 AI 对话流。客户端发送 user_message/voice_start/voice_data/voice_end
+        事件，服务端返回 agent_thinking/token_delta/ui_scaffold_change/turn_complete 事件
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "101":
+          description: WebSocket 升级成功
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 会话 WebSocket 流
+      tags:
+      - Sessions
+  /student/activities:
+    get:
+      description: 返回当前学生可参加的已发布学习活动，附带会话参与状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+      security:
+      - BearerAuth: []
+      summary: 学生活动列表
+      tags:
+      - Student
+  /student/error-notebook:
+    get:
+      description: 返回当前学生的错题本条目，支持按已解决状态和知识点筛选
+      parameters:
+      - description: 是否已解决（true/false）
+        in: query
+        name: resolved
+        type: boolean
+      - description: 知识点 ID
+        in: query
+        name: kp_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ErrorNotebookResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 错题本
+      tags:
+      - Student
+  /student/mastery:
+    get:
+      description: 返回当前登录学生自己的知识点掌握度和历史趋势（复用 GetStudentMastery 逻辑）
+      parameters:
+      - description: 课程 ID（不传则返回所有课程）
+        in: query
+        name: course_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StudentMasteryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 学生自身掌握度
+      tags:
+      - Student
+  /students/{id}/mastery:
+    get:
+      description: 返回指定学生的知识点掌握度和历史趋势数据
+      parameters:
+      - description: 学生 ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 课程 ID（不传则返回所有课程）
+        in: query
+        name: course_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StudentMasteryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 学生掌握度详情
+      tags:
+      - Dashboard
+  /users:
+    get:
+      description: 返回用户的分页列表，可按学校筛选
+      parameters:
+      - description: 学校 ID
+        in: query
+        name: school_id
+        type: integer
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.PaginatedResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 用户列表
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      description: 创建新用户并分配角色
+      parameters:
+      - description: 用户创建参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建用户
+      tags:
+      - Admin
+  /users/batch:
+    post:
+      consumes:
+      - application/json
+      description: 一次性创建多个用户（支持部分成功）
+      parameters:
+      - description: 批量用户创建参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.BatchCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 批量创建用户
+      tags:
+      - Admin
+securityDefinitions:
+  BearerAuth:
+    description: JWT Bearer token (e.g. "Bearer eyJhbG...")
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

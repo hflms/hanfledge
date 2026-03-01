@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +17,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/i18n"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/infrastructure/search"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
@@ -27,34 +27,54 @@ import (
 	"github.com/hflms/hanfledge/internal/usecase"
 )
 
+// @title           Hanfledge API
+// @version         0.1.0
+// @description     AI-Native EdTech Platform — Knowledge-Augmented RAG + Multi-Agent Orchestration
+// @host            localhost:8080
+// @BasePath        /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description JWT Bearer token (e.g. "Bearer eyJhbG...")
+
 func main() {
 	// ── Load Configuration ──────────────────────────────
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		logger.Fatal("configuration error", "err", err)
+	}
 	gin.SetMode(cfg.Server.GinMode)
 
-	log.Println("🚀 Hanfledge API Server starting...")
-	log.Printf("   Port: %s | Mode: %s", cfg.Server.Port, cfg.Server.GinMode)
+	// Initialize structured logger based on GIN_MODE
+	logLevel := "info"
+	if cfg.Server.GinMode == "debug" {
+		logLevel = "debug"
+	}
+	logger.Init(logLevel)
+	log := logger.L("Server")
+
+	log.Info("Hanfledge API Server starting", "port", cfg.Server.Port, "mode", cfg.Server.GinMode)
 
 	// ── Database Connection ─────────────────────────────
 	db, err := postgres.NewConnection(&cfg.Database)
 	if err != nil {
-		log.Fatalf("❌ Database connection failed: %v", err)
+		logger.Fatal("database connection failed", "err", err)
 	}
 
 	// ── Auto Migration ──────────────────────────────────
 	if err := postgres.AutoMigrate(db); err != nil {
-		log.Fatalf("❌ Migration failed: %v", err)
+		logger.Fatal("migration failed", "err", err)
 	}
 
 	// ── Neo4j Connection ────────────────────────────────
 	neo4jClient, err := neo4jRepo.NewClient(&cfg.Neo4j)
 	if err != nil {
-		log.Printf("⚠️  Neo4j connection failed (non-fatal): %v", err)
+		log.Warn("Neo4j connection failed (non-fatal)", "err", err)
 		neo4jClient = nil
 	} else {
 		defer neo4jClient.Close(context.Background())
 		if err := neo4jClient.InitSchema(context.Background()); err != nil {
-			log.Printf("⚠️  Neo4j schema init failed: %v", err)
+			log.Warn("Neo4j schema init failed", "err", err)
 		}
 	}
 
@@ -64,7 +84,7 @@ func main() {
 	switch cfg.LLM.Provider {
 	case "dashscope":
 		if cfg.LLM.DashScopeKey == "" {
-			log.Fatalf("❌ DASHSCOPE_API_KEY is required when LLM_PROVIDER=dashscope")
+			logger.Fatal("DASHSCOPE_API_KEY is required when LLM_PROVIDER=dashscope")
 		}
 		embModel := cfg.LLM.EmbeddingModel
 		if embModel == "" {
@@ -75,16 +95,14 @@ func main() {
 			ChatModel:      cfg.LLM.DashScopeModel,
 			EmbeddingModel: embModel,
 		})
-		log.Printf("🤖 [LLM] Using DashScope provider: chat=%s embed=%s",
-			cfg.LLM.DashScopeModel, embModel)
+		log.Info("using DashScope provider", "chat_model", cfg.LLM.DashScopeModel, "embed_model", embModel)
 	default: // "ollama"
 		llmProvider = llm.NewOllamaClient(
 			cfg.LLM.OllamaHost,
 			cfg.LLM.OllamaModel,
 			cfg.LLM.EmbeddingModel,
 		)
-		log.Printf("🤖 [LLM] Using Ollama provider: chat=%s embed=%s host=%s",
-			cfg.LLM.OllamaModel, cfg.LLM.EmbeddingModel, cfg.LLM.OllamaHost)
+		log.Info("using Ollama provider", "chat_model", cfg.LLM.OllamaModel, "embed_model", cfg.LLM.EmbeddingModel, "host", cfg.LLM.OllamaHost)
 	}
 
 	// ── ModelRouter — Multi-Tier Routing (§8.3.3) ──────────
@@ -119,8 +137,7 @@ func main() {
 		}
 
 		llmProvider = llm.NewModelRouter(tier1, tier2, tier3, llmProvider)
-		log.Printf("🔀 [LLM] ModelRouter enabled: tier1=%s tier2=%s tier3=%s",
-			cfg.LLM.Tier1Model, cfg.LLM.Tier2Model, cfg.LLM.Tier3Model)
+		log.Info("ModelRouter enabled", "tier1", cfg.LLM.Tier1Model, "tier2", cfg.LLM.Tier2Model, "tier3", cfg.LLM.Tier3Model)
 	}
 
 	// ── Use Cases ───────────────────────────────────────
@@ -130,7 +147,7 @@ func main() {
 	// ── Plugin Registry ─────────────────────────────────
 	registry := plugin.NewRegistry()
 	if err := registry.LoadSkills("plugins/skills"); err != nil {
-		log.Printf("⚠️  Plugin loading failed (non-fatal): %v", err)
+		log.Warn("plugin loading failed (non-fatal)", "err", err)
 	}
 
 	// ── Safety Components ──────────────────────────────
@@ -143,7 +160,7 @@ func main() {
 	if cfg.Redis.URL != "" {
 		rc, err := cache.NewRedisCache(cfg.Redis.URL)
 		if err != nil {
-			log.Printf("⚠️  Redis connection failed (non-fatal): %v", err)
+			log.Warn("Redis connection failed (non-fatal)", "err", err)
 		} else {
 			redisCache = rc
 			defer redisCache.Close()
@@ -160,14 +177,14 @@ func main() {
 		OSSSecretKey: cfg.Storage.OSSSecretKey,
 	})
 	if err != nil {
-		log.Fatalf("❌ Storage initialization failed: %v", err)
+		logger.Fatal("storage initialization failed", "err", err)
 	}
-	log.Printf("📦 [Storage] Backend: %s", cfg.Storage.Backend)
+	log.Info("storage backend initialized", "backend", cfg.Storage.Backend)
 
 	// ── Internationalization (i18n) ────────────────────
 	translator := i18n.NewTranslator(i18n.Locale(cfg.I18n.DefaultLocale))
 	if err := translator.LoadDirectory(cfg.I18n.LocaleDir); err != nil {
-		log.Printf("⚠️  i18n loading failed (non-fatal): %v", err)
+		log.Warn("i18n loading failed (non-fatal)", "err", err)
 	}
 
 	// ── Web Search Dynamic Connector (§8.1.2) ─────────
@@ -183,7 +200,7 @@ func main() {
 			EduFilter:  true,
 		}
 		searchConnector = search.NewDynamicConnector(searchCfg)
-		log.Printf("🌐 [Search] Dynamic Connector initialized: provider=%s url=%s", cfg.Search.Provider, cfg.Search.BaseURL)
+		log.Info("search dynamic connector initialized", "provider", cfg.Search.Provider, "url", cfg.Search.BaseURL)
 	}
 
 	// ── ASR Provider (语音识别) ────────────────────────
@@ -196,7 +213,7 @@ func main() {
 			ModelSize:  cfg.ASR.ModelSize,
 		}
 		asrProvider = asr.NewWhisperProvider(asrCfg)
-		log.Printf("🎙️ [ASR] Provider initialized: provider=%s url=%s model=%s", cfg.ASR.Provider, cfg.ASR.WhisperURL, cfg.ASR.ModelSize)
+		log.Info("ASR provider initialized", "provider", cfg.ASR.Provider, "url", cfg.ASR.WhisperURL, "model", cfg.ASR.ModelSize)
 	}
 
 	// ── Agent Orchestrator ──────────────────────────────
@@ -204,6 +221,7 @@ func main() {
 
 	// ── RAGAS Evaluator (§4.2 Background Quality Evaluation) ──
 	evaluator := agent.NewRAGASEvaluator(db, llmProvider, agent.DefaultEvalConfig())
+	orchestrator.SetEvalNotifier(evaluator.Notify)
 	evalCtx, evalCancel := context.WithCancel(context.Background())
 	defer evalCancel()
 	go evaluator.Start(evalCtx)
@@ -234,10 +252,9 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("✅ Server ready at http://localhost%s", addr)
-		log.Printf("   Health check: http://localhost%s/health", addr)
+		log.Info("server ready", "addr", "http://localhost"+addr, "health", "http://localhost"+addr+"/health")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("❌ Server failed to start: %v", err)
+			logger.Fatal("server failed to start", "err", err)
 		}
 	}()
 
@@ -245,15 +262,15 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
-	log.Printf("⏳ Received signal %v, shutting down gracefully...", sig)
+	log.Info("received shutdown signal, shutting down gracefully", "signal", sig.String())
 
 	// Give in-flight requests 5 seconds to complete
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("❌ Server forced to shutdown: %v", err)
+		log.Error("server forced to shutdown", "err", err)
 	}
 
-	log.Println("✅ Server exited cleanly")
+	log.Info("server exited cleanly")
 }

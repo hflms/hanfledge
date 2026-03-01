@@ -1,0 +1,2963 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "AI-Native EdTech Platform — Knowledge-Augmented RAG + Multi-Agent Orchestration",
+        "title": "Hanfledge API",
+        "contact": {},
+        "version": "0.1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/activities": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前教师创建的学习活动列表（支持分页和筛选）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Activities"
+                ],
+                "summary": "教师活动列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "course_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "活动状态（draft/published）",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaginatedResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "教师创建新的学习活动，可指定知识点、技能配置、截止日期和班级分配",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Activities"
+                ],
+                "summary": "创建学习活动",
+                "parameters": [
+                    {
+                        "description": "活动创建参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateActivityRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.LearningActivity"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/activities/{id}/join": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "学生加入指定学习活动，若已有进行中的会话则返回该会话",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Activities"
+                ],
+                "summary": "加入学习活动",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "活动 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "已有进行中会话",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "201": {
+                        "description": "新创建会话",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/activities/{id}/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "教师以学生视角预览学习活动，创建沙盒会话（不计入分析统计）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Activities"
+                ],
+                "summary": "沙盒预览活动",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "活动 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "已有沙盒会话",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "201": {
+                        "description": "新创建沙盒会话",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/activities/{id}/publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "将草稿状态的学习活动发布，使其对学生可见",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Activities"
+                ],
+                "summary": "发布学习活动",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "活动 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/activities/{id}/sessions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回指定学习活动的会话列表与统计数据（完成率、平均时长、掌握度等）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "活动会话统计",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "活动 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ActivitySessionStats"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "description": "通过手机号和密码进行身份验证，返回 JWT token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "用户登录",
+                "parameters": [
+                    {
+                        "description": "登录请求",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回已认证用户的个人信息和角色列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "获取当前用户信息",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.User"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/classes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回班级的分页列表，可按学校筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "班级列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "学校 ID",
+                        "name": "school_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaginatedResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "在指定学校下创建新班级",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "创建班级",
+                "parameters": [
+                    {
+                        "description": "班级信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.Class"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.Class"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/courses": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前教师的课程列表（支持分页和学校筛选）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "课程列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "学校 ID",
+                        "name": "school_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaginatedResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "为当前教师创建一门新课程",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "创建课程",
+                "parameters": [
+                    {
+                        "description": "课程信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateCourseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.Course"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/courses/{id}/documents": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回课程下所有上传文档的处理状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "文档处理状态",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.Document"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/courses/{id}/documents/{doc_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除文档及其关联的分块和存储文件",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "删除文档",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "文档 ID",
+                        "name": "doc_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/courses/{id}/documents/{doc_id}/retry": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "重新触发 KA-RAG 管线处理失败的文档",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "重试文档处理",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "文档 ID",
+                        "name": "doc_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/courses/{id}/materials": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "上传 PDF 文件并异步触发 KA-RAG 知识抽取管线",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "上传教学材料",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "PDF 文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/courses/{id}/outline": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回 AI 生成的课程大纲（章节 + 知识点）及文档状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "获取课程大纲",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/courses/{id}/search": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "在课程文档中进行语义检索，返回相关知识片段",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Courses"
+                ],
+                "summary": "课程语义搜索",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "搜索请求",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.SearchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/dashboard/knowledge-radar": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回班级维度的知识点掌握度聚合数据，用于雷达图可视化",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "知识雷达图",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID",
+                        "name": "course_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "班级 ID",
+                        "name": "class_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.KnowledgeRadarResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "轻量级健康检查，用于 Docker HEALTHCHECK 和负载均衡器",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Liveness 探针",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health/ready": {
+            "get": {
+                "description": "深度检查 PostgreSQL、Neo4j、Redis 等依赖组件的可用性",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Readiness 探针",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/marketplace/install": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "为指定学校安装已审核通过的插件",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Marketplace"
+                ],
+                "summary": "安装插件",
+                "parameters": [
+                    {
+                        "description": "安装参数（school_id, plugin_id）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/marketplace/installed": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回指定学校已安装的所有插件",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Marketplace"
+                ],
+                "summary": "已安装插件列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "学校 ID",
+                        "name": "school_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.InstalledPlugin"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/marketplace/installed/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "从学校移除已安装的插件",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Marketplace"
+                ],
+                "summary": "卸载插件",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "已安装插件记录 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/marketplace/plugins": {
+            "get": {
+                "description": "返回已审核通过的插件列表（支持分页、类型/分类/关键词筛选）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Marketplace"
+                ],
+                "summary": "插件列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件类型（如 skill）",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "插件分类（如 diagnosis）",
+                        "name": "category",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "搜索关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaginatedResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "提交新插件到市场，初始状态为待审核",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Marketplace"
+                ],
+                "summary": "提交插件",
+                "parameters": [
+                    {
+                        "description": "插件信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.MarketplacePlugin"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/marketplace/plugins/{plugin_id}": {
+            "get": {
+                "description": "返回指定插件的详细信息及最近 10 条评价",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Marketplace"
+                ],
+                "summary": "插件详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 ID",
+                        "name": "plugin_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/schools": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回所有学校的分页列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "学校列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaginatedResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建新的学校记录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "创建学校",
+                "parameters": [
+                    {
+                        "description": "学校信息",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.School"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.School"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回指定会话的详情及最近 50 条对话记录",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "会话详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会话 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{id}/stream": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "升级为 WebSocket 连接，实现双向 AI 对话流。客户端发送 user_message/voice_start/voice_data/voice_end 事件，服务端返回 agent_thinking/token_delta/ui_scaffold_change/turn_complete 事件",
+                "tags": [
+                    "Sessions"
+                ],
+                "summary": "会话 WebSocket 流",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "会话 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "WebSocket 升级成功"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/student/activities": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前学生可参加的已发布学习活动，附带会话参与状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Student"
+                ],
+                "summary": "学生活动列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/student/error-notebook": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前学生的错题本条目，支持按已解决状态和知识点筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Student"
+                ],
+                "summary": "错题本",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "是否已解决（true/false）",
+                        "name": "resolved",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "知识点 ID",
+                        "name": "kp_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorNotebookResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/student/mastery": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回当前登录学生自己的知识点掌握度和历史趋势（复用 GetStudentMastery 逻辑）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Student"
+                ],
+                "summary": "学生自身掌握度",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "课程 ID（不传则返回所有课程）",
+                        "name": "course_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.StudentMasteryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/students/{id}/mastery": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回指定学生的知识点掌握度和历史趋势数据",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "学生掌握度详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "学生 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "课程 ID（不传则返回所有课程）",
+                        "name": "course_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.StudentMasteryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "返回用户的分页列表，可按学校筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "用户列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "学校 ID",
+                        "name": "school_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaginatedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "创建新用户并分配角色",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "创建用户",
+                "parameters": [
+                    {
+                        "description": "用户创建参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/batch": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "一次性创建多个用户（支持部分成功）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "批量创建用户",
+                "parameters": [
+                    {
+                        "description": "批量用户创建参数",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.BatchCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "handler.ActivitySessionStats": {
+            "type": "object",
+            "properties": {
+                "active_sessions": {
+                    "type": "integer"
+                },
+                "activity_id": {
+                    "type": "integer"
+                },
+                "activity_title": {
+                    "type": "string"
+                },
+                "avg_duration_min": {
+                    "type": "number"
+                },
+                "avg_mastery": {
+                    "type": "number"
+                },
+                "completed_sessions": {
+                    "type": "integer"
+                },
+                "completion_rate": {
+                    "type": "number"
+                },
+                "sessions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.SessionSummary"
+                    }
+                },
+                "total_sessions": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.BatchCreateRequest": {
+            "type": "object",
+            "required": [
+                "users"
+            ],
+            "properties": {
+                "users": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/handler.CreateUserRequest"
+                    }
+                }
+            }
+        },
+        "handler.CreateActivityRequest": {
+            "type": "object",
+            "required": [
+                "course_id",
+                "kp_ids",
+                "title"
+            ],
+            "properties": {
+                "allow_retry": {
+                    "type": "boolean"
+                },
+                "class_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "course_id": {
+                    "type": "integer"
+                },
+                "deadline": {
+                    "type": "string"
+                },
+                "kp_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "max_attempts": {
+                    "type": "integer"
+                },
+                "skill_config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CreateCourseRequest": {
+            "type": "object",
+            "required": [
+                "grade_level",
+                "school_id",
+                "subject",
+                "title"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "grade_level": {
+                    "type": "integer"
+                },
+                "school_id": {
+                    "type": "integer"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CreateUserRequest": {
+            "type": "object",
+            "required": [
+                "display_name",
+                "password",
+                "phone",
+                "role"
+            ],
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 6
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/model.RoleName"
+                },
+                "school_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.ErrorNotebookItem": {
+            "type": "object",
+            "properties": {
+                "archived_at": {
+                    "type": "string"
+                },
+                "chapter_title": {
+                    "type": "string"
+                },
+                "coach_guidance": {
+                    "type": "string"
+                },
+                "error_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kp_id": {
+                    "type": "integer"
+                },
+                "kp_title": {
+                    "type": "string"
+                },
+                "mastery_at_error": {
+                    "type": "number"
+                },
+                "resolved": {
+                    "type": "boolean"
+                },
+                "resolved_at": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "integer"
+                },
+                "student_input": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.ErrorNotebookResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.ErrorNotebookItem"
+                    }
+                },
+                "resolved_count": {
+                    "type": "integer"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "unresolved_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "操作失败"
+                }
+            }
+        },
+        "handler.KnowledgeRadarResponse": {
+            "type": "object",
+            "properties": {
+                "course_id": {
+                    "type": "integer"
+                },
+                "course_title": {
+                    "type": "string"
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "student_count": {
+                    "type": "integer"
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                }
+            }
+        },
+        "handler.LoginRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "phone"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/model.User"
+                }
+            }
+        },
+        "handler.MasteryHistoryPoint": {
+            "type": "object",
+            "properties": {
+                "attempt_count": {
+                    "type": "integer"
+                },
+                "avg_mastery": {
+                    "type": "number"
+                },
+                "date": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.PaginatedResponse": {
+            "type": "object",
+            "properties": {
+                "items": {},
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.SearchRequest": {
+            "type": "object",
+            "required": [
+                "query"
+            ],
+            "properties": {
+                "query": {
+                    "type": "string"
+                },
+                "top_k": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.SessionSummary": {
+            "type": "object",
+            "properties": {
+                "duration_min": {
+                    "type": "number"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "mastery_score": {
+                    "type": "number"
+                },
+                "scaffold_level": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "student_id": {
+                    "type": "integer"
+                },
+                "student_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.StudentMasteryItem": {
+            "type": "object",
+            "properties": {
+                "attempt_count": {
+                    "type": "integer"
+                },
+                "chapter_title": {
+                    "type": "string"
+                },
+                "correct_count": {
+                    "type": "integer"
+                },
+                "kp_id": {
+                    "type": "integer"
+                },
+                "kp_title": {
+                    "type": "string"
+                },
+                "last_attempt_at": {
+                    "type": "string"
+                },
+                "mastery_score": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.StudentMasteryResponse": {
+            "type": "object",
+            "properties": {
+                "history": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.MasteryHistoryPoint"
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.StudentMasteryItem"
+                    }
+                },
+                "student_id": {
+                    "type": "integer"
+                },
+                "student_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.ActivityClassAssignment": {
+            "type": "object",
+            "properties": {
+                "activity_id": {
+                    "type": "integer"
+                },
+                "class_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.ActivityStatus": {
+            "type": "string",
+            "enum": [
+                "draft",
+                "published",
+                "closed"
+            ],
+            "x-enum-varnames": [
+                "ActivityStatusDraft",
+                "ActivityStatusPublished",
+                "ActivityStatusClosed"
+            ]
+        },
+        "model.Chapter": {
+            "type": "object",
+            "properties": {
+                "course_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "knowledge_points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.KnowledgePoint"
+                    }
+                },
+                "parent_id": {
+                    "type": "integer"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Class": {
+            "type": "object",
+            "properties": {
+                "academic_year": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "grade_level": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "school_id": {
+                    "type": "integer"
+                },
+                "students": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.ClassStudent"
+                    }
+                }
+            }
+        },
+        "model.ClassStudent": {
+            "type": "object",
+            "properties": {
+                "class_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "student_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.Course": {
+            "type": "object",
+            "properties": {
+                "chapters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Chapter"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "grade_level": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "school_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/model.CourseStatus"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "teacher_id": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.CourseStatus": {
+            "type": "string",
+            "enum": [
+                "draft",
+                "published",
+                "archived"
+            ],
+            "x-enum-varnames": [
+                "CourseStatusDraft",
+                "CourseStatusPublished",
+                "CourseStatusArchived"
+            ]
+        },
+        "model.DocStatus": {
+            "type": "string",
+            "enum": [
+                "uploaded",
+                "processing",
+                "completed",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "DocStatusUploaded",
+                "DocStatusProcessing",
+                "DocStatusCompleted",
+                "DocStatusFailed"
+            ]
+        },
+        "model.Document": {
+            "type": "object",
+            "properties": {
+                "chunks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.DocumentChunk"
+                    }
+                },
+                "course_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "file_path": {
+                    "type": "string"
+                },
+                "file_size": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mime_type": {
+                    "type": "string"
+                },
+                "page_count": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "uploaded, processing, completed, failed",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.DocStatus"
+                        }
+                    ]
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.DocumentChunk": {
+            "type": "object",
+            "properties": {
+                "chunk_index": {
+                    "type": "integer"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "course_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "document_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "page_number": {
+                    "type": "integer"
+                },
+                "token_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.InstalledPlugin": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "description": "JSON config overrides",
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "plugin_id": {
+                    "type": "string"
+                },
+                "school_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.KPSkillMount": {
+            "type": "object",
+            "properties": {
+                "constraints_json": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kp_id": {
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "progressive_rule": {
+                    "type": "string"
+                },
+                "scaffold_level": {
+                    "$ref": "#/definitions/model.ScaffoldLevel"
+                },
+                "skill_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.KnowledgePoint": {
+            "type": "object",
+            "properties": {
+                "chapter_id": {
+                    "type": "integer"
+                },
+                "difficulty": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_key_point": {
+                    "type": "boolean"
+                },
+                "misconceptions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Misconception"
+                    }
+                },
+                "mounted_skills": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.KPSkillMount"
+                    }
+                },
+                "neo4j_node_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.LearningActivity": {
+            "type": "object",
+            "properties": {
+                "allow_retry": {
+                    "type": "boolean"
+                },
+                "assigned_classes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.ActivityClassAssignment"
+                    }
+                },
+                "course_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "deadline": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kp_ids": {
+                    "type": "string"
+                },
+                "max_attempts": {
+                    "type": "integer"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "skill_config": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/model.ActivityStatus"
+                },
+                "teacher_id": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.MarketplacePlugin": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "author_id": {
+                    "type": "integer"
+                },
+                "category": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "downloads": {
+                    "type": "integer"
+                },
+                "icon_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "package_url": {
+                    "type": "string"
+                },
+                "plugin_id": {
+                    "type": "string"
+                },
+                "rating": {
+                    "type": "number"
+                },
+                "rating_count": {
+                    "type": "integer"
+                },
+                "repo_url": {
+                    "type": "string"
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "reviewed_by": {
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "pending, approved, rejected, deprecated",
+                    "type": "string"
+                },
+                "tags": {
+                    "description": "JSON array stored as text",
+                    "type": "string"
+                },
+                "trust_level": {
+                    "description": "core, domain, community",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "skill, editor, theme, etc.",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Misconception": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kp_id": {
+                    "type": "integer"
+                },
+                "neo4j_node_id": {
+                    "type": "string"
+                },
+                "severity": {
+                    "description": "严重度 [0,1]，越高越常见/危害越大",
+                    "type": "number"
+                },
+                "trap_type": {
+                    "$ref": "#/definitions/model.TrapType"
+                }
+            }
+        },
+        "model.Role": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "$ref": "#/definitions/model.RoleName"
+                }
+            }
+        },
+        "model.RoleName": {
+            "type": "string",
+            "enum": [
+                "SYS_ADMIN",
+                "SCHOOL_ADMIN",
+                "TEACHER",
+                "STUDENT"
+            ],
+            "x-enum-varnames": [
+                "RoleSysAdmin",
+                "RoleSchoolAdmin",
+                "RoleTeacher",
+                "RoleStudent"
+            ]
+        },
+        "model.ScaffoldLevel": {
+            "type": "string",
+            "enum": [
+                "high",
+                "medium",
+                "low"
+            ],
+            "x-enum-varnames": [
+                "ScaffoldHigh",
+                "ScaffoldMedium",
+                "ScaffoldLow"
+            ]
+        },
+        "model.School": {
+            "type": "object",
+            "properties": {
+                "classes": {
+                    "description": "关联",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Class"
+                    }
+                },
+                "code": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/model.SchoolStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.SchoolStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive"
+            ],
+            "x-enum-varnames": [
+                "SchoolStatusActive",
+                "SchoolStatusInactive"
+            ]
+        },
+        "model.TrapType": {
+            "type": "string",
+            "enum": [
+                "conceptual",
+                "procedural",
+                "intuitive",
+                "transfer"
+            ],
+            "x-enum-comments": {
+                "TrapTypeConceptual": "概念性误解",
+                "TrapTypeIntuit": "直觉性偏差",
+                "TrapTypeProcedural": "操作性错误",
+                "TrapTypeTransfer": "迁移性混淆（跨知识点概念混淆）"
+            },
+            "x-enum-descriptions": [
+                "概念性误解",
+                "操作性错误",
+                "直觉性偏差",
+                "迁移性混淆（跨知识点概念混淆）"
+            ],
+            "x-enum-varnames": [
+                "TrapTypeConceptual",
+                "TrapTypeProcedural",
+                "TrapTypeIntuit",
+                "TrapTypeTransfer"
+            ]
+        },
+        "model.User": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "school_roles": {
+                    "description": "关联",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.UserSchoolRole"
+                    }
+                },
+                "status": {
+                    "$ref": "#/definitions/model.UserStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.UserSchoolRole": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "role": {
+                    "$ref": "#/definitions/model.Role"
+                },
+                "role_id": {
+                    "type": "integer"
+                },
+                "school": {
+                    "$ref": "#/definitions/model.School"
+                },
+                "school_id": {
+                    "description": "SYS_ADMIN 时为 nil",
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.UserStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive",
+                "banned"
+            ],
+            "x-enum-varnames": [
+                "UserStatusActive",
+                "UserStatusInactive",
+                "UserStatusBanned"
+            ]
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "JWT Bearer token (e.g. \"Bearer eyJhbG...\")",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

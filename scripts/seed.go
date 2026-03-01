@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/hflms/hanfledge/internal/config"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/repository/postgres"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -15,23 +15,26 @@ import (
 // Usage: go run scripts/seed.go
 
 func main() {
+	logger.Init("debug")
+	log := logger.L("Seed")
+
 	cfg := config.Load()
 	db, err := postgres.NewConnection(&cfg.Database)
 	if err != nil {
-		log.Fatalf("❌ DB connection failed: %v", err)
+		logger.Fatal("db connection failed", "err", err)
 	}
 
 	// Ensure tables exist
 	if err := postgres.AutoMigrate(db); err != nil {
-		log.Fatalf("❌ Migration failed: %v", err)
+		logger.Fatal("migration failed", "err", err)
 	}
 
-	log.Println("🌱 Seeding test data...")
+	log.Info("seeding test data")
 
 	// ── 1. Create SYS_ADMIN ──────────────────────────────
 	admin := createUser(db, "13800000001", "Admin", "admin123")
 	assignRole(db, admin.ID, nil, model.RoleSysAdmin)
-	log.Printf("   ✅ SYS_ADMIN: %s (%s / admin123)", admin.DisplayName, admin.Phone)
+	log.Info("created sys_admin", "name", admin.DisplayName, "phone", admin.Phone)
 
 	// ── 2. Create School ─────────────────────────────────
 	school := model.School{
@@ -40,14 +43,14 @@ func main() {
 		Region: "浙江省杭州市",
 	}
 	db.FirstOrCreate(&school, model.School{Code: school.Code})
-	log.Printf("   ✅ School: %s (ID=%d)", school.Name, school.ID)
+	log.Info("created school", "name", school.Name, "id", school.ID)
 
 	// ── 3. Create Classes ────────────────────────────────
 	class1 := model.Class{SchoolID: school.ID, Name: "高一(1)班", GradeLevel: 10, AcademicYear: "2025-2026"}
 	class2 := model.Class{SchoolID: school.ID, Name: "高一(2)班", GradeLevel: 10, AcademicYear: "2025-2026"}
 	db.FirstOrCreate(&class1, model.Class{SchoolID: school.ID, Name: class1.Name})
 	db.FirstOrCreate(&class2, model.Class{SchoolID: school.ID, Name: class2.Name})
-	log.Printf("   ✅ Classes: %s, %s", class1.Name, class2.Name)
+	log.Info("created classes", "class1", class1.Name, "class2", class2.Name)
 
 	// ── 4. Create Teachers ───────────────────────────────
 	teacher1 := createUser(db, "13800000010", "张数学老师", "teacher123")
@@ -58,7 +61,7 @@ func main() {
 	teacher2 := createUser(db, "13800000011", "李物理老师", "teacher123")
 	assignRole(db, teacher2.ID, &school.ID, model.RoleTeacher)
 
-	log.Printf("   ✅ Teachers: %s (TEACHER+SCHOOL_ADMIN), %s (TEACHER)", teacher1.DisplayName, teacher2.DisplayName)
+	log.Info("created teachers", "teacher1", teacher1.DisplayName, "roles1", "TEACHER+SCHOOL_ADMIN", "teacher2", teacher2.DisplayName, "roles2", "TEACHER")
 
 	// ── 5. Create Students ───────────────────────────────
 	studentNames := []string{"王小明", "赵小红", "刘小刚", "陈小美", "杨小亮", "周小华", "黄小军", "吴小芳", "郑小龙", "孙小丽"}
@@ -77,16 +80,14 @@ func main() {
 			StudentID: student.ID,
 		}, model.ClassStudent{ClassID: classID, StudentID: student.ID})
 	}
-	log.Printf("   ✅ Students: %d created, 5 per class", len(studentNames))
+	log.Info("created students", "count", len(studentNames), "per_class", 5)
 
-	log.Println("🎉 Seed data complete!")
-	log.Println("")
-	log.Println("📋 Test accounts:")
-	log.Println("   Admin:   13800000001 / admin123")
-	log.Println("   Teacher: 13800000010 / teacher123 (张数学老师, also SCHOOL_ADMIN)")
-	log.Println("   Teacher: 13800000011 / teacher123 (李物理老师)")
-	log.Println("   Student: 13800000100 / student123 (王小明, 高一1班)")
-	log.Println("   Student: 13800000105 / student123 (周小华, 高一2班)")
+	log.Info("seed data complete")
+	log.Info("test account", "role", "admin", "username", "13800000001", "password", "admin123")
+	log.Info("test account", "role", "teacher", "username", "13800000010", "password", "teacher123", "name", "张数学老师", "extra_role", "SCHOOL_ADMIN")
+	log.Info("test account", "role", "teacher", "username", "13800000011", "password", "teacher123", "name", "李物理老师")
+	log.Info("test account", "role", "student", "username", "13800000100", "password", "student123", "name", "王小明", "class", "高一1班")
+	log.Info("test account", "role", "student", "username", "13800000105", "password", "student123", "name", "周小华", "class", "高一2班")
 }
 
 // createUser creates a user if not exists (by phone), returns the user.

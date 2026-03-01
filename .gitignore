@@ -3,6 +3,8 @@
 
 # Go
 /tmp/
+/bin/
+/server
 *.exe
 *.exe~
 *.dll
@@ -11,6 +13,10 @@
 *.test
 *.out
 vendor/
+
+# Secrets / TLS keys
+*.key
+*.pem
 
 # Next.js
 frontend/node_modules/

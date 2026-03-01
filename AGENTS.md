@@ -201,3 +201,24 @@ Use the same divider style as the backend:
 - **Vector search**: pgvector extension in PostgreSQL
 - **Knowledge graph**: Neo4j for concept relationships
 - **API prefix**: `/api/v1/`
+
+## Router Architecture & Dependency Rules
+
+The router (`internal/delivery/http/router.go`) uses a `RouterDeps` struct as a top-level
+dependency bag. Route registration is split into domain-specific files (`routes_*.go`).
+
+**Key rules when adding new endpoints or dependencies:**
+
+1. **`RouterDeps` is a construction-time bag, not a runtime pass-through.** `NewRouter` uses it
+   to create handlers, then passes only the handlers each route group needs.
+2. **`registerXxxRoutes` functions must NOT receive `RouterDeps`.** They should receive only:
+   - `*gin.RouterGroup` (the parent group)
+   - `*gorm.DB` (for RBAC middleware)
+   - The specific handler struct(s) they register routes on
+   - Named scalar params if needed (e.g., `jwtSecret string`)
+3. **New infrastructure dependency?** Add it to `RouterDeps`, inject it into the relevant
+   handler constructor in `NewRouter`, and let the handler own it internally.
+4. **New handler?** Create it in `NewRouter`, then pass it to the appropriate
+   `registerXxxRoutes` function. Group related endpoints in the same `routes_*.go` file.
+5. **New domain?** Create a new `routes_<domain>.go` file and a corresponding
+   `registerXxxRoutes` function. Keep the function focused on one domain.
