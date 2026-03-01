@@ -150,7 +150,7 @@ func TestMountSkillRequestDefaults(t *testing.T) {
 // -- SkillHandler Constructor Test ----------------------------
 
 func TestNewSkillHandler(t *testing.T) {
-	h := NewSkillHandler(nil, nil)
+	h := NewSkillHandler(nil, nil, nil)
 	if h == nil {
 		t.Fatal("NewSkillHandler returned nil")
 	}
@@ -159,5 +159,8 @@ func TestNewSkillHandler(t *testing.T) {
 	}
 	if h.Registry != nil {
 		t.Error("expected nil Registry")
+	}
+	if h.LLMProvider != nil {
+		t.Error("expected nil LLMProvider")
 	}
 }

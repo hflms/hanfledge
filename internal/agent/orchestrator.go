@@ -362,10 +362,13 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 
 	// 更新 Redis 缓存中的会话历史
 	if o.cache != nil {
-		if err := o.cache.AppendSessionHistory(tc.Ctx, tc.SessionID,
-			cache.CachedMessage{Role: "user", Content: tc.UserInput},
-			cache.CachedMessage{Role: "assistant", Content: response.Content},
-		); err != nil {
+		var messagesToAppend []cache.CachedMessage
+		if tc.UserInput != "" {
+			messagesToAppend = append(messagesToAppend, cache.CachedMessage{Role: "user", Content: tc.UserInput})
+		}
+		messagesToAppend = append(messagesToAppend, cache.CachedMessage{Role: "assistant", Content: response.Content})
+
+		if err := o.cache.AppendSessionHistory(tc.Ctx, tc.SessionID, messagesToAppend...); err != nil {
 			slogOrch.Warn("append session history failed", "session_id", tc.SessionID, "err", err)
 		}
 	}

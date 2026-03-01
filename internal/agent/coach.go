@@ -293,11 +293,21 @@ func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMateria
 	history := a.loadHistory(tc.Ctx, tc.SessionID, 10)
 	messages = append(messages, history...)
 
-	// 当前用户输入
-	messages = append(messages, llm.ChatMessage{
-		Role:    "user",
-		Content: tc.UserInput,
-	})
+	// 如果有教师干预指令（Whisper），将其作为最高优先级的系统提示插入到历史之后
+	if tc.TeacherWhisper != "" {
+		messages = append(messages, llm.ChatMessage{
+			Role:    "system",
+			Content: "[来自教师的强制干预指令，必须优先遵守] " + tc.TeacherWhisper,
+		})
+	}
+
+	// 当前用户输入 (只有非空才追加，因为如果是 whisper 触发，可能没有用户输入)
+	if tc.UserInput != "" {
+		messages = append(messages, llm.ChatMessage{
+			Role:    "user",
+			Content: tc.UserInput,
+		})
+	}
 
 	return messages
 }

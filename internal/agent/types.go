@@ -294,13 +294,14 @@ type AvatarActionPayload struct {
 
 // TurnContext 单轮对话上下文，贯穿整个 Agent 管道。
 type TurnContext struct {
-	Ctx        context.Context
-	SessionID  uint
-	StudentID  uint
-	ActivityID uint
-	UserInput  string
-	Scaffold   ScaffoldLevel
-	IsSandbox  bool // 沙盒预览模式 — 跳过 BKT 掌握度更新和错题本归档 (design.md §5.1 Step 3)
+	Ctx            context.Context
+	SessionID      uint
+	StudentID      uint
+	ActivityID     uint
+	UserInput      string
+	TeacherWhisper string // 教师干预指令 (Whisper)
+	Scaffold       ScaffoldLevel
+	IsSandbox      bool // 沙盒预览模式 — 跳过 BKT 掌握度更新和错题本归档 (design.md §5.1 Step 3)
 
 	// 管道中间产物
 	Prescription *LearningPrescription
