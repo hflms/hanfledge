@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"gorm.io/gorm"
 )
+
+var slogDistill = logger.L("Distillation")
 
 // ============================
 // Small Model Distillation Pipeline (§8.3.2)
@@ -133,8 +135,7 @@ type interactionLogRow struct {
 
 // FilterHighQualityLogs 从交互日志中筛选 RAGAS 评分 > 阈值的高质量样本。
 func (p *DistillationPipeline) FilterHighQualityLogs(ctx context.Context, skillIDs []string) ([]interactionLogRow, error) {
-	log.Printf("📊 [Distill] Filtering high-quality logs (RAGAS > %.2f) for %d skills...",
-		p.MinRAGASScore, len(skillIDs))
+	slogDistill.Info("filtering high-quality logs", "min_ragas", p.MinRAGASScore, "skills", len(skillIDs))
 
 	var rows []interactionLogRow
 
@@ -168,7 +169,7 @@ func (p *DistillationPipeline) FilterHighQualityLogs(ctx context.Context, skillI
 		return nil, fmt.Errorf("query high-quality logs failed: %w", err)
 	}
 
-	log.Printf("✅ [Distill] Found %d high-quality interactions", len(rows))
+	slogDistill.Info("found high-quality interactions", "count", len(rows))
 	return rows, nil
 }
 
@@ -181,7 +182,7 @@ func (p *DistillationPipeline) BuildSFTDataset(ctx context.Context, logs []inter
 		return nil, fmt.Errorf("no logs to build dataset from")
 	}
 
-	log.Printf("🔧 [Distill] Building SFT dataset from %d interactions...", len(logs))
+	slogDistill.Info("building sft dataset", "interactions", len(logs))
 
 	// 按 session 分组
 	sessionGroups := make(map[uint][]interactionLogRow)
@@ -203,7 +204,7 @@ func (p *DistillationPipeline) BuildSFTDataset(ctx context.Context, logs []inter
 			Where("session_id = ?", sessionID).
 			Order("id ASC").
 			Find(&allMsgs).Error; err != nil {
-			log.Printf("⚠️  [Distill] Skip session %d: %v", sessionID, err)
+			slogDistill.Warn("skipping session", "session_id", sessionID, "err", err)
 			continue
 		}
 
@@ -270,8 +271,7 @@ func (p *DistillationPipeline) BuildSFTDataset(ctx context.Context, logs []inter
 		Config: DefaultLoRAConfig(),
 	}
 
-	log.Printf("✅ [Distill] Built SFT dataset: %d samples, avg RAGAS=%.3f, avg turns=%.1f, ~%d tokens",
-		len(samples), avgRAGAS, avgTurns, totalTokensEst)
+	slogDistill.Info("built sft dataset", "samples", len(samples), "avg_ragas", avgRAGAS, "avg_turns", avgTurns, "tokens_est", totalTokensEst)
 
 	return dataset, nil
 }
@@ -312,7 +312,7 @@ func (p *DistillationPipeline) EvaluateDistillation(ctx context.Context, dataset
 		maxEvalSamples = 50 // 评估样本上限
 	}
 
-	log.Printf("📊 [Distill] Evaluating distillation quality on %d samples...", maxEvalSamples)
+	slogDistill.Info("evaluating distillation quality", "samples", maxEvalSamples)
 
 	evalSamples := dataset.Samples[:maxEvalSamples]
 	var totalTeacherScore, totalStudentScore float64
@@ -352,14 +352,14 @@ func (p *DistillationPipeline) EvaluateDistillation(ctx context.Context, dataset
 		// 教师模型生成
 		teacherResp, err := p.TeacherLLM.Chat(ctx, evalMsgs, nil)
 		if err != nil {
-			log.Printf("⚠️  [Distill] Teacher eval %d failed: %v", i, err)
+			slogDistill.Warn("teacher eval failed", "sample", i, "err", err)
 			continue
 		}
 
 		// 学生模型生成
 		studentResp, err := p.StudentLLM.Chat(ctx, evalMsgs, nil)
 		if err != nil {
-			log.Printf("⚠️  [Distill] Student eval %d failed: %v", i, err)
+			slogDistill.Warn("student eval failed", "sample", i, "err", err)
 			continue
 		}
 
@@ -375,7 +375,7 @@ func (p *DistillationPipeline) EvaluateDistillation(ctx context.Context, dataset
 		validCount++
 
 		if (i+1)%10 == 0 {
-			log.Printf("   → Evaluated %d/%d samples", i+1, maxEvalSamples)
+			slogDistill.Debug("evaluation progress", "evaluated", i+1, "total", maxEvalSamples)
 		}
 	}
 
@@ -411,8 +411,8 @@ func (p *DistillationPipeline) EvaluateDistillation(ctx context.Context, dataset
 		SampleCount:          validCount,
 	}
 
-	log.Printf("✅ [Distill] Quality Retention Rate: %.2f%% (teacher=%.3f, student=%.3f)",
-		retentionRate*100, avgTeacher, avgStudent)
+	slogDistill.Info("quality retention rate",
+		"retention_pct", retentionRate*100, "teacher_avg", avgTeacher, "student_avg", avgStudent)
 
 	return metrics, nil
 }
@@ -468,7 +468,7 @@ func (p *DistillationPipeline) exportAlpaca(dataset *SFTDataset, timestamp strin
 		}
 	}
 
-	log.Printf("📁 [Distill] Exported %d Alpaca samples to %s", len(dataset.Samples), filename)
+	slogDistill.Info("exported alpaca samples", "count", len(dataset.Samples), "file", filename)
 	return filename, nil
 }
 
@@ -512,7 +512,7 @@ func (p *DistillationPipeline) exportShareGPT(dataset *SFTDataset, timestamp str
 		}
 	}
 
-	log.Printf("📁 [Distill] Exported %d ShareGPT samples to %s", len(dataset.Samples), filename)
+	slogDistill.Info("exported sharegpt samples", "count", len(dataset.Samples), "file", filename)
 	return filename, nil
 }
 
@@ -532,7 +532,7 @@ func (p *DistillationPipeline) ExportLoRAConfig(cfg LoRAConfig) (string, error) 
 		return "", fmt.Errorf("write config failed: %w", err)
 	}
 
-	log.Printf("📁 [Distill] Exported LoRA config to %s", filename)
+	slogDistill.Info("exported lora config", "file", filename)
 	return filename, nil
 }
 

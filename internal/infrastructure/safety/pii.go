@@ -2,13 +2,15 @@ package safety
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"gorm.io/gorm"
 )
+
+var slogPII = logger.L("PIIRedactor")
 
 // ============================
 // PII 脱敏处理器
@@ -93,8 +95,7 @@ func (r *PIIRedactor) RefreshDictionary() {
 	r.schoolNames = schoolNames
 	r.loaded = true
 
-	log.Printf("🛡️  [PII] Dictionary refreshed: %d students, %d teachers, %d schools",
-		len(studentNames), len(teacherNames), len(schoolNames))
+	slogPII.Info("dictionary refreshed", "students", len(studentNames), "teachers", len(teacherNames), "schools", len(schoolNames))
 }
 
 // Redact 对文本进行 PII 脱敏处理。

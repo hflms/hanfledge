@@ -4,16 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"gorm.io/gorm"
 )
+
+var slogKARAG = logger.L("KA-RAG")
 
 // KARAGEngine implements the Knowledge-Augmented RAG pipeline.
 // It handles document slicing, embedding, graph building, and outline generation.
@@ -36,7 +38,7 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 	e.DB.Model(doc).Update("status", model.DocStatusProcessing)
 
 	// Step 1: Hybrid Slicing
-	log.Printf("📄 [KA-RAG] Slicing document: %s", doc.FileName)
+	slogKARAG.Info("slicing document", "file", doc.FileName)
 
 	// Hook: before slicing (abortable — plugins may reject the document)
 	if err := e.publishAbortable(ctx, plugin.HookBeforeSlicing, map[string]interface{}{
@@ -47,7 +49,7 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 	}
 
 	chunks := e.hybridSlice(rawText)
-	log.Printf("   → Generated %d chunks", len(chunks))
+	slogKARAG.Info("generated chunks", "count", len(chunks))
 
 	// Hook: after slicing
 	e.publishEvent(ctx, plugin.HookAfterSlicing, map[string]interface{}{
@@ -72,7 +74,7 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 	}
 
 	// Step 3: Generate embeddings and store in pgvector
-	log.Printf("🔢 [KA-RAG] Generating embeddings for %d chunks...", len(chunks))
+	slogKARAG.Info("generating embeddings", "chunks", len(chunks))
 
 	// Hook: before embedding (abortable — plugins may skip embedding)
 	if err := e.publishAbortable(ctx, plugin.HookBeforeEmbedding, map[string]interface{}{
@@ -86,9 +88,9 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 
 	// Step 4: Use LLM to extract knowledge structure and build graph
 	if e.Neo4j != nil {
-		log.Printf("🧠 [KA-RAG] Extracting knowledge structure via LLM...")
+		slogKARAG.Info("extracting knowledge structure via llm")
 		if err := e.buildKnowledgeGraph(ctx, doc.CourseID, chunks); err != nil {
-			log.Printf("⚠️  [KA-RAG] Graph building partial failure: %v", err)
+			slogKARAG.Warn("graph building partial failure", "err", err)
 		} else {
 			// Hook: after graph build (only on success)
 			e.publishEvent(ctx, plugin.HookAfterGraphBuild, map[string]interface{}{
@@ -100,7 +102,7 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 
 	// Mark as completed
 	e.DB.Model(doc).Update("status", model.DocStatusCompleted)
-	log.Printf("✅ [KA-RAG] Document processing complete: %s", doc.FileName)
+	slogKARAG.Info("document processing complete", "file", doc.FileName)
 	return nil
 }
 
@@ -109,7 +111,7 @@ func (e *KARAGEngine) generateEmbeddings(ctx context.Context, chunks []string, c
 	for i, content := range chunks {
 		vec, err := e.LLM.Embed(ctx, content)
 		if err != nil {
-			log.Printf("⚠️  Embedding chunk %d failed: %v", i, err)
+			slogKARAG.Warn("embedding chunk failed", "chunk", i, "err", err)
 			continue
 		}
 
@@ -117,7 +119,7 @@ func (e *KARAGEngine) generateEmbeddings(ctx context.Context, chunks []string, c
 		vecStr := formatVector(vec)
 		e.DB.Exec("UPDATE document_chunks SET embedding = ? WHERE id = ?", vecStr, chunkIDs[i])
 	}
-	log.Printf("   → Embedded %d chunks", len(chunks))
+	slogKARAG.Info("embedded chunks", "count", len(chunks))
 }
 
 // formatVector converts a float64 slice to pgvector format string.
@@ -284,7 +286,7 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 
 	var outline OutlineJSON
 	if err := parseJSONSafe(jsonStr, &outline); err != nil {
-		log.Printf("⚠️  LLM returned invalid JSON, skipping graph building: %v", err)
+		slogKARAG.Warn("llm returned invalid json, skipping graph building", "err", err)
 		return nil // Don't fail — graph is optional for MVP
 	}
 
@@ -343,7 +345,7 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 		}
 	}
 
-	log.Printf("   → Stored %d chapters in PostgreSQL + Neo4j", len(outline.Chapters))
+	slogKARAG.Info("stored chapters", "count", len(outline.Chapters))
 	return nil
 }
 
@@ -374,16 +376,10 @@ func parseJSONSafe(jsonStr string, v interface{}) error {
 
 // publishEvent fires an EventBus event if the bus is available.
 func (e *KARAGEngine) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
-	if e.EventBus == nil {
-		return
-	}
-	e.EventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+	plugin.PublishEvent(e.EventBus, ctx, hook, payload)
 }
 
 // publishAbortable fires an abortable EventBus event. Returns error if any handler aborts.
 func (e *KARAGEngine) publishAbortable(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) error {
-	if e.EventBus == nil {
-		return nil
-	}
-	return e.EventBus.PublishAbortable(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+	return plugin.PublishAbortableEvent(e.EventBus, ctx, hook, payload)
 }

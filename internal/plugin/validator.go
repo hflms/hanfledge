@@ -2,10 +2,13 @@ package plugin
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogValidator = logger.L("Validator")
 
 // ============================
 // Anti-God Skill Validator
@@ -160,7 +163,7 @@ func (v *SkillValidator) validateSkillMDSize(skill *RegisteredSkill, result *Ski
 	// 如果是编程式插件，从 LoadConstraints 获取内容
 	if skill.Impl != nil {
 		// 编程式插件的约束内容在运行时加载，这里仅记录警告
-		log.Printf("[Validator] Programmatic skill %s: SKILL.md size check deferred to runtime", skill.Metadata.ID)
+		slogValidator.Debug("skill.md size check deferred to runtime", "skill", skill.Metadata.ID)
 	}
 }
 

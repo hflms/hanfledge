@@ -2,7 +2,7 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/domain/model"
@@ -20,7 +20,19 @@ func NewMarketplaceHandler(db *gorm.DB) *MarketplaceHandler {
 }
 
 // ListPlugins returns all approved marketplace plugins.
-// GET /api/v1/marketplace/plugins?type=skill&category=diagnosis&page=1&limit=20
+//
+//	@Summary      插件列表
+//	@Description  返回已审核通过的插件列表（支持分页、类型/分类/关键词筛选）
+//	@Tags         Marketplace
+//	@Produce      json
+//	@Param        type      query     string  false  "插件类型（如 skill）"
+//	@Param        category  query     string  false  "插件分类（如 diagnosis）"
+//	@Param        q         query     string  false  "搜索关键词"
+//	@Param        page      query     int     false  "页码"   default(1)
+//	@Param        limit     query     int     false  "每页数量" default(20)
+//	@Success      200       {object}  PaginatedResponse
+//	@Failure      500       {object}  ErrorResponse
+//	@Router       /marketplace/plugins [get]
 func (h *MarketplaceHandler) ListPlugins(c *gin.Context) {
 	query := h.DB.Where("status = ?", "approved")
 
@@ -31,39 +43,35 @@ func (h *MarketplaceHandler) ListPlugins(c *gin.Context) {
 		query = query.Where("category = ?", cat)
 	}
 	if search := c.Query("q"); search != "" {
-		query = query.Where("name LIKE ? OR description LIKE ?", "%"+search+"%", "%"+search+"%")
+		escaped := escapeLike(search)
+		query = query.Where("name LIKE ? OR description LIKE ?", "%"+escaped+"%", "%"+escaped+"%")
 	}
 
 	// Pagination
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 100 {
-		limit = 20
-	}
-	offset := (page - 1) * limit
+	p := ParsePagination(c)
 
 	var total int64
 	query.Model(&model.MarketplacePlugin{}).Count(&total)
 
 	var plugins []model.MarketplacePlugin
-	if err := query.Order("downloads DESC").Offset(offset).Limit(limit).Find(&plugins).Error; err != nil {
+	if err := query.Order("downloads DESC").Offset(p.Offset).Limit(p.Limit).Find(&plugins).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询插件列表失败"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"plugins": plugins,
-		"total":   total,
-		"page":    page,
-		"limit":   limit,
-	})
+	c.JSON(http.StatusOK, NewPaginatedResponse(plugins, total, p))
 }
 
 // GetPlugin returns details of a specific marketplace plugin.
-// GET /api/v1/marketplace/plugins/:plugin_id
+//
+//	@Summary      插件详情
+//	@Description  返回指定插件的详细信息及最近 10 条评价
+//	@Tags         Marketplace
+//	@Produce      json
+//	@Param        plugin_id  path      string  true  "插件 ID"
+//	@Success      200        {object}  map[string]interface{}
+//	@Failure      404        {object}  ErrorResponse
+//	@Router       /marketplace/plugins/{plugin_id} [get]
 func (h *MarketplaceHandler) GetPlugin(c *gin.Context) {
 	pluginID := c.Param("plugin_id")
 
@@ -84,7 +92,18 @@ func (h *MarketplaceHandler) GetPlugin(c *gin.Context) {
 }
 
 // SubmitPlugin submits a new plugin to the marketplace.
-// POST /api/v1/marketplace/plugins
+//
+//	@Summary      提交插件
+//	@Description  提交新插件到市场，初始状态为待审核
+//	@Tags         Marketplace
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      model.MarketplacePlugin  true  "插件信息"
+//	@Success      201   {object}  map[string]interface{}
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /marketplace/plugins [post]
 func (h *MarketplaceHandler) SubmitPlugin(c *gin.Context) {
 	var plugin model.MarketplacePlugin
 	if err := c.ShouldBindJSON(&plugin); err != nil {
@@ -107,7 +126,20 @@ func (h *MarketplaceHandler) SubmitPlugin(c *gin.Context) {
 }
 
 // InstallPlugin installs a marketplace plugin for a school.
-// POST /api/v1/marketplace/install
+//
+//	@Summary      安装插件
+//	@Description  为指定学校安装已审核通过的插件
+//	@Tags         Marketplace
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      object  true  "安装参数（school_id, plugin_id）"
+//	@Success      200   {object}  map[string]interface{}
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      404   {object}  ErrorResponse
+//	@Failure      409   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /marketplace/install [post]
 func (h *MarketplaceHandler) InstallPlugin(c *gin.Context) {
 	var req struct {
 		SchoolID uint   `json:"school_id" binding:"required"`
@@ -154,7 +186,16 @@ func (h *MarketplaceHandler) InstallPlugin(c *gin.Context) {
 }
 
 // UninstallPlugin removes an installed plugin from a school.
-// DELETE /api/v1/marketplace/installed/:id
+//
+//	@Summary      卸载插件
+//	@Description  从学校移除已安装的插件
+//	@Tags         Marketplace
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "已安装插件记录 ID"
+//	@Success      200 {object}  map[string]string
+//	@Failure      500 {object}  ErrorResponse
+//	@Router       /marketplace/installed/{id} [delete]
 func (h *MarketplaceHandler) UninstallPlugin(c *gin.Context) {
 	id := c.Param("id")
 
@@ -167,7 +208,17 @@ func (h *MarketplaceHandler) UninstallPlugin(c *gin.Context) {
 }
 
 // ListInstalled returns installed plugins for a school.
-// GET /api/v1/marketplace/installed?school_id=X
+//
+//	@Summary      已安装插件列表
+//	@Description  返回指定学校已安装的所有插件
+//	@Tags         Marketplace
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        school_id  query     int  true  "学校 ID"
+//	@Success      200        {array}   model.InstalledPlugin
+//	@Failure      400        {object}  ErrorResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /marketplace/installed [get]
 func (h *MarketplaceHandler) ListInstalled(c *gin.Context) {
 	schoolID := c.Query("school_id")
 	if schoolID == "" {
@@ -182,4 +233,15 @@ func (h *MarketplaceHandler) ListInstalled(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, installed)
+}
+
+// -- Helpers --------------------------------------------------
+
+// escapeLike escapes SQL LIKE wildcards (%, _) in user input to prevent
+// unintended pattern matching.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
 }

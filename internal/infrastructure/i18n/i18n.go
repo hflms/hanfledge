@@ -3,12 +3,15 @@ package i18n
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogI18n = logger.L("I18n")
 
 // Locale represents a language/region code (e.g., "zh-CN", "en-US").
 type Locale string
@@ -66,7 +69,7 @@ func (t *Translator) LoadDirectory(dir string) error {
 		t.messages[locale] = messages
 		t.mu.Unlock()
 
-		log.Printf("🌐 [i18n] Loaded locale: %s (%d messages)", locale, len(messages))
+		slogI18n.Info("loaded locale", "locale", locale, "messages", len(messages))
 	}
 
 	return nil

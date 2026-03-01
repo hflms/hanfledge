@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/asr"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"gorm.io/gorm"
 )
@@ -30,6 +31,8 @@ import (
 //   Client → Server: { "event": "user_message", "payload": { "text": "..." }, "timestamp": ... }
 //   Server → Client: { "event": "agent_thinking" | "token_delta" | "ui_scaffold_change" | "turn_complete", ... }
 
+var slogSession = logger.L("Session")
+
 // SessionHandler handles WebSocket session streaming.
 type SessionHandler struct {
 	DB             *gorm.DB
@@ -37,16 +40,20 @@ type SessionHandler struct {
 	InjectionGuard *safety.InjectionGuard
 	Achievement    *AchievementHandler
 	ASR            asr.ASRProvider // ASR 语音识别 (nil-safe)
+	upgrader       websocket.Upgrader
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard, asrProvider asr.ASRProvider) *SessionHandler {
+// corsOrigins is a comma-separated list of allowed origins (e.g. "http://localhost:3000"),
+// or "*" to allow all origins. ginMode controls dev vs production behavior.
+func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard, asrProvider asr.ASRProvider, corsOrigins string, ginMode string) *SessionHandler {
 	return &SessionHandler{
 		DB:             db,
 		Orchestrator:   orchestrator,
 		InjectionGuard: injectionGuard,
 		Achievement:    NewAchievementHandler(db),
 		ASR:            asrProvider,
+		upgrader:       newUpgrader(corsOrigins, ginMode),
 	}
 }
 
@@ -63,12 +70,41 @@ const (
 	wsWriteWait = 10 * time.Second
 )
 
-// WebSocket upgrader
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// Allow all origins for development; tighten in production
-	CheckOrigin: func(r *http.Request) bool { return true },
+// WebSocket upgrader factory
+// newUpgrader creates a websocket.Upgrader with origin checking based on config.
+// In debug mode or with corsOrigins="*", all origins are accepted.
+// In release mode, only explicitly listed origins are allowed.
+func newUpgrader(corsOrigins string, ginMode string) websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			// Development mode: allow all origins for convenience
+			if ginMode == "debug" || ginMode == "test" {
+				return true
+			}
+			// Wildcard: allow all (not recommended for production)
+			if corsOrigins == "*" {
+				return true
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // same-origin requests may not send Origin header
+			}
+			return isAllowedOrigin(origin, corsOrigins)
+		},
+	}
+}
+
+// isAllowedOrigin checks whether the given origin is in the comma-separated
+// list of allowed origins.
+func isAllowedOrigin(origin string, allowedCSV string) bool {
+	for _, allowed := range strings.Split(allowedCSV, ",") {
+		if strings.TrimSpace(allowed) == origin {
+			return true
+		}
+	}
+	return false
 }
 
 // wsConn wraps a WebSocket connection with a write mutex to prevent
@@ -96,7 +132,17 @@ func (w *wsConn) writePing() error {
 
 // StreamSession upgrades the HTTP connection to WebSocket and handles
 // bidirectional AI conversation streaming.
-// GET /api/v1/sessions/:id/stream (WebSocket upgrade)
+//
+//	@Summary      会话 WebSocket 流
+//	@Description  升级为 WebSocket 连接，实现双向 AI 对话流。客户端发送 user_message/voice_start/voice_data/voice_end 事件，服务端返回 agent_thinking/token_delta/ui_scaffold_change/turn_complete 事件
+//	@Tags         Sessions
+//	@Security     BearerAuth
+//	@Param        id  path  int  true  "会话 ID"
+//	@Success      101 "WebSocket 升级成功"
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /sessions/{id}/stream [get]
 func (h *SessionHandler) StreamSession(c *gin.Context) {
 	sessionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -122,16 +168,16 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 	}
 
 	// Upgrade to WebSocket
-	rawWS, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	rawWS, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("⚠️  [WebSocket] Upgrade failed: %v", err)
+		slogSession.Warn("websocket upgrade failed", "err", err)
 		return
 	}
 	defer rawWS.Close()
 
 	ws := &wsConn{conn: rawWS}
 
-	log.Printf("🔌 [WebSocket] Connected: session=%d student=%d", sessionID, studentID)
+	slogSession.Info("websocket connected", "session", sessionID, "student", studentID)
 
 	// ── Heartbeat: pong detection ────────────────────────────
 	rawWS.SetReadDeadline(time.Now().Add(wsPongWait))
@@ -155,7 +201,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			select {
 			case <-ticker.C:
 				if err := ws.writePing(); err != nil {
-					log.Printf("⚠️  [WebSocket] Ping failed: session=%d err=%v", sessionID, err)
+					slogSession.Warn("websocket ping failed", "session", sessionID, "err", err)
 					return
 				}
 			case <-done:
@@ -172,9 +218,9 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		_, msgBytes, err := rawWS.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				log.Printf("🔌 [WebSocket] Client disconnected: session=%d", sessionID)
+				slogSession.Info("client disconnected", "session", sessionID)
 			} else {
-				log.Printf("⚠️  [WebSocket] Read error: %v", err)
+				slogSession.Warn("websocket read error", "err", err)
 			}
 			break
 		}
@@ -207,7 +253,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			if voiceLang == "" {
 				voiceLang = "zh-CN"
 			}
-			log.Printf("🎙️ [WebSocket] Voice start: session=%d lang=%s", sessionID, voiceLang)
+			slogSession.Info("voice start", "session", sessionID, "lang", voiceLang)
 
 		case agent.EventVoiceData:
 			// Voice data chunk — decode base64 and append to buffer
@@ -218,14 +264,14 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			}
 			decoded, err := base64.StdEncoding.DecodeString(dataPayload.Data)
 			if err != nil {
-				log.Printf("⚠️  [WebSocket] Voice data decode failed: %v", err)
+				slogSession.Warn("voice data decode failed", "err", err)
 				continue
 			}
 			voiceBuffer = append(voiceBuffer, decoded...)
 
 		case agent.EventVoiceEnd:
 			// Voice recording ended — transcribe collected audio
-			log.Printf("🎙️ [WebSocket] Voice end: session=%d buffer=%d bytes", sessionID, len(voiceBuffer))
+			slogSession.Info("voice end", "session", sessionID, "buffer_bytes", len(voiceBuffer))
 			if h.ASR == nil {
 				h.sendWSError(ws, "语音识别服务未配置")
 				continue
@@ -249,7 +295,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 					EnablePunctuation: true,
 				})
 				if err != nil {
-					log.Printf("⚠️  [ASR] Transcription failed: session=%d err=%v", sessionID, err)
+					slogSession.Warn("transcription failed", "session", sessionID, "err", err)
 					h.sendWSError(ws, "语音识别失败，请重试")
 					return
 				}
@@ -258,8 +304,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 					Confidence: result.Confidence,
 					IsFinal:    true,
 				})
-				log.Printf("🗣️ [ASR] Transcribed: session=%d text=%s",
-					sessionID, truncateStr(result.Text, 50))
+				slogSession.Info("transcribed", "session", sessionID, "text", truncateStr(result.Text, 50))
 			}()
 
 		default:
@@ -267,7 +312,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		}
 	}
 
-	log.Printf("🔌 [WebSocket] Session ended: session=%d", sessionID)
+	slogSession.Info("session ended", "session", sessionID)
 }
 
 // handleUserMessage processes a user_message event through the Agent pipeline.
@@ -284,23 +329,23 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 	if h.InjectionGuard != nil {
 		check := h.InjectionGuard.Check(payload.Text)
 		if check.Risk == safety.RiskBlocked {
-			log.Printf("🛡️  [Safety] Injection BLOCKED: session=%d reason=%s matched=%s",
-				session.ID, check.Reason, check.Matched)
+			slogSession.Warn("injection blocked", "session", session.ID, "reason", check.Reason, "matched", check.Matched)
 			h.sendWSError(ws, "您的输入包含不允许的内容，请修改后重试")
 			return
 		}
 		if check.Risk == safety.RiskWarning {
-			log.Printf("🛡️  [Safety] Injection WARNING: session=%d reason=%s",
-				session.ID, check.Reason)
+			slogSession.Warn("injection warning", "session", session.ID, "reason", check.Reason)
 		}
 	}
 
-	log.Printf("💬 [WebSocket] User message: session=%d text=%s",
-		session.ID, safety.RedactForLog(payload.Text, 50))
+	slogSession.Info("user message", "session", session.ID, "text", safety.RedactForLog(payload.Text, 50))
 
 	// Build TurnContext with WebSocket callbacks
+	agentCtx, agentCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer agentCancel()
+
 	tc := &agent.TurnContext{
-		Ctx:        context.Background(),
+		Ctx:        agentCtx,
 		SessionID:  session.ID,
 		StudentID:  studentID,
 		ActivityID: session.ActivityID,
@@ -348,7 +393,7 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 
 	// Execute the Agent pipeline
 	if err := h.Orchestrator.HandleTurn(tc); err != nil {
-		log.Printf("⚠️  [WebSocket] Agent pipeline error: %v", err)
+		slogSession.Error("agent pipeline failed", "err", err)
 		h.sendWSError(ws, "AI 处理失败，请重试")
 	}
 }
@@ -364,7 +409,7 @@ func (h *SessionHandler) sendEvent(ws *wsConn, eventType string, payload interfa
 	}
 
 	if err := ws.writeJSON(event); err != nil {
-		log.Printf("⚠️  [WebSocket] Write failed: %v", err)
+		slogSession.Error("websocket write failed", "err", err)
 	}
 }
 

@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogASR = logger.L("ASR")
 
 // ============================
 // ASR 语音识别基础设施
@@ -103,7 +106,7 @@ type WhisperProvider struct {
 
 // NewWhisperProvider creates a new WhisperProvider with the given configuration.
 func NewWhisperProvider(config ASRConfig) *WhisperProvider {
-	log.Printf("🎙️ [ASR] Initializing Whisper provider: url=%s model=%s", config.WhisperURL, config.ModelSize)
+	slogASR.Info("initializing whisper provider", "url", config.WhisperURL, "model", config.ModelSize)
 	return &WhisperProvider{
 		config: config,
 		client: &http.Client{
@@ -115,7 +118,7 @@ func NewWhisperProvider(config ASRConfig) *WhisperProvider {
 // Transcribe converts audio data to text by sending it to the Whisper API.
 // The audio is uploaded as multipart form data to the /asr endpoint.
 func (w *WhisperProvider) Transcribe(ctx context.Context, audio []byte, config TranscribeConfig) (*TranscribeResult, error) {
-	log.Printf("🎙️ [ASR] Transcribing audio: %d bytes, format=%s, lang=%s", len(audio), config.Format, config.Language)
+	slogASR.Debug("transcribing audio", "bytes", len(audio), "format", config.Format, "lang", config.Language)
 
 	// Build multipart form body
 	body := &bytes.Buffer{}
@@ -184,14 +187,14 @@ func (w *WhisperProvider) Transcribe(ctx context.Context, audio []byte, config T
 		Language:   whisperResp.Language,
 	}
 
-	log.Printf("🗣️ [ASR] Transcription complete: %d chars, duration=%.1fs", len(result.Text), result.Duration)
+	slogASR.Info("transcription complete", "chars", len(result.Text), "duration_s", result.Duration)
 	return result, nil
 }
 
 // StreamTranscribe handles streaming audio input by batching chunks and
 // sending them to the Whisper API. Results are returned through an events channel.
 func (w *WhisperProvider) StreamTranscribe(ctx context.Context, audioStream <-chan []byte, config TranscribeConfig) (<-chan TranscribeEvent, error) {
-	log.Printf("🎙️ [ASR] Starting stream transcription: format=%s, lang=%s", config.Format, config.Language)
+	slogASR.Debug("starting stream transcription", "format", config.Format, "lang", config.Language)
 
 	events := make(chan TranscribeEvent, 16)
 
@@ -204,7 +207,7 @@ func (w *WhisperProvider) StreamTranscribe(ctx context.Context, audioStream <-ch
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("🎙️ [ASR] Stream transcription cancelled")
+				slogASR.Debug("stream transcription cancelled")
 				return
 
 			case chunk, ok := <-audioStream:
@@ -237,7 +240,7 @@ func (w *WhisperProvider) StreamTranscribe(ctx context.Context, audioStream <-ch
 func (w *WhisperProvider) processChunk(ctx context.Context, chunk []byte, config TranscribeConfig, events chan<- TranscribeEvent, isFinal bool) {
 	result, err := w.Transcribe(ctx, chunk, config)
 	if err != nil {
-		log.Printf("🎙️ [ASR] Chunk transcription error: %v", err)
+		slogASR.Warn("chunk transcription failed", "err", err)
 		select {
 		case events <- TranscribeEvent{
 			Type: "error",

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
+	pgRepo "github.com/hflms/hanfledge/internal/repository/postgres"
 )
 
 // ============================
@@ -19,8 +20,8 @@ func TestNewAuthHandler(t *testing.T) {
 	if h == nil {
 		t.Fatal("NewAuthHandler returned nil")
 	}
-	if h.DB != nil {
-		t.Error("expected nil DB")
+	if h.Users != nil {
+		t.Error("expected nil Users repo")
 	}
 	if h.JWTSecret != "test-secret" {
 		t.Errorf("JWTSecret = %q, want %q", h.JWTSecret, "test-secret")
@@ -84,7 +85,7 @@ func TestLoginResponseFields(t *testing.T) {
 func TestLogin_Success(t *testing.T) {
 	db := setupTestDB(t)
 	seedUser(t, db, "13800138000", "password123", "张三", model.UserStatusActive)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	w, c := newTestContext(http.MethodPost, "/api/v1/auth/login",
 		`{"phone":"13800138000","password":"password123"}`, 0)
@@ -101,7 +102,7 @@ func TestLogin_Success(t *testing.T) {
 func TestLogin_WrongPassword(t *testing.T) {
 	db := setupTestDB(t)
 	seedUser(t, db, "13800138000", "password123", "张三", model.UserStatusActive)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	w, c := newTestContext(http.MethodPost, "/api/v1/auth/login",
 		`{"phone":"13800138000","password":"wrongpassword"}`, 0)
@@ -114,7 +115,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 
 func TestLogin_UserNotFound(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	w, c := newTestContext(http.MethodPost, "/api/v1/auth/login",
 		`{"phone":"19999999999","password":"password123"}`, 0)
@@ -128,7 +129,7 @@ func TestLogin_UserNotFound(t *testing.T) {
 func TestLogin_BannedUser(t *testing.T) {
 	db := setupTestDB(t)
 	seedUser(t, db, "13800138000", "password123", "张三", model.UserStatusBanned)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	w, c := newTestContext(http.MethodPost, "/api/v1/auth/login",
 		`{"phone":"13800138000","password":"password123"}`, 0)
@@ -141,7 +142,7 @@ func TestLogin_BannedUser(t *testing.T) {
 
 func TestLogin_MissingFields(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	tests := []struct {
 		name string
@@ -166,7 +167,7 @@ func TestLogin_MissingFields(t *testing.T) {
 func TestLogin_TokenIsValidJWT(t *testing.T) {
 	db := setupTestDB(t)
 	seedUser(t, db, "13800138000", "password123", "张三", model.UserStatusActive)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	w, c := newTestContext(http.MethodPost, "/api/v1/auth/login",
 		`{"phone":"13800138000","password":"password123"}`, 0)
@@ -192,7 +193,7 @@ func TestLogin_TokenIsValidJWT(t *testing.T) {
 func TestGetMe_Success(t *testing.T) {
 	db := setupTestDB(t)
 	user := seedUser(t, db, "13800138000", "password123", "张三", model.UserStatusActive)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	w, c := newTestContext(http.MethodGet, "/api/v1/auth/me", "", user.ID)
 
@@ -205,7 +206,7 @@ func TestGetMe_Success(t *testing.T) {
 
 func TestGetMe_UserNotFound(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewAuthHandler(db, "test-jwt-secret", 24, nil)
+	h := NewAuthHandler(pgRepo.NewUserRepo(db), "test-jwt-secret", 24, nil)
 
 	w, c := newTestContext(http.MethodGet, "/api/v1/auth/me", "", uint(99999))
 

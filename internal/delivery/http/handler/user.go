@@ -23,18 +23,44 @@ func NewUserHandler(db *gorm.DB) *UserHandler {
 // ── School CRUD ─────────────────────────────────────────────
 
 // ListSchools returns all schools.
-// GET /api/v1/schools
+//
+//	@Summary      学校列表
+//	@Description  返回所有学校的分页列表
+//	@Tags         Admin
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        page   query     int  false  "页码"   default(1)
+//	@Param        limit  query     int  false  "每页数量" default(20)
+//	@Success      200    {object}  PaginatedResponse
+//	@Failure      500    {object}  ErrorResponse
+//	@Router       /schools [get]
 func (h *UserHandler) ListSchools(c *gin.Context) {
+	p := ParsePagination(c)
+
+	var total int64
+	h.DB.Model(&model.School{}).Count(&total)
+
 	var schools []model.School
-	if err := h.DB.Find(&schools).Error; err != nil {
+	if err := h.DB.Offset(p.Offset).Limit(p.Limit).Find(&schools).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询学校列表失败"})
 		return
 	}
-	c.JSON(http.StatusOK, schools)
+	c.JSON(http.StatusOK, NewPaginatedResponse(schools, total, p))
 }
 
 // CreateSchool creates a new school.
-// POST /api/v1/schools
+//
+//	@Summary      创建学校
+//	@Description  创建新的学校记录
+//	@Tags         Admin
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      model.School  true  "学校信息"
+//	@Success      201   {object}  model.School
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /schools [post]
 func (h *UserHandler) CreateSchool(c *gin.Context) {
 	var school model.School
 	if err := c.ShouldBindJSON(&school); err != nil {
@@ -51,22 +77,50 @@ func (h *UserHandler) CreateSchool(c *gin.Context) {
 // ── Class CRUD ──────────────────────────────────────────────
 
 // ListClasses returns all classes, optionally filtered by school_id.
-// GET /api/v1/classes?school_id=X
+//
+//	@Summary      班级列表
+//	@Description  返回班级的分页列表，可按学校筛选
+//	@Tags         Admin
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        school_id  query     int  false  "学校 ID"
+//	@Param        page       query     int  false  "页码"   default(1)
+//	@Param        limit      query     int  false  "每页数量" default(20)
+//	@Success      200        {object}  PaginatedResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /classes [get]
 func (h *UserHandler) ListClasses(c *gin.Context) {
-	var classes []model.Class
+	p := ParsePagination(c)
+
 	query := h.DB.Preload("School")
 	if schoolID := c.Query("school_id"); schoolID != "" {
 		query = query.Where("school_id = ?", schoolID)
 	}
-	if err := query.Find(&classes).Error; err != nil {
+
+	var total int64
+	query.Model(&model.Class{}).Count(&total)
+
+	var classes []model.Class
+	if err := query.Offset(p.Offset).Limit(p.Limit).Find(&classes).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询班级列表失败"})
 		return
 	}
-	c.JSON(http.StatusOK, classes)
+	c.JSON(http.StatusOK, NewPaginatedResponse(classes, total, p))
 }
 
 // CreateClass creates a new class under a school.
-// POST /api/v1/classes
+//
+//	@Summary      创建班级
+//	@Description  在指定学校下创建新班级
+//	@Tags         Admin
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      model.Class  true  "班级信息"
+//	@Success      201   {object}  model.Class
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /classes [post]
 func (h *UserHandler) CreateClass(c *gin.Context) {
 	var class model.Class
 	if err := c.ShouldBindJSON(&class); err != nil {
@@ -83,13 +137,30 @@ func (h *UserHandler) CreateClass(c *gin.Context) {
 // ── User Management ─────────────────────────────────────────
 
 // ListUsers returns all users, optionally filtered by school_id.
-// GET /api/v1/users?school_id=X
+//
+//	@Summary      用户列表
+//	@Description  返回用户的分页列表，可按学校筛选
+//	@Tags         Admin
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        school_id  query     int  false  "学校 ID"
+//	@Param        page       query     int  false  "页码"   default(1)
+//	@Param        limit      query     int  false  "每页数量" default(20)
+//	@Success      200        {object}  PaginatedResponse
+//	@Failure      400        {object}  ErrorResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
-	var users []model.User
+	p := ParsePagination(c)
+
 	query := h.DB.Preload("SchoolRoles.Role").Preload("SchoolRoles.School")
 
 	if schoolID := c.Query("school_id"); schoolID != "" {
-		sid, _ := strconv.ParseUint(schoolID, 10, 32)
+		sid, err := strconv.ParseUint(schoolID, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 school_id"})
+			return
+		}
 		// Find users who have a role in the specified school
 		var userIDs []uint
 		h.DB.Model(&model.UserSchoolRole{}).
@@ -98,11 +169,15 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		query = query.Where("id IN ?", userIDs)
 	}
 
-	if err := query.Find(&users).Error; err != nil {
+	var total int64
+	query.Model(&model.User{}).Count(&total)
+
+	var users []model.User
+	if err := query.Offset(p.Offset).Limit(p.Limit).Find(&users).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询用户列表失败"})
 		return
 	}
-	c.JSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, NewPaginatedResponse(users, total, p))
 }
 
 // CreateUserRequest represents the request body for creating a user.
@@ -116,7 +191,18 @@ type CreateUserRequest struct {
 }
 
 // CreateUser creates a new user with a role assignment.
-// POST /api/v1/users
+//
+//	@Summary      创建用户
+//	@Description  创建新用户并分配角色
+//	@Tags         Admin
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      CreateUserRequest  true  "用户创建参数"
+//	@Success      201   {object}  model.User
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /users [post]
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -177,7 +263,17 @@ type BatchCreateRequest struct {
 }
 
 // BatchCreateUsers creates multiple users at once.
-// POST /api/v1/users/batch
+//
+//	@Summary      批量创建用户
+//	@Description  一次性创建多个用户（支持部分成功）
+//	@Tags         Admin
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      BatchCreateRequest  true  "批量用户创建参数"
+//	@Success      200   {object}  map[string]interface{}
+//	@Failure      400   {object}  ErrorResponse
+//	@Router       /users/batch [post]
 func (h *UserHandler) BatchCreateUsers(c *gin.Context) {
 	var req BatchCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -2,9 +2,9 @@ package handler
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,44 +13,71 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
+	"github.com/hflms/hanfledge/internal/repository"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"github.com/ledongthuc/pdf"
-	"gorm.io/gorm"
 )
+
+var slogCourse = logger.L("Course")
+
+// parseCourseID converts a string course ID param to uint.
+func parseCourseID(s string) (uint, error) {
+	id, err := strconv.ParseUint(s, 10, 64)
+	return uint(id), err
+}
+
+// parseDocID converts a string document ID param to uint.
+func parseDocID(s string) (uint, error) {
+	id, err := strconv.ParseUint(s, 10, 64)
+	return uint(id), err
+}
 
 // CourseHandler handles course and material management.
 type CourseHandler struct {
-	DB      *gorm.DB
+	Courses repository.CourseRepository
+	Docs    repository.DocumentRepository
 	KARAG   *usecase.KARAGEngine
 	Cache   *cache.RedisCache   // nil if Redis unavailable
 	Storage storage.FileStorage // File storage backend
 }
 
 // NewCourseHandler creates a new CourseHandler.
-func NewCourseHandler(db *gorm.DB, karag *usecase.KARAGEngine, redisCache *cache.RedisCache, fs storage.FileStorage) *CourseHandler {
-	return &CourseHandler{DB: db, KARAG: karag, Cache: redisCache, Storage: fs}
+func NewCourseHandler(courses repository.CourseRepository, docs repository.DocumentRepository, karag *usecase.KARAGEngine, redisCache *cache.RedisCache, fs storage.FileStorage) *CourseHandler {
+	return &CourseHandler{Courses: courses, Docs: docs, KARAG: karag, Cache: redisCache, Storage: fs}
 }
 
 // ListCourses returns courses for the authenticated teacher.
-// GET /api/v1/courses?school_id=X
+//
+//	@Summary      课程列表
+//	@Description  返回当前教师的课程列表（支持分页和学校筛选）
+//	@Tags         Courses
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        school_id  query     int  false  "学校 ID"
+//	@Param        page       query     int  false  "页码"  default(1)
+//	@Param        limit      query     int  false  "每页数量"  default(20)
+//	@Success      200        {object}  PaginatedResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /courses [get]
 func (h *CourseHandler) ListCourses(c *gin.Context) {
 	userID := middleware.GetUserID(c)
+	p := ParsePagination(c)
 
-	var courses []model.Course
-	query := h.DB.Preload("Chapters.KnowledgePoints")
-
-	if schoolID := c.Query("school_id"); schoolID != "" {
-		query = query.Where("school_id = ?", schoolID)
+	var schoolID uint
+	if s := c.Query("school_id"); s != "" {
+		if id, err := parseCourseID(s); err == nil {
+			schoolID = id
+		}
 	}
-	// Teachers see only their courses; admins see all
-	query = query.Where("teacher_id = ?", userID)
 
-	if err := query.Find(&courses).Error; err != nil {
+	courses, total, err := h.Courses.ListByTeacher(c.Request.Context(), userID, schoolID, p.Offset, p.Limit)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询课程失败"})
 		return
 	}
-	c.JSON(http.StatusOK, courses)
+	c.JSON(http.StatusOK, NewPaginatedResponse(courses, total, p))
 }
 
 // CreateCourseRequest represents the request body for creating a course.
@@ -63,7 +90,18 @@ type CreateCourseRequest struct {
 }
 
 // CreateCourse creates a new course.
-// POST /api/v1/courses
+//
+//	@Summary      创建课程
+//	@Description  为当前教师创建一门新课程
+//	@Tags         Courses
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      CreateCourseRequest  true  "课程信息"
+//	@Success      201   {object}  model.Course
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /courses [post]
 func (h *CourseHandler) CreateCourse(c *gin.Context) {
 	var req CreateCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -84,7 +122,7 @@ func (h *CourseHandler) CreateCourse(c *gin.Context) {
 		Status:      model.CourseStatusDraft,
 	}
 
-	if err := h.DB.Create(&course).Error; err != nil {
+	if err := h.Courses.Create(c.Request.Context(), &course); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建课程失败: " + err.Error()})
 		return
 	}
@@ -93,13 +131,29 @@ func (h *CourseHandler) CreateCourse(c *gin.Context) {
 }
 
 // UploadMaterial handles PDF upload and triggers the KA-RAG pipeline.
-// POST /api/v1/courses/:id/materials
+//
+//	@Summary      上传教学材料
+//	@Description  上传 PDF 文件并异步触发 KA-RAG 知识抽取管线
+//	@Tags         Courses
+//	@Accept       multipart/form-data
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id    path      int   true  "课程 ID"
+//	@Param        file  formData  file  true  "PDF 文件"
+//	@Success      202   {object}  map[string]interface{}
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /courses/{id}/materials [post]
 func (h *CourseHandler) UploadMaterial(c *gin.Context) {
-	courseID := c.Param("id")
+	courseID, err := parseCourseID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
 
 	// Verify course exists
-	var course model.Course
-	if err := h.DB.First(&course, courseID).Error; err != nil {
+	course, err := h.Courses.FindByID(c.Request.Context(), courseID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
 		return
 	}
@@ -125,15 +179,14 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 	}
 
 	// Save file via storage backend
-	storageKey := filepath.Join(courseID, uuid.New().String()+".pdf")
+	courseIDStr := c.Param("id")
+	storageKey := filepath.Join(courseIDStr, uuid.New().String()+".pdf")
 	if err := h.Storage.Upload(c.Request.Context(), storageKey, file, "application/pdf"); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
 		return
 	}
 
 	// Resolve local path for PDF text extraction
-	// For local storage, URL returns the filesystem path; for OSS, extractPDFText
-	// would need to download first (future enhancement).
 	filePath, _ := h.Storage.URL(c.Request.Context(), storageKey)
 
 	// Create document record
@@ -145,18 +198,23 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 		MimeType: "application/pdf",
 		Status:   model.DocStatusUploaded,
 	}
-	h.DB.Create(&doc)
+	if err := h.Docs.Create(c.Request.Context(), &doc); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建文档记录失败"})
+		return
+	}
 
 	// Extract text from PDF
 	rawText, pageCount, err := extractPDFText(filePath)
 	if err != nil {
-		h.DB.Model(&doc).Updates(map[string]interface{}{
-			"status": model.DocStatusFailed,
-		})
+		if updateErr := h.Docs.UpdateStatus(context.Background(), doc.ID, model.DocStatusFailed); updateErr != nil {
+			slogCourse.Warn("failed to update doc status to failed", "doc_id", doc.ID, "err", updateErr)
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 解析失败: " + err.Error()})
 		return
 	}
-	h.DB.Model(&doc).Update("page_count", pageCount)
+	if updateErr := h.Docs.UpdateFields(c.Request.Context(), doc.ID, map[string]interface{}{"page_count": pageCount}); updateErr != nil {
+		slogCourse.Warn("failed to update page_count", "doc_id", doc.ID, "err", updateErr)
+	}
 
 	// Trigger KA-RAG pipeline asynchronously
 	go func() {
@@ -164,16 +222,17 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 		defer cancel()
 
 		if err := h.KARAG.ProcessDocument(ctx, &doc, rawText); err != nil {
-			log.Printf("❌ KA-RAG pipeline failed for doc %d: %v", doc.ID, err)
-			h.DB.Model(&doc).Update("status", model.DocStatusFailed)
+			slogCourse.Error("ka-rag pipeline failed", "doc_id", doc.ID, "err", err)
+			if updateErr := h.Docs.UpdateStatus(ctx, doc.ID, model.DocStatusFailed); updateErr != nil {
+				slogCourse.Warn("failed to update doc status", "doc_id", doc.ID, "err", updateErr)
+			}
 			return
 		}
 
 		// Invalidate L2 semantic cache for this course (§8.1.3)
-		// Course materials changed → cached responses may be stale
 		if h.Cache != nil {
 			if err := h.Cache.InvalidateSemanticCacheByCourse(ctx, doc.CourseID); err != nil {
-				log.Printf("⚠️  [Cache] Invalidate L2 cache for course=%d failed: %v", doc.CourseID, err)
+				slogCourse.Warn("invalidate L2 cache failed", "course_id", doc.CourseID, "err", err)
 			}
 		}
 	}()
@@ -187,22 +246,32 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 }
 
 // GetOutline returns the AI-generated course outline (chapters + knowledge points).
-// GET /api/v1/courses/:id/outline
+//
+//	@Summary      获取课程大纲
+//	@Description  返回 AI 生成的课程大纲（章节 + 知识点）及文档状态
+//	@Tags         Courses
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "课程 ID"
+//	@Success      200 {object}  map[string]interface{}
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /courses/{id}/outline [get]
 func (h *CourseHandler) GetOutline(c *gin.Context) {
-	courseID := c.Param("id")
+	courseID, err := parseCourseID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
 
-	var course model.Course
-	if err := h.DB.Preload("Chapters", func(db *gorm.DB) *gorm.DB {
-		return db.Order("sort_order ASC")
-	}).Preload("Chapters.KnowledgePoints.MountedSkills").
-		First(&course, courseID).Error; err != nil {
+	course, err := h.Courses.FindWithOutline(c.Request.Context(), courseID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
 		return
 	}
 
 	// Also include document processing status
-	var docs []model.Document
-	h.DB.Where("course_id = ?", courseID).Find(&docs)
+	docs, _ := h.Docs.FindByCourseID(c.Request.Context(), courseID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"course":    course,
@@ -211,12 +280,29 @@ func (h *CourseHandler) GetOutline(c *gin.Context) {
 }
 
 // GetDocumentStatus returns the processing status of uploaded documents.
-// GET /api/v1/courses/:id/documents
+//
+//	@Summary      文档处理状态
+//	@Description  返回课程下所有上传文档的处理状态
+//	@Tags         Courses
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "课程 ID"
+//	@Success      200 {array}   model.Document
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      500 {object}  ErrorResponse
+//	@Router       /courses/{id}/documents [get]
 func (h *CourseHandler) GetDocumentStatus(c *gin.Context) {
-	courseID := c.Param("id")
+	courseID, err := parseCourseID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
 
-	var docs []model.Document
-	h.DB.Where("course_id = ?", courseID).Order("created_at DESC").Find(&docs)
+	docs, err := h.Docs.FindByCourseIDOrdered(c.Request.Context(), courseID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询文档失败"})
+		return
+	}
 
 	c.JSON(http.StatusOK, docs)
 }
@@ -228,9 +314,25 @@ type SearchRequest struct {
 }
 
 // SearchCourse performs semantic search on course documents.
-// POST /api/v1/courses/:id/search
+//
+//	@Summary      课程语义搜索
+//	@Description  在课程文档中进行语义检索，返回相关知识片段
+//	@Tags         Courses
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id    path      int            true  "课程 ID"
+//	@Param        body  body      SearchRequest  true  "搜索请求"
+//	@Success      200   {object}  map[string]interface{}
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /courses/{id}/search [post]
 func (h *CourseHandler) SearchCourse(c *gin.Context) {
-	courseID := c.Param("id")
+	courseID, err := parseCourseID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
 
 	var req SearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -243,8 +345,8 @@ func (h *CourseHandler) SearchCourse(c *gin.Context) {
 	}
 
 	// Verify course exists
-	var course model.Course
-	if err := h.DB.First(&course, courseID).Error; err != nil {
+	course, err := h.Courses.FindByID(c.Request.Context(), courseID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
 		return
 	}
@@ -268,13 +370,33 @@ func (h *CourseHandler) SearchCourse(c *gin.Context) {
 const MaxFileSize = 50 * 1024 * 1024
 
 // DeleteDocument removes a document and its associated chunks and file.
-// DELETE /api/v1/courses/:id/documents/:doc_id
+//
+//	@Summary      删除文档
+//	@Description  删除文档及其关联的分块和存储文件
+//	@Tags         Courses
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id      path      int  true  "课程 ID"
+//	@Param        doc_id  path      int  true  "文档 ID"
+//	@Success      200     {object}  map[string]string
+//	@Failure      400     {object}  ErrorResponse
+//	@Failure      404     {object}  ErrorResponse
+//	@Router       /courses/{id}/documents/{doc_id} [delete]
 func (h *CourseHandler) DeleteDocument(c *gin.Context) {
-	courseID := c.Param("id")
-	docID := c.Param("doc_id")
+	courseID, err := parseCourseID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
+	docID, err := parseDocID(c.Param("doc_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文档 ID"})
+		return
+	}
 
-	var doc model.Document
-	if err := h.DB.Where("id = ? AND course_id = ?", docID, courseID).First(&doc).Error; err != nil {
+	ctx := c.Request.Context()
+	doc, err := h.Docs.FindByIDAndCourseID(ctx, docID, courseID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文档不存在"})
 		return
 	}
@@ -286,23 +408,26 @@ func (h *CourseHandler) DeleteDocument(c *gin.Context) {
 	}
 
 	// Delete chunks first (cascade)
-	h.DB.Where("document_id = ?", doc.ID).Delete(&model.DocumentChunk{})
+	if err := h.Docs.DeleteChunksByDocumentID(ctx, doc.ID); err != nil {
+		slogCourse.Warn("failed to delete chunks", "doc_id", doc.ID, "err", err)
+	}
 
 	// Delete the file from storage
 	if doc.FilePath != "" {
-		if err := h.Storage.Delete(c.Request.Context(), doc.FilePath); err != nil {
-			log.Printf("⚠️  [Storage] Delete file %s failed: %v", doc.FilePath, err)
+		if err := h.Storage.Delete(ctx, doc.FilePath); err != nil {
+			slogCourse.Warn("delete file failed", "path", doc.FilePath, "err", err)
 		}
 	}
 
 	// Delete the document record
-	h.DB.Delete(&doc)
+	if err := h.Docs.Delete(ctx, doc); err != nil {
+		slogCourse.Warn("failed to delete doc", "doc_id", doc.ID, "err", err)
+	}
 
 	// Invalidate L2 semantic cache for this course
 	if h.Cache != nil {
-		ctx := c.Request.Context()
 		if err := h.Cache.InvalidateSemanticCacheByCourse(ctx, doc.CourseID); err != nil {
-			log.Printf("⚠️  [Cache] Invalidate L2 cache for course=%d failed: %v", doc.CourseID, err)
+			slogCourse.Warn("invalidate L2 cache failed", "course_id", doc.CourseID, "err", err)
 		}
 	}
 
@@ -310,13 +435,34 @@ func (h *CourseHandler) DeleteDocument(c *gin.Context) {
 }
 
 // RetryDocument retriggers the KA-RAG pipeline for a failed document.
-// POST /api/v1/courses/:id/documents/:doc_id/retry
+//
+//	@Summary      重试文档处理
+//	@Description  重新触发 KA-RAG 管线处理失败的文档
+//	@Tags         Courses
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id      path      int  true  "课程 ID"
+//	@Param        doc_id  path      int  true  "文档 ID"
+//	@Success      202     {object}  map[string]interface{}
+//	@Failure      400     {object}  ErrorResponse
+//	@Failure      404     {object}  ErrorResponse
+//	@Failure      409     {object}  ErrorResponse
+//	@Router       /courses/{id}/documents/{doc_id}/retry [post]
 func (h *CourseHandler) RetryDocument(c *gin.Context) {
-	courseID := c.Param("id")
-	docID := c.Param("doc_id")
+	courseID, err := parseCourseID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课程 ID"})
+		return
+	}
+	docID, err := parseDocID(c.Param("doc_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文档 ID"})
+		return
+	}
 
-	var doc model.Document
-	if err := h.DB.Where("id = ? AND course_id = ?", docID, courseID).First(&doc).Error; err != nil {
+	ctx := c.Request.Context()
+	doc, err := h.Docs.FindByIDAndCourseID(ctx, docID, courseID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文档不存在"})
 		return
 	}
@@ -327,14 +473,14 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 	}
 
 	// Verify file still exists in storage
-	exists, err := h.Storage.Exists(c.Request.Context(), doc.FilePath)
+	exists, err := h.Storage.Exists(ctx, doc.FilePath)
 	if err != nil || !exists {
 		c.JSON(http.StatusGone, gin.H{"error": "原始文件已丢失，请重新上传"})
 		return
 	}
 
 	// Resolve local path for PDF text extraction
-	filePath, _ := h.Storage.URL(c.Request.Context(), doc.FilePath)
+	filePath, _ := h.Storage.URL(ctx, doc.FilePath)
 
 	// Re-extract text
 	rawText, pageCount, err := extractPDFText(filePath)
@@ -344,29 +490,35 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 	}
 
 	// Delete old chunks before reprocessing
-	h.DB.Where("document_id = ?", doc.ID).Delete(&model.DocumentChunk{})
+	if err := h.Docs.DeleteChunksByDocumentID(ctx, doc.ID); err != nil {
+		slogCourse.Warn("failed to delete old chunks", "doc_id", doc.ID, "err", err)
+	}
 
 	// Update status to processing
-	h.DB.Model(&doc).Updates(map[string]interface{}{
+	if err := h.Docs.UpdateFields(ctx, doc.ID, map[string]interface{}{
 		"status":     model.DocStatusProcessing,
 		"page_count": pageCount,
-	})
+	}); err != nil {
+		slogCourse.Warn("failed to update doc to processing", "doc_id", doc.ID, "err", err)
+	}
 
 	// Trigger KA-RAG pipeline asynchronously
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		if err := h.KARAG.ProcessDocument(ctx, &doc, rawText); err != nil {
-			log.Printf("❌ KA-RAG retry failed for doc %d: %v", doc.ID, err)
-			h.DB.Model(&doc).Update("status", model.DocStatusFailed)
+		if err := h.KARAG.ProcessDocument(bgCtx, doc, rawText); err != nil {
+			slogCourse.Error("ka-rag retry failed", "doc_id", doc.ID, "err", err)
+			if updateErr := h.Docs.UpdateStatus(bgCtx, doc.ID, model.DocStatusFailed); updateErr != nil {
+				slogCourse.Warn("failed to update doc status", "doc_id", doc.ID, "err", updateErr)
+			}
 			return
 		}
 
 		// Invalidate L2 semantic cache
 		if h.Cache != nil {
-			if err := h.Cache.InvalidateSemanticCacheByCourse(ctx, doc.CourseID); err != nil {
-				log.Printf("⚠️  [Cache] Invalidate L2 cache for course=%d failed: %v", doc.CourseID, err)
+			if err := h.Cache.InvalidateSemanticCacheByCourse(bgCtx, doc.CourseID); err != nil {
+				slogCourse.Warn("invalidate L2 cache failed", "course_id", doc.CourseID, "err", err)
 			}
 		}
 	}()

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -541,8 +540,7 @@ func (h *KnowledgeGraphHandler) GetStudentKnowledgeMap(c *gin.Context) {
 	// 5. Get graph edges from Neo4j
 	var edges []KnowledgeMapEdge
 	if h.Neo4j != nil {
-		ctx := context.Background()
-		graphEdges, err := h.Neo4j.GetCourseGraphEdges(ctx, uint(courseID))
+		graphEdges, err := h.Neo4j.GetCourseGraphEdges(c.Request.Context(), uint(courseID))
 		if err == nil {
 			// Build a set of valid neo4j IDs for filtering
 			validIDs := make(map[string]bool)

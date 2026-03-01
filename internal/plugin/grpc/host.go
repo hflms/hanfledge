@@ -8,10 +8,13 @@ package grpc
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogGRPC = logger.L("PluginGRPC")
 
 // PluginProcess represents a running plugin in a separate process.
 type PluginProcess struct {
@@ -60,7 +63,7 @@ func (h *HostManager) Start(ctx context.Context, pluginID string, binaryPath str
 
 	// TODO: Actually launch the subprocess with exec.Command
 	// and establish gRPC connection
-	log.Printf("🔌 [gRPC] Starting plugin %s on port %d (binary: %s)", pluginID, port, binaryPath)
+	slogGRPC.Info("starting plugin", "plugin", pluginID, "port", port, "binary", binaryPath)
 
 	proc.Healthy = true
 	h.processes[pluginID] = proc
@@ -79,7 +82,7 @@ func (h *HostManager) Stop(ctx context.Context, pluginID string) error {
 	}
 
 	// TODO: Send graceful shutdown signal, then kill after timeout
-	log.Printf("🔌 [gRPC] Stopping plugin %s (port %d)", pluginID, proc.Port)
+	slogGRPC.Info("stopping plugin", "plugin", pluginID, "port", proc.Port)
 
 	delete(h.processes, pluginID)
 	return nil

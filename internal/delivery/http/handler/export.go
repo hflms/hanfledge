@@ -79,23 +79,47 @@ func (h *ExportHandler) ExportActivitySessions(c *gin.Context) {
 		"开始时间", "结束时间", "时长(分钟)",
 	})
 
+	// Batch-load student names and KP titles to avoid N+1 queries
+	studentIDSet := make(map[uint]bool)
+	kpIDSet := make(map[uint]bool)
 	for _, s := range sessions {
-		// Get student name
-		var student model.User
-		h.DB.Select("id, display_name").First(&student, s.StudentID)
+		studentIDSet[s.StudentID] = true
+		kpIDSet[s.CurrentKP] = true
+	}
 
-		// Get KP name
-		var kp model.KnowledgePoint
-		h.DB.Select("id, title").First(&kp, s.CurrentKP)
-
-		// Get mastery
-		var mastery model.StudentKPMastery
-		masteryScore := 0.0
-		if err := h.DB.Where("student_id = ? AND kp_id = ?", s.StudentID, s.CurrentKP).
-			First(&mastery).Error; err == nil {
-			masteryScore = mastery.MasteryScore
+	studentNames := make(map[uint]string)
+	if len(studentIDSet) > 0 {
+		ids := mapKeys(studentIDSet)
+		var users []model.User
+		h.DB.Select("id, display_name").Where("id IN ?", ids).Find(&users)
+		for _, u := range users {
+			studentNames[u.ID] = u.DisplayName
 		}
+	}
 
+	kpTitles := make(map[uint]string)
+	if len(kpIDSet) > 0 {
+		ids := mapKeys(kpIDSet)
+		var kps []model.KnowledgePoint
+		h.DB.Select("id, title").Where("id IN ?", ids).Find(&kps)
+		for _, kp := range kps {
+			kpTitles[kp.ID] = kp.Title
+		}
+	}
+
+	// Batch-load mastery scores
+	type masteryKey struct{ StudentID, KPID uint }
+	masteryScores := make(map[masteryKey]float64)
+	if len(studentIDSet) > 0 && len(kpIDSet) > 0 {
+		var masteries []model.StudentKPMastery
+		h.DB.Where("student_id IN ? AND kp_id IN ?", mapKeys(studentIDSet), mapKeys(kpIDSet)).
+			Find(&masteries)
+		for _, m := range masteries {
+			masteryScores[masteryKey{m.StudentID, m.KPID}] = m.MasteryScore
+		}
+	}
+
+	for _, s := range sessions {
 		// Duration
 		endTime := time.Now()
 		endStr := ""
@@ -108,13 +132,13 @@ func (h *ExportHandler) ExportActivitySessions(c *gin.Context) {
 		writer.Write([]string{
 			strconv.FormatUint(uint64(s.ID), 10),
 			strconv.FormatUint(uint64(s.StudentID), 10),
-			student.DisplayName,
+			studentNames[s.StudentID],
 			strconv.FormatUint(uint64(s.CurrentKP), 10),
-			kp.Title,
+			kpTitles[s.CurrentKP],
 			s.ActiveSkill,
 			string(s.Scaffold),
 			string(s.Status),
-			fmt.Sprintf("%.2f", masteryScore),
+			fmt.Sprintf("%.2f", masteryScores[masteryKey{s.StudentID, s.CurrentKP}]),
 			s.StartedAt.Format("2006-01-02 15:04:05"),
 			endStr,
 			fmt.Sprintf("%.1f", durationMin),

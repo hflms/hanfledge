@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogSearch = logger.L("WebSearch")
 
 // ============================
 // Dynamic Connector — Web Search Fallback (§1.1 + §8.1.2)
@@ -116,7 +119,7 @@ func (s *SearXNGSearcher) Search(ctx context.Context, query string, maxResults i
 	}
 	req.Header.Set("Accept", "application/json")
 
-	log.Printf("🌐 [Search] Querying SearXNG: query=%q maxResults=%d", query, maxResults)
+	slogSearch.Debug("querying searxng", "query", query, "max_results", maxResults)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -165,7 +168,7 @@ func (s *SearXNGSearcher) Search(ctx context.Context, query string, maxResults i
 		})
 	}
 
-	log.Printf("🔍 [Search] SearXNG returned %d results (requested %d)", len(results), maxResults)
+	slogSearch.Debug("searxng returned results", "count", len(results), "requested", maxResults)
 	return results, nil
 }
 
@@ -189,7 +192,7 @@ func NewDynamicConnector(config SearchConfig) *DynamicConnector {
 		searcher = NewSearXNGSearcher(config.BaseURL, config.Timeout)
 	default:
 		// Default to SearXNG; other providers (Google, Bing) can be added later
-		log.Printf("⚠️  [Search] Unknown provider %q, falling back to SearXNG", config.Provider)
+		slogSearch.Warn("unknown provider, falling back to searxng", "provider", config.Provider)
 		searcher = NewSearXNGSearcher(config.BaseURL, config.Timeout)
 	}
 
@@ -202,7 +205,7 @@ func NewDynamicConnector(config SearchConfig) *DynamicConnector {
 // SearchAndRank performs a web search, sorts results by relevance score
 // (descending), and truncates to the configured maximum number of results.
 func (dc *DynamicConnector) SearchAndRank(ctx context.Context, query string) ([]SearchResult, error) {
-	log.Printf("🌐 [Search] Dynamic Connector triggered for query: %q", truncateQuery(query, 80))
+	slogSearch.Debug("dynamic connector triggered", "query", truncateQuery(query, 80))
 
 	results, err := dc.searcher.Search(ctx, query, dc.config.MaxResults)
 	if err != nil {
@@ -210,7 +213,7 @@ func (dc *DynamicConnector) SearchAndRank(ctx context.Context, query string) ([]
 	}
 
 	if len(results) == 0 {
-		log.Printf("⚠️  [Search] No results returned for query: %q", truncateQuery(query, 80))
+		slogSearch.Warn("no results returned", "query", truncateQuery(query, 80))
 		return results, nil
 	}
 
@@ -224,7 +227,7 @@ func (dc *DynamicConnector) SearchAndRank(ctx context.Context, query string) ([]
 		results = results[:dc.config.MaxResults]
 	}
 
-	log.Printf("🔍 [Search] Ranked %d results, top score=%.4f", len(results), results[0].Score)
+	slogSearch.Debug("ranked results", "count", len(results), "top_score", results[0].Score)
 	return results, nil
 }
 

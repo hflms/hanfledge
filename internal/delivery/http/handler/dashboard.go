@@ -8,8 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
-	"gorm.io/gorm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
+	"github.com/hflms/hanfledge/internal/repository"
 )
+
+var slogDash = logger.L("Dashboard")
 
 // ============================
 // 学情仪表盘 Handler — Phase 5
@@ -17,12 +20,31 @@ import (
 
 // DashboardHandler handles learning analytics dashboard APIs.
 type DashboardHandler struct {
-	DB *gorm.DB
+	Courses    repository.CourseRepository
+	Users      repository.UserRepository
+	KPs        repository.KnowledgePointRepository
+	Mastery    repository.MasteryRepository
+	Sessions   repository.SessionRepository
+	Activities repository.ActivityRepository
 }
 
 // NewDashboardHandler creates a new DashboardHandler.
-func NewDashboardHandler(db *gorm.DB) *DashboardHandler {
-	return &DashboardHandler{DB: db}
+func NewDashboardHandler(
+	courses repository.CourseRepository,
+	users repository.UserRepository,
+	kps repository.KnowledgePointRepository,
+	mastery repository.MasteryRepository,
+	sessions repository.SessionRepository,
+	activities repository.ActivityRepository,
+) *DashboardHandler {
+	return &DashboardHandler{
+		Courses:    courses,
+		Users:      users,
+		KPs:        kps,
+		Mastery:    mastery,
+		Sessions:   sessions,
+		Activities: activities,
+	}
 }
 
 // -- Knowledge Radar ----------------------------------------
@@ -37,7 +59,18 @@ type KnowledgeRadarResponse struct {
 }
 
 // GetKnowledgeRadar returns class-wide mastery aggregation for radar chart.
-// GET /api/v1/dashboard/knowledge-radar?course_id=1&class_id=1
+//
+//	@Summary      知识雷达图
+//	@Description  返回班级维度的知识点掌握度聚合数据，用于雷达图可视化
+//	@Tags         Dashboard
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        course_id  query     int  true   "课程 ID"
+//	@Param        class_id   query     int  false  "班级 ID"
+//	@Success      200        {object}  KnowledgeRadarResponse
+//	@Failure      400        {object}  ErrorResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /dashboard/knowledge-radar [get]
 func (h *DashboardHandler) GetKnowledgeRadar(c *gin.Context) {
 	courseIDStr := c.Query("course_id")
 	if courseIDStr == "" {
@@ -50,10 +83,12 @@ func (h *DashboardHandler) GetKnowledgeRadar(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
 	// Verify the teacher owns this course
 	teacherID := middleware.GetUserID(c)
-	var course model.Course
-	if err := h.DB.First(&course, courseID).Error; err != nil {
+	course, err := h.Courses.FindByID(ctx, uint(courseID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
 		return
 	}
@@ -63,11 +98,10 @@ func (h *DashboardHandler) GetKnowledgeRadar(c *gin.Context) {
 	}
 
 	// Get all knowledge points for this course
-	var kps []model.KnowledgePoint
-	h.DB.Joins("JOIN chapters ON chapters.id = knowledge_points.chapter_id").
-		Where("chapters.course_id = ?", courseID).
-		Order("chapters.sort_order ASC, knowledge_points.id ASC").
-		Find(&kps)
+	kps, err := h.KPs.FindByCourseID(ctx, uint(courseID))
+	if err != nil {
+		slogDash.Warn("failed to query knowledge points", "course_id", courseID, "err", err)
+	}
 
 	if len(kps) == 0 {
 		c.JSON(http.StatusOK, KnowledgeRadarResponse{
@@ -93,40 +127,22 @@ func (h *DashboardHandler) GetKnowledgeRadar(c *gin.Context) {
 	if classIDStr != "" {
 		classID, err := strconv.ParseUint(classIDStr, 10, 64)
 		if err == nil {
-			h.DB.Model(&model.ClassStudent{}).
-				Where("class_id = ?", classID).
-				Pluck("student_id", &studentIDs)
+			studentIDs, _ = h.Users.FindStudentIDsByClassID(ctx, uint(classID))
 		}
 	}
 
 	// Aggregate average mastery per knowledge point
 	values := make([]float64, len(kps))
 	for i, kpID := range kpIDs {
-		var avgResult struct {
-			Avg   float64
-			Count int64
+		avg, _, err := h.Mastery.AggregateAvgByKP(ctx, kpID, studentIDs)
+		if err != nil {
+			slogDash.Warn("failed to aggregate mastery", "kp_id", kpID, "err", err)
 		}
-
-		query := h.DB.Model(&model.StudentKPMastery{}).
-			Select("COALESCE(AVG(mastery_score), 0.0) as avg, COUNT(*) as count").
-			Where("kp_id = ?", kpID)
-
-		if len(studentIDs) > 0 {
-			query = query.Where("student_id IN ?", studentIDs)
-		}
-
-		query.Scan(&avgResult)
-		values[i] = avgResult.Avg
+		values[i] = avg
 	}
 
 	// Count distinct students
-	var studentCount int64
-	countQuery := h.DB.Model(&model.StudentKPMastery{}).
-		Where("kp_id IN ?", kpIDs)
-	if len(studentIDs) > 0 {
-		countQuery = countQuery.Where("student_id IN ?", studentIDs)
-	}
-	countQuery.Distinct("student_id").Count(&studentCount)
+	studentCount, _ := h.Mastery.CountDistinctStudents(ctx, kpIDs, studentIDs)
 
 	c.JSON(http.StatusOK, KnowledgeRadarResponse{
 		CourseID:     uint(courseID),
@@ -167,7 +183,18 @@ type MasteryHistoryPoint struct {
 }
 
 // GetStudentMastery returns mastery data for a specific student.
-// GET /api/v1/students/:id/mastery?course_id=1
+//
+//	@Summary      学生掌握度详情
+//	@Description  返回指定学生的知识点掌握度和历史趋势数据
+//	@Tags         Dashboard
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id         path      int  true   "学生 ID"
+//	@Param        course_id  query     int  false  "课程 ID（不传则返回所有课程）"
+//	@Success      200        {object}  StudentMasteryResponse
+//	@Failure      400        {object}  ErrorResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /students/{id}/mastery [get]
 func (h *DashboardHandler) GetStudentMastery(c *gin.Context) {
 	studentIDStr := c.Param("id")
 	studentID, err := strconv.ParseUint(studentIDStr, 10, 64)
@@ -176,42 +203,53 @@ func (h *DashboardHandler) GetStudentMastery(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
 	// Verify the student exists
-	var student model.User
-	if err := h.DB.First(&student, studentID).Error; err != nil {
+	student, err := h.Users.FindByID(ctx, uint(studentID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "学生不存在"})
 		return
 	}
 
-	// Query mastery records
-	query := h.DB.Model(&model.StudentKPMastery{}).
-		Where("student_id = ?", studentID)
-
-	// Optional course_id filter
+	// Optional course_id filter — get KP IDs belonging to this course
 	courseIDStr := c.Query("course_id")
 	var kpIDs []uint
 	if courseIDStr != "" {
 		courseID, err := strconv.ParseUint(courseIDStr, 10, 64)
 		if err == nil {
-			h.DB.Raw(`
-				SELECT kp.id FROM knowledge_points kp
-				JOIN chapters c ON c.id = kp.chapter_id
-				WHERE c.course_id = ?
-			`, courseID).Scan(&kpIDs)
-			if len(kpIDs) > 0 {
-				query = query.Where("kp_id IN ?", kpIDs)
-			}
+			kpIDs, _ = h.KPs.FindIDsByCourseID(ctx, uint(courseID))
 		}
 	}
 
-	var masteries []model.StudentKPMastery
-	query.Order("updated_at DESC").Find(&masteries)
+	// Query mastery records (kpIDs may be nil → no KP filter)
+	masteries, err := h.Mastery.FindByStudent(ctx, uint(studentID), kpIDs)
+	if err != nil {
+		slogDash.Warn("failed to query mastery", "student_id", studentID, "err", err)
+	}
 
-	// Build response items with KP and chapter details
+	// Build response items with KP and chapter details (batch-loaded to avoid N+1)
+	kpIDsForMastery := make([]uint, 0, len(masteries))
+	for _, m := range masteries {
+		kpIDsForMastery = append(kpIDsForMastery, m.KPID)
+	}
+
+	// Batch-load all needed KPs with their chapters
+	kpMap := make(map[uint]model.KnowledgePoint)
+	if len(kpIDsForMastery) > 0 {
+		kpList, err := h.KPs.FindByIDsWithChapter(ctx, kpIDsForMastery)
+		if err != nil {
+			slogDash.Warn("failed to load knowledge points for mastery", "err", err)
+		}
+		for _, kp := range kpList {
+			kpMap[kp.ID] = kp
+		}
+	}
+
 	items := make([]StudentMasteryItem, 0, len(masteries))
 	for _, m := range masteries {
-		var kp model.KnowledgePoint
-		if err := h.DB.Preload("Chapter").First(&kp, m.KPID).Error; err != nil {
+		kp, ok := kpMap[m.KPID]
+		if !ok {
 			continue
 		}
 
@@ -232,23 +270,10 @@ func (h *DashboardHandler) GetStudentMastery(c *gin.Context) {
 	}
 
 	// Build history trend (aggregate by date)
-	type dailyAgg struct {
-		Date     string  `json:"date"`
-		AvgScore float64 `json:"avg_score"`
-		Count    int     `json:"count"`
+	daily, err := h.Mastery.AggregateDailyMastery(ctx, uint(studentID), kpIDs)
+	if err != nil {
+		slogDash.Warn("failed to query mastery history", "student_id", studentID, "err", err)
 	}
-	var daily []dailyAgg
-
-	historyQuery := h.DB.Model(&model.StudentKPMastery{}).
-		Select("DATE(updated_at) as date, AVG(mastery_score) as avg_score, SUM(attempt_count) as count").
-		Where("student_id = ?", studentID).
-		Group("DATE(updated_at)").
-		Order("date ASC")
-
-	if len(kpIDs) > 0 {
-		historyQuery = historyQuery.Where("kp_id IN ?", kpIDs)
-	}
-	historyQuery.Scan(&daily)
 
 	history := make([]MasteryHistoryPoint, len(daily))
 	for i, d := range daily {
@@ -296,7 +321,18 @@ type SessionSummary struct {
 }
 
 // GetActivitySessions returns session statistics for a learning activity.
-// GET /api/v1/activities/:id/sessions
+//
+//	@Summary      活动会话统计
+//	@Description  返回指定学习活动的会话列表与统计数据（完成率、平均时长、掌握度等）
+//	@Tags         Dashboard
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "活动 ID"
+//	@Success      200 {object}  ActivitySessionStats
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /activities/{id}/sessions [get]
 func (h *DashboardHandler) GetActivitySessions(c *gin.Context) {
 	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -304,9 +340,11 @@ func (h *DashboardHandler) GetActivitySessions(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
 	// Verify activity exists
-	var activity model.LearningActivity
-	if err := h.DB.First(&activity, activityID).Error; err != nil {
+	activity, err := h.Activities.FindByID(ctx, uint(activityID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "学习活动不存在"})
 		return
 	}
@@ -319,16 +357,59 @@ func (h *DashboardHandler) GetActivitySessions(c *gin.Context) {
 	}
 
 	// Get all sessions for this activity (exclude sandbox sessions)
-	var sessions []model.StudentSession
-	h.DB.Where("activity_id = ? AND is_sandbox = ?", activityID, false).
-		Order("started_at DESC").
-		Find(&sessions)
+	sessions, err := h.Sessions.ListByActivityID(ctx, uint(activityID), true)
+	if err != nil {
+		slogDash.Warn("failed to query sessions", "activity_id", activityID, "err", err)
+	}
 
 	totalSessions := len(sessions)
 	activeSessions := 0
 	completedSessions := 0
 	var totalDuration float64
 	var completedDuration float64
+
+	// Batch-load student names and mastery scores to avoid N+1 queries
+	sessionStudentIDs := make(map[uint]bool)
+	sessionKPIDs := make(map[uint]bool)
+	for _, s := range sessions {
+		sessionStudentIDs[s.StudentID] = true
+		sessionKPIDs[s.CurrentKP] = true
+	}
+
+	studentNameMap := make(map[uint]string)
+	if len(sessionStudentIDs) > 0 {
+		idList := make([]uint, 0, len(sessionStudentIDs))
+		for id := range sessionStudentIDs {
+			idList = append(idList, id)
+		}
+		students, err := h.Users.FindByIDs(ctx, idList, "id, display_name")
+		if err != nil {
+			slogDash.Warn("failed to load student names", "err", err)
+		}
+		for _, s := range students {
+			studentNameMap[s.ID] = s.DisplayName
+		}
+	}
+
+	type masteryKey struct{ StudentID, KPID uint }
+	masteryMap := make(map[masteryKey]float64)
+	if len(sessionStudentIDs) > 0 && len(sessionKPIDs) > 0 {
+		sidList := make([]uint, 0, len(sessionStudentIDs))
+		for id := range sessionStudentIDs {
+			sidList = append(sidList, id)
+		}
+		kpList := make([]uint, 0, len(sessionKPIDs))
+		for id := range sessionKPIDs {
+			kpList = append(kpList, id)
+		}
+		masteries, err := h.Mastery.FindByStudentsAndKPs(ctx, sidList, kpList)
+		if err != nil {
+			slogDash.Warn("failed to load mastery data", "err", err)
+		}
+		for _, m := range masteries {
+			masteryMap[masteryKey{m.StudentID, m.KPID}] = m.MasteryScore
+		}
+	}
 
 	summaries := make([]SessionSummary, 0, totalSessions)
 	for _, s := range sessions {
@@ -352,22 +433,12 @@ func (h *DashboardHandler) GetActivitySessions(c *gin.Context) {
 			completedDuration += durationMin
 		}
 
-		// Get student name
-		var student model.User
-		h.DB.Select("id, display_name").First(&student, s.StudentID)
-
-		// Get mastery score for the current KP
-		var mastery model.StudentKPMastery
-		masteryScore := 0.0
-		if err := h.DB.Where("student_id = ? AND kp_id = ?", s.StudentID, s.CurrentKP).
-			First(&mastery).Error; err == nil {
-			masteryScore = mastery.MasteryScore
-		}
+		masteryScore := masteryMap[masteryKey{s.StudentID, s.CurrentKP}]
 
 		summary := SessionSummary{
 			SessionID:     s.ID,
 			StudentID:     s.StudentID,
-			StudentName:   student.DisplayName,
+			StudentName:   studentNameMap[s.StudentID],
 			Status:        string(s.Status),
 			ScaffoldLevel: string(s.Scaffold),
 			StartedAt:     s.StartedAt.Format(time.RFC3339),
@@ -418,7 +489,17 @@ func (h *DashboardHandler) GetActivitySessions(c *gin.Context) {
 // -- Student Self Mastery -----------------------------------
 
 // GetSelfMastery returns mastery data for the authenticated student.
-// GET /api/v1/student/mastery?course_id=1
+//
+//	@Summary      学生自身掌握度
+//	@Description  返回当前登录学生自己的知识点掌握度和历史趋势（复用 GetStudentMastery 逻辑）
+//	@Tags         Student
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        course_id  query     int  false  "课程 ID（不传则返回所有课程）"
+//	@Success      200        {object}  StudentMasteryResponse
+//	@Failure      400        {object}  ErrorResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /student/mastery [get]
 func (h *DashboardHandler) GetSelfMastery(c *gin.Context) {
 	studentID := middleware.GetUserID(c)
 
@@ -454,40 +535,53 @@ type ErrorNotebookResponse struct {
 }
 
 // GetErrorNotebook returns the error notebook entries for the authenticated student.
-// GET /api/v1/student/error-notebook?resolved=false&kp_id=1
+//
+//	@Summary      错题本
+//	@Description  返回当前学生的错题本条目，支持按已解决状态和知识点筛选
+//	@Tags         Student
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        resolved  query     bool  false  "是否已解决（true/false）"
+//	@Param        kp_id     query     int   false  "知识点 ID"
+//	@Success      200       {object}  ErrorNotebookResponse
+//	@Failure      500       {object}  ErrorResponse
+//	@Router       /student/error-notebook [get]
 func (h *DashboardHandler) GetErrorNotebook(c *gin.Context) {
 	studentID := middleware.GetUserID(c)
+	ctx := c.Request.Context()
 
-	query := h.DB.Where("student_id = ?", studentID)
-
-	// Optional filter: resolved status
+	// Parse optional filters
+	var resolved *bool
 	if resolvedStr := c.Query("resolved"); resolvedStr != "" {
 		if resolvedStr == "true" {
-			query = query.Where("resolved = ?", true)
+			v := true
+			resolved = &v
 		} else if resolvedStr == "false" {
-			query = query.Where("resolved = ?", false)
+			v := false
+			resolved = &v
 		}
 	}
 
-	// Optional filter: specific KP
+	var kpID uint
 	if kpIDStr := c.Query("kp_id"); kpIDStr != "" {
-		kpID, err := strconv.ParseUint(kpIDStr, 10, 64)
+		id, err := strconv.ParseUint(kpIDStr, 10, 64)
 		if err == nil {
-			query = query.Where("kp_id = ?", kpID)
+			kpID = uint(id)
 		}
 	}
 
-	var entries []model.ErrorNotebookEntry
-	if err := query.Order("archived_at DESC").Find(&entries).Error; err != nil {
+	entries, err := h.Mastery.ListErrorNotebook(ctx, studentID, resolved, kpID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询错题本失败"})
 		return
 	}
 
 	// Count totals for the student
-	var totalCount, unresolvedCnt, resolvedCnt int64
-	h.DB.Model(&model.ErrorNotebookEntry{}).Where("student_id = ?", studentID).Count(&totalCount)
-	h.DB.Model(&model.ErrorNotebookEntry{}).Where("student_id = ? AND resolved = ?", studentID, false).Count(&unresolvedCnt)
-	resolvedCnt = totalCount - unresolvedCnt
+	totalCount, unresolvedCnt, err := h.Mastery.CountErrorNotebook(ctx, studentID)
+	if err != nil {
+		slogDash.Warn("failed to count error notebook", "student_id", studentID, "err", err)
+	}
+	resolvedCnt := totalCount - unresolvedCnt
 
 	// Enrich with KP and chapter titles
 	kpIDs := make([]uint, 0, len(entries))
@@ -498,19 +592,11 @@ func (h *DashboardHandler) GetErrorNotebook(c *gin.Context) {
 	kpTitleMap := make(map[uint]string)
 	chapterTitleMap := make(map[uint]string)
 	if len(kpIDs) > 0 {
-		var kps []struct {
-			ID           uint   `gorm:"column:id"`
-			Title        string `gorm:"column:title"`
-			ChapterTitle string `gorm:"column:chapter_title"`
+		kpWithTitles, err := h.KPs.FindWithChapterTitles(ctx, kpIDs)
+		if err != nil {
+			slogDash.Warn("failed to load kp titles", "err", err)
 		}
-		h.DB.Raw(`
-			SELECT kp.id, kp.title, c.title AS chapter_title
-			FROM knowledge_points kp
-			JOIN chapters c ON c.id = kp.chapter_id
-			WHERE kp.id IN ?
-		`, kpIDs).Scan(&kps)
-
-		for _, kp := range kps {
+		for _, kp := range kpWithTitles {
 			kpTitleMap[kp.ID] = kp.Title
 			chapterTitleMap[kp.ID] = kp.ChapterTitle
 		}

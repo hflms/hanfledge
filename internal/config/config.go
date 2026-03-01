@@ -2,12 +2,14 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/joho/godotenv"
 )
+
+var slogConfig = logger.L("Config")
 
 // Config holds all application configuration.
 type Config struct {
@@ -120,7 +122,7 @@ type SearchConfig struct {
 func Load() *Config {
 	// Load .env file if it exists (ignore error if missing)
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using environment variables")
+		slogConfig.Info("no .env file found, using environment variables")
 	}
 
 	return &Config{
@@ -188,6 +190,44 @@ func Load() *Config {
 			ModelSize:  getEnv("ASR_MODEL_SIZE", "large-v3"),
 		},
 	}
+}
+
+// -- Production Safety ------------------------------------------------
+
+// insecureDefaults lists default values that must NOT be used in production.
+var insecureDefaults = map[string]struct{}{
+	"dev-secret-change-me": {},
+	"hanfledge_secret":     {},
+	"neo4j_secret":         {},
+}
+
+// Validate checks that security-sensitive configuration values are safe for
+// the current environment. In release mode (GIN_MODE=release), using any of
+// the hardcoded default passwords/secrets is a fatal configuration error.
+func (cfg *Config) Validate() error {
+	if cfg.Server.GinMode != "release" {
+		return nil // no restrictions in debug/test mode
+	}
+
+	checks := []struct {
+		name  string
+		value string
+	}{
+		{"JWT_SECRET", cfg.JWT.Secret},
+		{"DB_PASSWORD", cfg.Database.Password},
+		{"NEO4J_PASSWORD", cfg.Neo4j.Password},
+	}
+
+	for _, c := range checks {
+		if _, insecure := insecureDefaults[c.value]; insecure {
+			return fmt.Errorf(
+				"SECURITY: %s is using an insecure default value (%q) — set a strong value via environment variable before running in production",
+				c.name, c.value,
+			)
+		}
+	}
+
+	return nil
 }
 
 // getEnv reads an environment variable with a fallback default value.

@@ -75,7 +75,7 @@ func TestTruncateStr(t *testing.T) {
 // -- SessionHandler Constructor Test --------------------------
 
 func TestNewSessionHandler(t *testing.T) {
-	h := NewSessionHandler(nil, nil, nil, nil)
+	h := NewSessionHandler(nil, nil, nil, nil, "http://localhost:3000", "debug")
 	if h == nil {
 		t.Fatal("NewSessionHandler returned nil")
 	}
@@ -90,5 +90,35 @@ func TestNewSessionHandler(t *testing.T) {
 	}
 	if h.ASR != nil {
 		t.Error("expected nil ASR")
+	}
+}
+
+// -- isAllowedOrigin Tests ------------------------------------
+
+func TestIsAllowedOrigin(t *testing.T) {
+	tests := []struct {
+		name       string
+		origin     string
+		allowedCSV string
+		want       bool
+	}{
+		{"exact match", "http://localhost:3000", "http://localhost:3000", true},
+		{"no match", "http://evil.com", "http://localhost:3000", false},
+		{"multiple allowed, match first", "http://localhost:3000", "http://localhost:3000,https://app.example.com", true},
+		{"multiple allowed, match second", "https://app.example.com", "http://localhost:3000,https://app.example.com", true},
+		{"multiple allowed, no match", "http://evil.com", "http://localhost:3000,https://app.example.com", false},
+		{"spaces in CSV", "https://app.example.com", "http://localhost:3000, https://app.example.com", true},
+		{"empty CSV", "http://localhost:3000", "", false},
+		{"empty origin", "", "http://localhost:3000", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isAllowedOrigin(tc.origin, tc.allowedCSV)
+			if got != tc.want {
+				t.Errorf("isAllowedOrigin(%q, %q) = %v, want %v",
+					tc.origin, tc.allowedCSV, got, tc.want)
+			}
+		})
 	}
 }

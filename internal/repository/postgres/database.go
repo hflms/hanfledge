@@ -2,37 +2,39 @@ package postgres
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/hflms/hanfledge/internal/config"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 )
+
+var slogDB = logger.L("Database")
 
 // NewConnection creates a new GORM database connection to PostgreSQL.
 func NewConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	logLevel := logger.Info
+	logLevel := gormlogger.Info
 	if cfg.Host != "localhost" {
-		logLevel = logger.Warn
+		logLevel = gormlogger.Warn
 	}
 
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+		Logger: gormlogger.Default.LogMode(logLevel),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 	}
 
-	log.Println("✅ PostgreSQL connected successfully")
+	slogDB.Info("postgresql connected successfully")
 	return db, nil
 }
 
 // AutoMigrate runs GORM auto-migration for all domain models.
 // This creates or updates tables to match the Go struct definitions.
 func AutoMigrate(db *gorm.DB) error {
-	log.Println("🔄 Running database auto-migration...")
+	slogDB.Info("running database auto-migration")
 
 	// Enable pgvector extension
 	db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
@@ -45,7 +47,7 @@ func AutoMigrate(db *gorm.DB) error {
 	}
 	for _, sql := range fixTimestampSQL {
 		if err := db.Exec(sql).Error; err != nil {
-			log.Printf("⚠️  Timestamp fix query skipped (table may not exist yet): %v", err)
+			slogDB.Warn("timestamp fix query skipped (table may not exist yet)", "err", err)
 		}
 	}
 
@@ -97,7 +99,7 @@ func AutoMigrate(db *gorm.DB) error {
 	// Seed achievement definitions if not exist
 	seedAchievements(db)
 
-	log.Println("✅ Database migration completed")
+	slogDB.Info("database migration completed")
 	return nil
 }
 
@@ -112,7 +114,7 @@ func seedRoles(db *gorm.DB) {
 	for _, r := range roles {
 		db.FirstOrCreate(&r, model.Role{Name: r.Name})
 	}
-	log.Println("✅ Default roles seeded")
+	slogDB.Info("default roles seeded")
 }
 
 // seedAchievements inserts the predefined achievement definitions (3 types × 4 tiers).
@@ -138,5 +140,5 @@ func seedAchievements(db *gorm.DB) {
 	for _, d := range defs {
 		db.FirstOrCreate(&d, model.AchievementDefinition{Type: d.Type, Tier: d.Tier})
 	}
-	log.Println("✅ Achievement definitions seeded")
+	slogDB.Info("achievement definitions seeded")
 }

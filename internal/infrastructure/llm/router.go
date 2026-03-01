@@ -2,9 +2,12 @@ package llm
 
 import (
 	"context"
-	"log"
 	"strings"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogRouter = logger.L("ModelRouter")
 
 // ============================
 // Model Router — 分级模型路由
@@ -218,14 +221,14 @@ func (r *ModelRouter) Route(complexity TaskComplexity) LLMProvider {
 // Chat delegates to the fallback provider.
 func (r *ModelRouter) Chat(ctx context.Context, messages []ChatMessage, opts *ChatOptions) (string, error) {
 	provider := r.Fallback
-	log.Printf("[Router] Chat → %s (default)", provider.Name())
+	slogRouter.Debug("chat delegated", "provider", provider.Name(), "mode", "default")
 	return provider.Chat(ctx, messages, opts)
 }
 
 // StreamChat delegates to the fallback provider.
 func (r *ModelRouter) StreamChat(ctx context.Context, messages []ChatMessage, opts *ChatOptions, onToken func(token string)) (string, error) {
 	provider := r.Fallback
-	log.Printf("[Router] StreamChat → %s (default)", provider.Name())
+	slogRouter.Debug("stream chat delegated", "provider", provider.Name(), "mode", "default")
 	return provider.StreamChat(ctx, messages, opts, onToken)
 }
 
@@ -245,14 +248,14 @@ func (r *ModelRouter) EmbedBatch(ctx context.Context, texts []string) ([][]float
 // ChatRouted sends a chat request via the provider selected for the given complexity.
 func (r *ModelRouter) ChatRouted(ctx context.Context, complexity TaskComplexity, messages []ChatMessage, opts *ChatOptions) (string, error) {
 	provider := r.Route(complexity)
-	log.Printf("[Router] ChatRouted(%s) → %s", complexity, provider.Name())
+	slogRouter.Debug("chat routed", "complexity", string(complexity), "provider", provider.Name())
 	return provider.Chat(ctx, messages, opts)
 }
 
 // StreamChatRouted sends a streaming chat request via the selected provider.
 func (r *ModelRouter) StreamChatRouted(ctx context.Context, complexity TaskComplexity, messages []ChatMessage, opts *ChatOptions, onToken func(token string)) (string, error) {
 	provider := r.Route(complexity)
-	log.Printf("[Router] StreamChatRouted(%s) → %s", complexity, provider.Name())
+	slogRouter.Debug("stream chat routed", "complexity", string(complexity), "provider", provider.Name())
 	return provider.StreamChat(ctx, messages, opts, onToken)
 }
 
@@ -264,7 +267,7 @@ func (r *ModelRouter) ChatWithContext(ctx context.Context, tc *TaskContext, mess
 	complexity := tc.EstimateComplexity()
 	score := tc.ComplexityScore()
 	provider := r.Route(complexity)
-	log.Printf("[Router] ChatWithContext(score=%.2f → %s) → %s", score, complexity, provider.Name())
+	slogRouter.Debug("chat with context", "score", score, "complexity", string(complexity), "provider", provider.Name())
 	return provider.Chat(ctx, messages, opts)
 }
 
@@ -273,6 +276,6 @@ func (r *ModelRouter) StreamChatWithContext(ctx context.Context, tc *TaskContext
 	complexity := tc.EstimateComplexity()
 	score := tc.ComplexityScore()
 	provider := r.Route(complexity)
-	log.Printf("[Router] StreamChatWithContext(score=%.2f → %s) → %s", score, complexity, provider.Name())
+	slogRouter.Debug("stream chat with context", "score", score, "complexity", string(complexity), "provider", provider.Name())
 	return provider.StreamChat(ctx, messages, opts, onToken)
 }

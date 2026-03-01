@@ -63,7 +63,19 @@ func JWTAuth(secret string) gin.HandlerFunc {
 }
 
 // GetUserID extracts the authenticated user ID from the Gin context.
+// Returns 0 if the value is missing or has an unexpected type.
 func GetUserID(c *gin.Context) uint {
-	id, _ := c.Get("user_id")
-	return id.(uint)
+	val, exists := c.Get("user_id")
+	if !exists {
+		return 0
+	}
+	switch id := val.(type) {
+	case uint:
+		return id
+	case float64:
+		// JWT numeric claims may be parsed as float64 in some paths
+		return uint(id)
+	default:
+		return 0
+	}
 }

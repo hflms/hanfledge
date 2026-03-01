@@ -10,22 +10,22 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/plugin"
+	"github.com/hflms/hanfledge/internal/repository"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 // AuthHandler handles authentication-related requests.
 type AuthHandler struct {
-	DB        *gorm.DB
+	Users     repository.UserRepository
 	JWTSecret string
 	JWTExpiry int // hours
 	EventBus  *plugin.EventBus
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(db *gorm.DB, jwtSecret string, jwtExpiry int, eventBus *plugin.EventBus) *AuthHandler {
+func NewAuthHandler(users repository.UserRepository, jwtSecret string, jwtExpiry int, eventBus *plugin.EventBus) *AuthHandler {
 	return &AuthHandler{
-		DB:        db,
+		Users:     users,
 		JWTSecret: jwtSecret,
 		JWTExpiry: jwtExpiry,
 		EventBus:  eventBus,
@@ -34,10 +34,7 @@ func NewAuthHandler(db *gorm.DB, jwtSecret string, jwtExpiry int, eventBus *plug
 
 // publishEvent fires an EventBus event if the bus is available (nil-safe).
 func (h *AuthHandler) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
-	if h.EventBus == nil {
-		return
-	}
-	h.EventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+	plugin.PublishEvent(h.EventBus, ctx, hook, payload)
 }
 
 // LoginRequest represents the login request body.
@@ -53,7 +50,18 @@ type LoginResponse struct {
 }
 
 // Login handles user authentication and returns a JWT token.
-// POST /api/v1/auth/login
+//
+//	@Summary      用户登录
+//	@Description  通过手机号和密码进行身份验证，返回 JWT token
+//	@Tags         Auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      LoginRequest   true  "登录请求"
+//	@Success      200   {object}  LoginResponse
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      401   {object}  ErrorResponse
+//	@Failure      403   {object}  ErrorResponse
+//	@Router       /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -62,9 +70,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Find user by phone (preload roles so the response includes role info)
-	var user model.User
-	if err := h.DB.Preload("SchoolRoles.Role").Preload("SchoolRoles.School").
-		Where("phone = ?", req.Phone).First(&user).Error; err != nil {
+	user, err := h.Users.FindByPhone(c.Request.Context(), req.Phone)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "手机号或密码错误"})
 		return
 	}
@@ -110,18 +117,25 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	c.JSON(http.StatusOK, LoginResponse{
 		Token: tokenStr,
-		User:  user,
+		User:  *user,
 	})
 }
 
 // GetMe returns the current authenticated user with their roles.
-// GET /api/v1/auth/me
+//
+//	@Summary      获取当前用户信息
+//	@Description  返回已认证用户的个人信息和角色列表
+//	@Tags         Auth
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Success      200  {object}  model.User
+//	@Failure      404  {object}  ErrorResponse
+//	@Router       /auth/me [get]
 func (h *AuthHandler) GetMe(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	var user model.User
-	if err := h.DB.Preload("SchoolRoles.Role").Preload("SchoolRoles.School").
-		First(&user, userID).Error; err != nil {
+	user, err := h.Users.FindByID(c.Request.Context(), userID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}

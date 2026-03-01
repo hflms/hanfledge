@@ -3,11 +3,14 @@ package neo4j
 import (
 	"context"
 	"fmt"
-	"log"
+	"time"
 
 	"github.com/hflms/hanfledge/internal/config"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
+
+var slogNeo4j = logger.L("Neo4j")
 
 // Client wraps the Neo4j driver for graph operations.
 type Client struct {
@@ -24,13 +27,14 @@ func NewClient(cfg *config.Neo4jConfig) (*Client, error) {
 		return nil, fmt.Errorf("failed to create Neo4j driver: %w", err)
 	}
 
-	// Verify connectivity
-	ctx := context.Background()
+	// Verify connectivity with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	if err := driver.VerifyConnectivity(ctx); err != nil {
 		return nil, fmt.Errorf("Neo4j connectivity check failed: %w", err)
 	}
 
-	log.Println("✅ Neo4j connected successfully")
+	slogNeo4j.Info("neo4j connected successfully")
 	return &Client{Driver: driver}, nil
 }
 
@@ -57,7 +61,7 @@ func (c *Client) InitSchema(ctx context.Context) error {
 		}
 	}
 
-	log.Println("✅ Neo4j schema initialized")
+	slogNeo4j.Info("neo4j schema initialized")
 	return nil
 }
 

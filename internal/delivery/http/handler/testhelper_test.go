@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	pgRepo "github.com/hflms/hanfledge/internal/repository/postgres"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -255,4 +256,17 @@ func assertCSVResponse(t *testing.T, w *httptest.ResponseRecorder) {
 	if len(body) < 3 || body[0] != 0xEF || body[1] != 0xBB || body[2] != 0xBF {
 		t.Error("CSV response missing UTF-8 BOM")
 	}
+}
+
+// newTestDashboardHandler creates a DashboardHandler backed by the given gorm.DB,
+// wrapping it with all 6 repository implementations needed by the constructor.
+func newTestDashboardHandler(db *gorm.DB) *DashboardHandler {
+	return NewDashboardHandler(
+		pgRepo.NewCourseRepo(db),
+		pgRepo.NewUserRepo(db),
+		pgRepo.NewKnowledgePointRepo(db),
+		pgRepo.NewMasteryRepo(db),
+		pgRepo.NewSessionRepo(db),
+		pgRepo.NewActivityRepo(db),
+	)
 }

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogOutput = logger.L("OutputGuard")
 
 // ============================
 // Output Guardrails (§4.1 Layer 3)
@@ -100,8 +102,7 @@ func NewOutputGuard() *OutputGuard {
 	g.initKeywordPatterns()
 	g.initRegexPatterns()
 
-	log.Printf("🛡️  [Safety] Output guard initialized: %d keyword rules, %d regex rules (LLM=disabled)",
-		len(g.keywordPatterns), len(g.regexPatterns))
+	slogOutput.Info("output guard initialized", "keyword_rules", len(g.keywordPatterns), "regex_rules", len(g.regexPatterns), "llm", false)
 
 	return g
 }
@@ -114,7 +115,7 @@ func NewOutputGuardWithLLM(llmClient llm.LLMProvider) *OutputGuard {
 	g.enableLLM = llmClient != nil
 
 	if g.enableLLM {
-		log.Printf("🛡️  [Safety] Output guard LLM classifier enabled (provider=%s)", llmClient.Name())
+		slogOutput.Info("llm classifier enabled", "provider", llmClient.Name())
 	}
 
 	return g
@@ -130,16 +131,14 @@ func (g *OutputGuard) Check(ctx context.Context, output string) OutputCheckResul
 
 	// Layer 1: Rule-based checks (zero latency, deterministic)
 	if result := g.checkRules(output); result.Risk != OutputSafe {
-		log.Printf("🛡️  [Output Guard] RULE %s: category=%s reason=%q matched=%q",
-			result.Risk, result.Category, result.Reason, truncateForGuardLog(result.Matched, 30))
+		slogOutput.Warn("rule match", "risk", string(result.Risk), "category", string(result.Category), "reason", result.Reason, "matched", truncateForGuardLog(result.Matched, 30))
 		return result
 	}
 
 	// Layer 2: LLM classifier (optional, higher latency)
 	if g.enableLLM {
 		if result := g.checkLLM(ctx, output); result.Risk != OutputSafe {
-			log.Printf("🛡️  [Output Guard] LLM %s: category=%s reason=%q",
-				result.Risk, result.Category, result.Reason)
+			slogOutput.Warn("llm classifier match", "risk", string(result.Risk), "category", string(result.Category), "reason", result.Reason)
 			return result
 		}
 	}
@@ -276,7 +275,7 @@ func (g *OutputGuard) initRegexPatterns() {
 	for _, p := range patterns {
 		compiled, err := regexp.Compile(p.pattern)
 		if err != nil {
-			log.Printf("⚠️  [Safety] Invalid output regex %q: %v", p.pattern, err)
+			slogOutput.Error("invalid output regex", "pattern", p.pattern, "err", err)
 			continue
 		}
 		g.regexPatterns = append(g.regexPatterns, regexRule{
@@ -344,7 +343,7 @@ func (g *OutputGuard) checkLLM(ctx context.Context, output string) OutputCheckRe
 		MaxTokens:   256,
 	})
 	if err != nil {
-		log.Printf("⚠️  [Output Guard] LLM classifier failed: %v", err)
+		slogOutput.Warn("llm classifier failed", "err", err)
 		// LLM 失败时不阻断（规则引擎已通过）
 		return SafeCheckResult
 	}
@@ -358,7 +357,7 @@ func parseLLMSafetyResponse(response string) OutputCheckResult {
 
 	var result llmSafetyResponse
 	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
-		log.Printf("⚠️  [Output Guard] Parse LLM safety response failed: %v", err)
+		slogOutput.Warn("parse llm safety response failed", "err", err)
 		return SafeCheckResult // Parse failure → don't block
 	}
 

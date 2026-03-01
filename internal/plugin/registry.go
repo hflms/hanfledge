@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogPlugin = logger.L("Plugin")
 
 // ============================
 // Plugin Registry & Discovery
@@ -53,7 +56,7 @@ func (r *Registry) LoadSkills(skillsDir string) error {
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("[Plugin] Skills directory not found: %s", skillsDir)
+			slogPlugin.Warn("skills directory not found", "path", skillsDir)
 			return nil
 		}
 		return fmt.Errorf("read skills directory failed: %w", err)
@@ -70,13 +73,13 @@ func (r *Registry) LoadSkills(skillsDir string) error {
 		// Phase 1: Discover
 		skill, err := r.discoverSkill(skillDir)
 		if err != nil {
-			log.Printf("[Plugin] Skip skill %s: %v", entry.Name(), err)
+			slogPlugin.Warn("skip skill", "name", entry.Name(), "err", err)
 			continue
 		}
 
 		// Phase 2: Validate
 		if err := r.validateSkill(skill); err != nil {
-			log.Printf("[Plugin] Validation failed for %s: %v", skill.Metadata.ID, err)
+			slogPlugin.Warn("validation failed", "skill", skill.Metadata.ID, "err", err)
 			continue
 		}
 
@@ -87,11 +90,12 @@ func (r *Registry) LoadSkills(skillsDir string) error {
 		r.mu.Unlock()
 		loaded++
 
-		log.Printf("   Loaded skill: %s (%s) v%s [%s]",
-			skill.Metadata.Name, skill.Metadata.ID, skill.Metadata.Version, skill.State)
+		slogPlugin.Info("loaded skill",
+			"name", skill.Metadata.Name, "id", skill.Metadata.ID,
+			"version", skill.Metadata.Version, "state", skill.State)
 	}
 
-	log.Printf("[Plugin] Loaded %d skill(s) from %s", loaded, skillsDir)
+	slogPlugin.Info("skills loaded", "count", loaded, "dir", skillsDir)
 	return nil
 }
 
@@ -111,7 +115,7 @@ func (r *Registry) RegisterSkillPlugin(impl SkillPlugin) error {
 	// Subscribe to declared hooks
 	for _, hook := range meta.Hooks {
 		// Plugins register their own handlers during Init via EventBus
-		log.Printf("[Plugin] %s declares hook: %s", meta.ID, hook)
+		slogPlugin.Debug("declares hook", "plugin", meta.ID, "hook", hook)
 	}
 
 	r.mu.Lock()
@@ -127,7 +131,7 @@ func (r *Registry) RegisterSkillPlugin(impl SkillPlugin) error {
 	}
 	r.mu.Unlock()
 
-	log.Printf("[Plugin] Registered programmatic skill: %s v%s", meta.Name, meta.Version)
+	slogPlugin.Info("registered programmatic skill", "name", meta.Name, "version", meta.Version)
 	return nil
 }
 
@@ -175,7 +179,7 @@ func (r *Registry) ShutdownAll(ctx context.Context) {
 	for id, skill := range r.skills {
 		if skill.Impl != nil {
 			if err := skill.Impl.Shutdown(ctx); err != nil {
-				log.Printf("[Plugin] Shutdown %s failed: %v", id, err)
+				slogPlugin.Error("shutdown failed", "plugin", id, "err", err)
 			} else {
 				skill.State = PluginStateStopped
 			}
@@ -196,10 +200,10 @@ func (r *Registry) HealthCheckAll(ctx context.Context) map[string]HealthStatus {
 			results[id] = status
 			if !status.Healthy && skill.State == PluginStateRunning {
 				skill.State = PluginStateDegraded
-				log.Printf("[Plugin] %s degraded: %s", id, status.Message)
+				slogPlugin.Warn("plugin degraded", "plugin", id, "reason", status.Message)
 			} else if status.Healthy && skill.State == PluginStateDegraded {
 				skill.State = PluginStateRunning
-				log.Printf("[Plugin] %s recovered", id)
+				slogPlugin.Info("plugin recovered", "plugin", id)
 			}
 		} else {
 			// Declarative plugins are always healthy
@@ -255,7 +259,7 @@ func (r *Registry) validateSkill(skill *RegisteredSkill) error {
 
 		// 输出警告（不阻止加载）
 		for _, w := range result.Warnings {
-			log.Printf("⚠️  [Validator] %s: %s", skill.Metadata.ID, w)
+			slogPlugin.Warn("validation warning", "skill", skill.Metadata.ID, "warning", w)
 		}
 
 		// 输出错误（阻止加载）
@@ -357,7 +361,7 @@ func (r *Registry) LoadTemplates(skillID string, templateIDs []string) ([]SkillT
 		tmplPath := filepath.Join(skill.TemplatesPath, tid)
 		data, err := os.ReadFile(tmplPath)
 		if err != nil {
-			log.Printf("[Plugin] Template %s not found for skill %s", tid, skillID)
+			slogPlugin.Debug("template not found", "template", tid, "skill", skillID)
 			continue
 		}
 		templates = append(templates, SkillTemplate{

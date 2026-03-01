@@ -11,9 +11,12 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/plugin"
 	"gorm.io/gorm"
 )
+
+var slogActivity = logger.L("Activity")
 
 // ============================
 // 学习活动 Handler — Phase 4
@@ -33,10 +36,7 @@ func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, even
 
 // publishEvent fires an EventBus event if the bus is available (nil-safe).
 func (h *ActivityHandler) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
-	if h.EventBus == nil {
-		return
-	}
-	h.EventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+	plugin.PublishEvent(h.EventBus, ctx, hook, payload)
 }
 
 // ── Teacher: Activity CRUD ──────────────────────────────────
@@ -54,7 +54,18 @@ type CreateActivityRequest struct {
 }
 
 // CreateActivity creates a new learning activity.
-// POST /api/v1/activities
+//
+//	@Summary      创建学习活动
+//	@Description  教师创建新的学习活动，可指定知识点、技能配置、截止日期和班级分配
+//	@Tags         Activities
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      CreateActivityRequest  true  "活动创建参数"
+//	@Success      201   {object}  model.LearningActivity
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /activities [post]
 func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 	var req CreateActivityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -65,10 +76,18 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 	teacherID := middleware.GetUserID(c)
 
 	// Serialize JSON fields
-	kpIDsJSON, _ := json.Marshal(req.KPIDS)
+	kpIDsJSON, err := json.Marshal(req.KPIDS)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "知识点 ID 序列化失败"})
+		return
+	}
 	skillConfigJSON := "{}"
 	if req.SkillConfig != nil {
-		data, _ := json.Marshal(req.SkillConfig)
+		data, err := json.Marshal(req.SkillConfig)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "技能配置序列化失败"})
+			return
+		}
 		skillConfigJSON = string(data)
 	}
 
@@ -108,9 +127,22 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 }
 
 // ListActivities returns learning activities for a teacher.
-// GET /api/v1/activities?course_id=1&status=published
+//
+//	@Summary      教师活动列表
+//	@Description  返回当前教师创建的学习活动列表（支持分页和筛选）
+//	@Tags         Activities
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        course_id  query     int     false  "课程 ID"
+//	@Param        status     query     string  false  "活动状态（draft/published）"
+//	@Param        page       query     int     false  "页码"   default(1)
+//	@Param        limit      query     int     false  "每页数量" default(20)
+//	@Success      200        {object}  PaginatedResponse
+//	@Failure      500        {object}  ErrorResponse
+//	@Router       /activities [get]
 func (h *ActivityHandler) ListActivities(c *gin.Context) {
 	teacherID := middleware.GetUserID(c)
+	p := ParsePagination(c)
 
 	query := h.DB.Where("teacher_id = ?", teacherID)
 
@@ -121,17 +153,32 @@ func (h *ActivityHandler) ListActivities(c *gin.Context) {
 		query = query.Where("status = ?", status)
 	}
 
+	var total int64
+	query.Model(&model.LearningActivity{}).Count(&total)
+
 	var activities []model.LearningActivity
-	if err := query.Preload("AssignedClasses").Order("created_at DESC").Find(&activities).Error; err != nil {
+	if err := query.Preload("AssignedClasses").Order("created_at DESC").
+		Offset(p.Offset).Limit(p.Limit).Find(&activities).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询学习活动失败"})
 		return
 	}
 
-	c.JSON(http.StatusOK, activities)
+	c.JSON(http.StatusOK, NewPaginatedResponse(activities, total, p))
 }
 
 // PublishActivity publishes a learning activity (changes status to published).
-// POST /api/v1/activities/:id/publish
+//
+//	@Summary      发布学习活动
+//	@Description  将草稿状态的学习活动发布，使其对学生可见
+//	@Tags         Activities
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "活动 ID"
+//	@Success      200 {object}  map[string]string
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /activities/{id}/publish [post]
 func (h *ActivityHandler) PublishActivity(c *gin.Context) {
 	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -179,7 +226,20 @@ func (h *ActivityHandler) PublishActivity(c *gin.Context) {
 // PreviewActivity allows a teacher to preview a learning activity in sandbox mode.
 // Creates a sandbox session with IsSandbox=true, allowing the teacher to experience
 // the activity as a student. Sandbox sessions are excluded from analytics and mastery updates.
-// POST /api/v1/activities/:id/preview
+//
+//	@Summary      沙盒预览活动
+//	@Description  教师以学生视角预览学习活动，创建沙盒会话（不计入分析统计）
+//	@Tags         Activities
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "活动 ID"
+//	@Success      200 {object}  map[string]interface{}  "已有沙盒会话"
+//	@Success      201 {object}  map[string]interface{}  "新创建沙盒会话"
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Failure      500 {object}  ErrorResponse
+//	@Router       /activities/{id}/preview [post]
 func (h *ActivityHandler) PreviewActivity(c *gin.Context) {
 	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -218,7 +278,9 @@ func (h *ActivityHandler) PreviewActivity(c *gin.Context) {
 
 	// Parse KP IDs to find first target KP
 	var kpIDs []uint
-	json.Unmarshal([]byte(activity.KPIDS), &kpIDs)
+	if err := json.Unmarshal([]byte(activity.KPIDS), &kpIDs); err != nil {
+		slogActivity.Warn("failed to parse kp ids for preview", "activity_id", activityID, "err", err)
+	}
 	firstKP := uint(0)
 	if len(kpIDs) > 0 {
 		firstKP = kpIDs[0]
@@ -250,7 +312,14 @@ func (h *ActivityHandler) PreviewActivity(c *gin.Context) {
 // ── Student: Activity List & Join ───────────────────────────
 
 // StudentListActivities returns published activities available to a student.
-// GET /api/v1/student/activities
+//
+//	@Summary      学生活动列表
+//	@Description  返回当前学生可参加的已发布学习活动，附带会话参与状态
+//	@Tags         Student
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Success      200  {array}  map[string]interface{}
+//	@Router       /student/activities [get]
 func (h *ActivityHandler) StudentListActivities(c *gin.Context) {
 	studentID := middleware.GetUserID(c)
 
@@ -304,7 +373,19 @@ func (h *ActivityHandler) StudentListActivities(c *gin.Context) {
 }
 
 // JoinActivity allows a student to join a learning activity (creates a session).
-// POST /api/v1/activities/:id/join
+//
+//	@Summary      加入学习活动
+//	@Description  学生加入指定学习活动，若已有进行中的会话则返回该会话
+//	@Tags         Activities
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "活动 ID"
+//	@Success      200 {object}  map[string]interface{}  "已有进行中会话"
+//	@Success      201 {object}  map[string]interface{}  "新创建会话"
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Failure      500 {object}  ErrorResponse
+//	@Router       /activities/{id}/join [post]
 func (h *ActivityHandler) JoinActivity(c *gin.Context) {
 	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -342,7 +423,9 @@ func (h *ActivityHandler) JoinActivity(c *gin.Context) {
 
 	// Parse KP IDs to find first target KP
 	var kpIDs []uint
-	json.Unmarshal([]byte(activity.KPIDS), &kpIDs)
+	if err := json.Unmarshal([]byte(activity.KPIDS), &kpIDs); err != nil {
+		slogActivity.Warn("failed to parse kp ids for join", "activity_id", activityID, "err", err)
+	}
 	firstKP := uint(0)
 	if len(kpIDs) > 0 {
 		firstKP = kpIDs[0]
@@ -370,7 +453,18 @@ func (h *ActivityHandler) JoinActivity(c *gin.Context) {
 }
 
 // GetSession returns session details for a student.
-// GET /api/v1/sessions/:id
+//
+//	@Summary      会话详情
+//	@Description  返回指定会话的详情及最近 50 条对话记录
+//	@Tags         Sessions
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "会话 ID"
+//	@Success      200 {object}  map[string]interface{}
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /sessions/{id} [get]
 func (h *ActivityHandler) GetSession(c *gin.Context) {
 	sessionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {

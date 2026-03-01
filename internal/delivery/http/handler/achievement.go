@@ -1,15 +1,17 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"gorm.io/gorm"
 )
+
+var slogAchieve = logger.L("Achievement")
 
 // ============================
 // 成就系统 Handler — design.md §5.2 Step 4
@@ -164,7 +166,7 @@ func (h *AchievementHandler) EvaluateDeepInquiry(studentID, sessionID uint) {
 				rec.Unlocked = true
 				now := time.Now()
 				rec.UnlockedAt = &now
-				log.Printf("[Achievement] 🏆 Student %d unlocked '%s' (%d turns)", studentID, d.Name, turnCount)
+				slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "turns", turnCount)
 			}
 			h.DB.Create(&rec)
 		} else {
@@ -175,7 +177,7 @@ func (h *AchievementHandler) EvaluateDeepInquiry(studentID, sessionID uint) {
 					rec.Unlocked = true
 					now := time.Now()
 					rec.UnlockedAt = &now
-					log.Printf("[Achievement] 🏆 Student %d unlocked '%s' (%d turns)", studentID, d.Name, turnCount)
+					slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "turns", turnCount)
 				}
 				h.DB.Save(&rec)
 			}
@@ -208,7 +210,7 @@ func (h *AchievementHandler) updateAchievementProgress(studentID uint, achieveme
 				rec.Unlocked = true
 				now := time.Now()
 				rec.UnlockedAt = &now
-				log.Printf("[Achievement] 🏆 Student %d unlocked '%s' (value=%d)", studentID, d.Name, value)
+				slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "value", value)
 			}
 			h.DB.Create(&rec)
 		} else {
@@ -220,7 +222,7 @@ func (h *AchievementHandler) updateAchievementProgress(studentID uint, achieveme
 				rec.Unlocked = true
 				now := time.Now()
 				rec.UnlockedAt = &now
-				log.Printf("[Achievement] 🏆 Student %d unlocked '%s' (value=%d)", studentID, d.Name, rec.Progress)
+				slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "value", rec.Progress)
 			}
 			h.DB.Save(&rec)
 		}

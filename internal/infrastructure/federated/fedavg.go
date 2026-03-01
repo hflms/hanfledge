@@ -3,10 +3,13 @@ package federated
 import (
 	"crypto/sha256"
 	"fmt"
-	"log"
 	"sync"
 	"time"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogFedAvg = logger.L("FedAvg")
 
 // ============================
 // Federated Averaging Server (§8.4.2)
@@ -90,8 +93,8 @@ type FedAvgServer struct {
 
 // NewFedAvgServer creates a new FedAvg aggregation server with the given configuration.
 func NewFedAvgServer(config FedConfig) *FedAvgServer {
-	log.Printf("🌐 [FedRAG] Initializing FedAvg server (minSchools=%d, ε=%.2f, δ=%.0e)",
-		config.MinSchools, config.DPEpsilon, config.DPDelta)
+	slogFedAvg.Info("initializing server",
+		"minSchools", config.MinSchools, "epsilon", config.DPEpsilon, "delta", config.DPDelta)
 
 	return &FedAvgServer{
 		config:         config,
@@ -129,7 +132,7 @@ func (s *FedAvgServer) RegisterSchool(schoolID, name string) error {
 		Active:       true,
 	}
 
-	log.Printf("🏫 [FedRAG] School registered: %s (%s), total=%d", schoolID, name, len(s.schools))
+	slogFedAvg.Info("school registered", "schoolID", schoolID, "name", name, "total", len(s.schools))
 	return nil
 }
 
@@ -176,9 +179,10 @@ func (s *FedAvgServer) SubmitGradient(update *GradientUpdate) error {
 	s.pendingUpdates[update.SchoolID] = update
 	school.LastSeen = time.Now()
 
-	log.Printf("🔒 [FedRAG] Gradient received from school %q (round=%d, dims=%d, samples=%d), pending=%d/%d",
-		update.SchoolID, update.RoundID, len(update.Gradients), update.SampleCount,
-		len(s.pendingUpdates), s.activeSchoolCount())
+	slogFedAvg.Debug("gradient received",
+		"schoolID", update.SchoolID, "round", update.RoundID,
+		"dims", len(update.Gradients), "samples", update.SampleCount,
+		"pending", len(s.pendingUpdates), "active", s.activeSchoolCount())
 
 	return nil
 }
@@ -195,8 +199,8 @@ func (s *FedAvgServer) TryAggregate() (*GlobalWeights, error) {
 	activeCount := s.activeSchoolCount()
 
 	if len(s.pendingUpdates) < s.config.MinSchools {
-		log.Printf("🌐 [FedRAG] Not enough updates for aggregation: %d/%d (min=%d)",
-			len(s.pendingUpdates), activeCount, s.config.MinSchools)
+		slogFedAvg.Debug("not enough updates for aggregation",
+			"pending", len(s.pendingUpdates), "active", activeCount, "min", s.config.MinSchools)
 		return nil, nil
 	}
 
@@ -215,8 +219,8 @@ func (s *FedAvgServer) TryAggregate() (*GlobalWeights, error) {
 		}
 	}
 
-	log.Printf("🌐 [FedRAG] Starting aggregation round %d with %d schools (dim=%d)",
-		s.currentRound, len(updates), dim)
+	slogFedAvg.Info("starting aggregation",
+		"round", s.currentRound, "schools", len(updates), "dims", dim)
 
 	// Step 1: FedAvg — weighted average by sample count
 	aggregated := s.fedAvg(updates)
@@ -245,8 +249,8 @@ func (s *FedAvgServer) TryAggregate() (*GlobalWeights, error) {
 	// Clear pending updates for next round
 	s.pendingUpdates = make(map[string]*GradientUpdate)
 
-	log.Printf("🌐 [FedRAG] Aggregation round %d complete: %d schools, %d dims, %d total samples",
-		s.currentRound, len(updates), dim, totalSamples)
+	slogFedAvg.Info("aggregation complete",
+		"round", s.currentRound, "schools", len(updates), "dims", dim, "totalSamples", totalSamples)
 
 	return s.globalWeights, nil
 }

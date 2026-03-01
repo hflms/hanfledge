@@ -3,13 +3,16 @@ package federated
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	randv2 "math/rand/v2"
 	"time"
 
 	"gorm.io/gorm"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogTrainer = logger.L("Trainer")
 
 // ============================
 // Local Trainer (§8.4.2)
@@ -72,8 +75,8 @@ func NewLocalTrainer(config LocalTrainerConfig, encryptionKey []byte) (*LocalTra
 		return nil, fmt.Errorf("new local trainer: %w", err)
 	}
 
-	log.Printf("🏫 [FedRAG] Local trainer initialized for school %q (dim=%d, epochs=%d, lr=%.4f)",
-		config.SchoolID, config.ModelDim, config.Epochs, config.LearningRate)
+	slogTrainer.Info("local trainer initialized",
+		"schoolID", config.SchoolID, "dim", config.ModelDim, "epochs", config.Epochs, "lr", config.LearningRate)
 
 	return &LocalTrainer{
 		config:    config,
@@ -86,8 +89,8 @@ func NewLocalTrainer(config LocalTrainerConfig, encryptionKey []byte) (*LocalTra
 // AddTrainingPairs appends local training data to the trainer.
 func (t *LocalTrainer) AddTrainingPairs(pairs []TrainingPair) {
 	t.pairs = append(t.pairs, pairs...)
-	log.Printf("🏫 [FedRAG] Added %d training pairs for school %q (total=%d)",
-		len(pairs), t.config.SchoolID, len(t.pairs))
+	slogTrainer.Debug("added training pairs",
+		"count", len(pairs), "schoolID", t.config.SchoolID, "total", len(t.pairs))
 }
 
 // trainingRow maps to a row from the training data collection query.
@@ -102,7 +105,7 @@ type trainingRow struct {
 // for the given school. It joins student interactions with document chunks
 // to produce local training data.
 func (t *LocalTrainer) CollectTrainingPairs(ctx context.Context, db *gorm.DB, schoolID string) ([]TrainingPair, error) {
-	log.Printf("🏫 [FedRAG] Collecting training pairs from DB for school %q...", schoolID)
+	slogTrainer.Debug("collecting training pairs from DB", "schoolID", schoolID)
 
 	// Query student interactions paired with relevant document chunks
 	// Using raw SQL scanning to avoid GORM model dependencies outside this package
@@ -135,7 +138,7 @@ func (t *LocalTrainer) CollectTrainingPairs(ctx context.Context, db *gorm.DB, sc
 	for rows.Next() {
 		var r trainingRow
 		if err := rows.Scan(&r.Query, &r.Passage, &r.Score, &r.KPID); err != nil {
-			log.Printf("🔒 [FedRAG] Skipping row scan error: %v", err)
+			slogTrainer.Warn("skipping row scan error", "error", err)
 			continue
 		}
 		pairs = append(pairs, TrainingPair{
@@ -150,7 +153,7 @@ func (t *LocalTrainer) CollectTrainingPairs(ctx context.Context, db *gorm.DB, sc
 		return nil, fmt.Errorf("collect training pairs: row iteration failed: %w", err)
 	}
 
-	log.Printf("🏫 [FedRAG] Collected %d training pairs for school %q", len(pairs), schoolID)
+	slogTrainer.Info("collected training pairs", "count", len(pairs), "schoolID", schoolID)
 	return pairs, nil
 }
 
@@ -165,8 +168,8 @@ func (t *LocalTrainer) Train() ([]float64, error) {
 		return nil, fmt.Errorf("train: no training pairs available for school %q", t.config.SchoolID)
 	}
 
-	log.Printf("🏫 [FedRAG] Starting local training for school %q (%d pairs, %d epochs)",
-		t.config.SchoolID, len(t.pairs), t.config.Epochs)
+	slogTrainer.Info("starting local training",
+		"schoolID", t.config.SchoolID, "pairs", len(t.pairs), "epochs", t.config.Epochs)
 
 	dim := t.config.ModelDim
 	gradients := make([]float64, dim)
@@ -201,8 +204,8 @@ func (t *LocalTrainer) Train() ([]float64, error) {
 			gradients[i] += epochGrad[i]
 		}
 
-		log.Printf("🏫 [FedRAG] School %q epoch %d/%d complete",
-			t.config.SchoolID, epoch+1, t.config.Epochs)
+		slogTrainer.Debug("epoch complete",
+			"schoolID", t.config.SchoolID, "epoch", epoch+1, "totalEpochs", t.config.Epochs)
 	}
 
 	// Average over epochs
@@ -211,8 +214,8 @@ func (t *LocalTrainer) Train() ([]float64, error) {
 	}
 
 	t.gradients = gradients
-	log.Printf("🏫 [FedRAG] Local training complete for school %q: produced %d-dim gradient",
-		t.config.SchoolID, dim)
+	slogTrainer.Info("local training complete",
+		"schoolID", t.config.SchoolID, "dims", dim)
 
 	return gradients, nil
 }
@@ -290,8 +293,8 @@ func (t *LocalTrainer) PrepareUpdate(roundID int) (*GradientUpdate, error) {
 		Checksum:    checksum,
 	}
 
-	log.Printf("🔒 [FedRAG] Prepared update for school %q (round=%d, dims=%d, samples=%d)",
-		t.config.SchoolID, roundID, len(decrypted), len(t.pairs))
+	slogTrainer.Debug("prepared update",
+		"schoolID", t.config.SchoolID, "round", roundID, "dims", len(decrypted), "samples", len(t.pairs))
 
 	return update, nil
 }
@@ -327,8 +330,8 @@ func (t *LocalTrainer) ApplyGlobalWeights(weights *GlobalWeights) error {
 		t.gradients[i] += randv2.NormFloat64() * 1e-6
 	}
 
-	log.Printf("🌐 [FedRAG] Applied global weights (round=%d) to school %q",
-		weights.RoundID, t.config.SchoolID)
+	slogTrainer.Info("applied global weights",
+		"round", weights.RoundID, "schoolID", t.config.SchoolID)
 
 	return nil
 }

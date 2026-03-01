@@ -6,13 +6,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/redis/go-redis/v9"
 )
+
+var slogRedis = logger.L("Redis")
 
 // ============================
 // Redis Cache Client
@@ -57,13 +59,18 @@ func NewRedisCache(redisURL string) (*RedisCache, error) {
 		return nil, fmt.Errorf("redis ping failed: %w", err)
 	}
 
-	log.Printf("🔗 [Redis] Connected to %s (pool=%d)", opts.Addr, opts.PoolSize)
+	slogRedis.Info("connected", "addr", opts.Addr, "pool", opts.PoolSize)
 	return &RedisCache{client: client}, nil
 }
 
 // Close shuts down the Redis connection pool.
 func (rc *RedisCache) Close() error {
 	return rc.client.Close()
+}
+
+// Ping checks Redis connectivity. Used by the health check endpoint.
+func (rc *RedisCache) Ping(ctx context.Context) error {
+	return rc.client.Ping(ctx).Err()
 }
 
 // ── Session History Cache ───────────────────────────────────
@@ -286,8 +293,7 @@ func (rc *RedisCache) SetSemanticCache(ctx context.Context, entry SemanticCacheE
 		return fmt.Errorf("redis set semantic cache: %w", err)
 	}
 
-	log.Printf("📦 [L2-Cache] Stored: query=%q course=%d key=%s",
-		truncateStr(entry.QueryText, 40), entry.CourseID, hash[:12])
+	slogRedis.Debug("l2 cache stored", "query", truncateStr(entry.QueryText, 40), "course_id", entry.CourseID, "key", hash[:12])
 	return nil
 }
 
@@ -360,8 +366,7 @@ func (rc *RedisCache) FindSemanticMatch(ctx context.Context, courseID uint, quer
 	}
 
 	if bestHit != nil {
-		log.Printf("📦 [L2-Cache] HIT: similarity=%.4f query=%q → cached=%q",
-			bestHit.Similarity, truncateStr("", 0), truncateStr(bestHit.Entry.QueryText, 40))
+		slogRedis.Debug("l2 cache hit", "similarity", bestHit.Similarity, "cached_query", truncateStr(bestHit.Entry.QueryText, 40))
 	}
 
 	return bestHit, nil
@@ -395,7 +400,7 @@ func (rc *RedisCache) InvalidateSemanticCacheByCourse(ctx context.Context, cours
 		return fmt.Errorf("redis del semantic cache course=%d: %w", courseID, err)
 	}
 
-	log.Printf("🗑️  [L2-Cache] Invalidated %d entries for course=%d", len(hashes), courseID)
+	slogRedis.Info("l2 cache invalidated", "count", len(hashes), "course_id", courseID)
 	return nil
 }
 
@@ -454,7 +459,7 @@ func (rc *RedisCache) SetOutputCache(ctx context.Context, promptHash string, ent
 		return fmt.Errorf("redis set output cache: %w", err)
 	}
 
-	log.Printf("📦 [L3-Cache] Stored: hash=%s", promptHash[:12])
+	slogRedis.Debug("l3 cache stored", "hash", promptHash[:12])
 	return nil
 }
 
@@ -475,7 +480,7 @@ func (rc *RedisCache) GetOutputCache(ctx context.Context, promptHash string) (*O
 		return nil, fmt.Errorf("unmarshal output cache: %w", err)
 	}
 
-	log.Printf("📦 [L3-Cache] HIT: hash=%s", promptHash[:12])
+	slogRedis.Debug("l3 cache hit", "hash", promptHash[:12])
 	return &entry, nil
 }
 
@@ -485,7 +490,7 @@ func (rc *RedisCache) GetOutputCache(ctx context.Context, promptHash string) (*O
 // This method is provided for API consistency.
 func (rc *RedisCache) InvalidateOutputCacheByCourse(ctx context.Context, courseID uint) error {
 	// L3 is self-invalidating: changed materials → changed system prompt → different hash.
-	log.Printf("📦 [L3-Cache] Course=%d invalidation: self-invalidating via prompt hash (no-op)", courseID)
+	slogRedis.Debug("l3 cache invalidation no-op (self-invalidating via prompt hash)", "course_id", courseID)
 	return nil
 }
 

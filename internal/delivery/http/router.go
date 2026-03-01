@@ -8,7 +8,6 @@ import (
 	"github.com/hflms/hanfledge/internal/config"
 	"github.com/hflms/hanfledge/internal/delivery/http/handler"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
-	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/asr"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/i18n"
@@ -16,11 +15,27 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
+	pgRepo "github.com/hflms/hanfledge/internal/repository/postgres"
 	"github.com/hflms/hanfledge/internal/usecase"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
+
+	_ "github.com/hflms/hanfledge/docs" // swagger generated docs
 )
 
 // RouterDeps holds all dependencies needed to construct the router.
+//
+// ARCHITECTURE CONSTRAINT: RouterDeps is the top-level dependency bag used ONLY
+// by NewRouter to construct handlers. Individual registerXxxRoutes functions should
+// receive only the specific handler(s) and db they need — never the full RouterDeps.
+//
+// When adding a new dependency:
+//  1. If it's consumed by ONE handler → add it to that handler's constructor only.
+//  2. If it's consumed by multiple handlers → add it to RouterDeps AND pass it to
+//     each handler constructor. Do NOT pass RouterDeps to registerXxxRoutes.
+//  3. If it's needed by route registration (middleware) → pass it as a named parameter
+//     to the specific registerXxxRoutes function (e.g., jwtSecret string).
 type RouterDeps struct {
 	DB             *gorm.DB
 	Cfg            *config.Config
@@ -38,6 +53,8 @@ type RouterDeps struct {
 }
 
 // NewRouter creates and configures the Gin router with all routes.
+// Route registration is split into domain-specific files (routes_*.go)
+// for maintainability.
 func NewRouter(deps RouterDeps) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger())
@@ -49,17 +66,33 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		r.Use(i18n.Middleware(deps.Translator))
 	}
 
-	// Health check
-	r.GET("/health", handler.HealthCheck)
+	// ── Health Checks ───────────────────────────────────
+	healthHandler := handler.NewHealthHandler(deps.DB, deps.Neo4jClient, deps.RedisCache)
+	r.GET("/health", healthHandler.Liveness)
+	r.GET("/health/ready", healthHandler.Readiness)
 
-	// Initialize handlers
-	authHandler := handler.NewAuthHandler(deps.DB, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours, deps.EventBus)
+	// ── Swagger UI (dev/test only) ──────────────────────
+	if deps.Cfg.Server.GinMode != "release" {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
+
+	// ── Initialize Repositories ─────────────────────────
+	userRepo := pgRepo.NewUserRepo(deps.DB)
+	courseRepo := pgRepo.NewCourseRepo(deps.DB)
+	docRepo := pgRepo.NewDocumentRepo(deps.DB)
+	kpRepo := pgRepo.NewKnowledgePointRepo(deps.DB)
+	masteryRepo := pgRepo.NewMasteryRepo(deps.DB)
+	sessionRepo := pgRepo.NewSessionRepo(deps.DB)
+	activityRepo := pgRepo.NewActivityRepo(deps.DB)
+
+	// ── Initialize Handlers ─────────────────────────────
+	authHandler := handler.NewAuthHandler(userRepo, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours, deps.EventBus)
 	userHandler := handler.NewUserHandler(deps.DB)
-	courseHandler := handler.NewCourseHandler(deps.DB, deps.KARAG, deps.RedisCache, deps.FileStorage)
+	courseHandler := handler.NewCourseHandler(courseRepo, docRepo, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry)
 	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus)
-	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider)
-	dashboardHandler := handler.NewDashboardHandler(deps.DB)
+	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
+	dashboardHandler := handler.NewDashboardHandler(courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
 	analyticsHandler := handler.NewAnalyticsHandler(deps.DB, deps.PIIRedactor)
 	exportHandler := handler.NewExportHandler(deps.DB)
@@ -67,194 +100,28 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	customSkillHandler := handler.NewCustomSkillHandler(deps.DB, deps.Registry)
 	marketplaceHandler := handler.NewMarketplaceHandler(deps.DB)
 
-	// API v1 group
+	// ── API v1 ──────────────────────────────────────────
 	v1 := r.Group("/api/v1")
-	{
-		// ── Auth (Public) ────────────────────────────────
-		auth := v1.Group("/auth")
-		{
-			auth.POST("/login", authHandler.Login)
-		}
 
-		// ── Auth (Protected) ─────────────────────────────
-		authProtected := v1.Group("/auth")
-		authProtected.Use(middleware.JWTAuth(deps.Cfg.JWT.Secret))
-		{
-			authProtected.GET("/me", authHandler.GetMe)
-		}
+	// Auth routes (public + protected)
+	registerAuthRoutes(v1, deps.Cfg.JWT.Secret, authHandler)
 
-		// ── Protected Routes ─────────────────────────────
-		protected := v1.Group("")
-		protected.Use(middleware.JWTAuth(deps.Cfg.JWT.Secret))
-		{
-			// School management (SYS_ADMIN only)
-			schools := protected.Group("/schools")
-			schools.Use(middleware.RBAC(deps.DB, model.RoleSysAdmin))
-			{
-				schools.GET("", userHandler.ListSchools)
-				schools.POST("", userHandler.CreateSchool)
-			}
+	// Protected routes — all require JWT
+	protected := v1.Group("")
+	protected.Use(middleware.JWTAuth(deps.Cfg.JWT.Secret))
 
-			// Class management (SYS_ADMIN or SCHOOL_ADMIN)
-			classes := protected.Group("/classes")
-			classes.Use(middleware.RBAC(deps.DB, model.RoleSysAdmin, model.RoleSchoolAdmin))
-			{
-				classes.GET("", userHandler.ListClasses)
-				classes.POST("", userHandler.CreateClass)
-			}
-
-			// User management (SYS_ADMIN or SCHOOL_ADMIN)
-			users := protected.Group("/users")
-			users.Use(middleware.RBAC(deps.DB, model.RoleSysAdmin, model.RoleSchoolAdmin))
-			{
-				users.GET("", userHandler.ListUsers)
-				users.POST("", userHandler.CreateUser)
-				users.POST("/batch", userHandler.BatchCreateUsers)
-			}
-
-			// Course management (TEACHER)
-			courses := protected.Group("/courses")
-			courses.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-			{
-				courses.GET("", courseHandler.ListCourses)
-				courses.POST("", courseHandler.CreateCourse)
-				courses.POST("/:id/materials", courseHandler.UploadMaterial)
-				courses.GET("/:id/outline", courseHandler.GetOutline)
-				courses.GET("/:id/documents", courseHandler.GetDocumentStatus)
-				courses.POST("/:id/search", courseHandler.SearchCourse)
-				courses.DELETE("/:id/documents/:doc_id", courseHandler.DeleteDocument)
-				courses.POST("/:id/documents/:doc_id/retry", courseHandler.RetryDocument)
-			}
-		}
-
-		// Skill Store (TEACHER) — Phase 3
-		skills := protected.Group("/skills")
-		skills.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			skills.GET("", skillHandler.ListSkills)
-			skills.GET("/:id", skillHandler.GetSkillDetail)
-		}
-
-		// Skill Mounting (TEACHER) — Phase 3
-		chapters := protected.Group("/chapters")
-		chapters.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			chapters.POST("/:id/skills", skillHandler.MountSkill)
-			chapters.PATCH("/:id/skills/:mount_id", skillHandler.UpdateSkillConfig)
-			chapters.DELETE("/:id/skills/:mount_id", skillHandler.UnmountSkill)
-		}
-
-		// Custom Skill CRUD (TEACHER) — Phase 4 / §6.4
-		customSkills := protected.Group("/custom-skills")
-		customSkills.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			customSkills.POST("", customSkillHandler.CreateCustomSkill)
-			customSkills.GET("", customSkillHandler.ListCustomSkills)
-			customSkills.GET("/:id", customSkillHandler.GetCustomSkill)
-			customSkills.PUT("/:id", customSkillHandler.UpdateCustomSkill)
-			customSkills.DELETE("/:id", customSkillHandler.DeleteCustomSkill)
-			customSkills.POST("/:id/publish", customSkillHandler.PublishCustomSkill)
-			customSkills.POST("/:id/share", customSkillHandler.ShareCustomSkill)
-			customSkills.POST("/:id/archive", customSkillHandler.ArchiveCustomSkill)
-			customSkills.GET("/:id/versions", customSkillHandler.ListVersions)
-		}
-
-		// ── Knowledge Graph Enrichment (TEACHER) — Phase B ─
-		kps := protected.Group("/knowledge-points")
-		kps.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			// Misconception CRUD
-			kps.POST("/:id/misconceptions", kgHandler.CreateMisconception)
-			kps.GET("/:id/misconceptions", kgHandler.ListMisconceptions)
-			kps.DELETE("/:id/misconceptions/:misconception_id", kgHandler.DeleteMisconception)
-
-			// Cross-Disciplinary Links
-			kps.POST("/:id/cross-links", kgHandler.CreateCrossLink)
-			kps.GET("/:id/cross-links", kgHandler.ListCrossLinks)
-			kps.DELETE("/:id/cross-links/:link_id", kgHandler.DeleteCrossLink)
-
-			// Prerequisite Management
-			kps.POST("/:id/prerequisites", kgHandler.CreatePrerequisite)
-			kps.GET("/:id/prerequisites", kgHandler.GetPrerequisites)
-		}
-
-		// ── Dashboard Analytics (TEACHER) — Phase 5 + Phase G ─
-		dashboard := protected.Group("/dashboard")
-		dashboard.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			dashboard.GET("/knowledge-radar", dashboardHandler.GetKnowledgeRadar)
-			dashboard.GET("/skill-effectiveness", analyticsHandler.GetSkillEffectiveness) // Phase G
-		}
-
-		// ── Student Mastery (TEACHER) — Phase 5 ─────────
-		students := protected.Group("/students")
-		students.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			students.GET("/:id/mastery", dashboardHandler.GetStudentMastery)
-		}
-
-		// ── Learning Activities (TEACHER) — Phase 4 ──────
-		activities := protected.Group("/activities")
-		activities.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			activities.POST("", activityHandler.CreateActivity)
-			activities.GET("", activityHandler.ListActivities)
-			activities.POST("/:id/publish", activityHandler.PublishActivity)
-			activities.POST("/:id/preview", activityHandler.PreviewActivity)      // Sandbox preview
-			activities.GET("/:id/sessions", dashboardHandler.GetActivitySessions) // Phase 5
-		}
-
-		// ── Student Routes — Phase 4 ────────────────────
-		student := protected.Group("/student")
-		student.Use(middleware.RBAC(deps.DB, model.RoleStudent, model.RoleSysAdmin))
-		{
-			student.GET("/activities", activityHandler.StudentListActivities)
-			student.GET("/mastery", dashboardHandler.GetSelfMastery)                     // Phase 5
-			student.GET("/knowledge-map", kgHandler.GetStudentKnowledgeMap)              // Knowledge Map
-			student.GET("/error-notebook", dashboardHandler.GetErrorNotebook)            // Error Notebook
-			student.GET("/achievements", achievementHandler.GetMyAchievements)           // Achievements
-			student.GET("/achievements/definitions", achievementHandler.ListDefinitions) // Achievement defs
-		}
-
-		// ── Activity Join & Sessions (any authenticated) ─
-		protected.POST("/activities/:id/join", activityHandler.JoinActivity)
-		protected.GET("/sessions/:id", activityHandler.GetSession)
-
-		// ── Session Analytics (TEACHER) — Phase G ──────
-		sessionAnalytics := protected.Group("/sessions")
-		sessionAnalytics.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			sessionAnalytics.GET("/:id/inquiry-tree", analyticsHandler.GetInquiryTree)
-			sessionAnalytics.GET("/:id/interactions", analyticsHandler.GetInteractionLog)
-		}
-
-		// ── Data Export (TEACHER) — CSV Downloads ────────
-		export := protected.Group("/export")
-		export.Use(middleware.RBAC(deps.DB, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin))
-		{
-			export.GET("/activities/:id/sessions", exportHandler.ExportActivitySessions)
-			export.GET("/courses/:id/mastery", exportHandler.ExportClassMastery)
-			export.GET("/courses/:id/error-notebook", exportHandler.ExportErrorNotebook)
-			export.GET("/sessions/:id/interactions", exportHandler.ExportInteractionLog)
-		}
-
-		// ── WebSocket Session Stream — Phase 4 ──────────
-		protected.GET("/sessions/:id/stream", sessionHandler.StreamSession)
-
-		// ── Plugin Marketplace ──────────────────────────
-		marketplace := protected.Group("/marketplace")
-		{
-			marketplace.GET("/plugins", marketplaceHandler.ListPlugins)
-			marketplace.GET("/plugins/:plugin_id", marketplaceHandler.GetPlugin)
-			marketplace.POST("/plugins", marketplaceHandler.SubmitPlugin)
-			marketplace.POST("/install", marketplaceHandler.InstallPlugin)
-			marketplace.DELETE("/installed/:id", marketplaceHandler.UninstallPlugin)
-			marketplace.GET("/installed", marketplaceHandler.ListInstalled)
-		}
-	}
+	// Domain-specific route groups
+	registerAdminRoutes(protected, deps.DB, userHandler)
+	registerCourseRoutes(protected, deps.DB, courseHandler, skillHandler, customSkillHandler, kgHandler)
+	registerActivityRoutes(protected, deps.DB, activityHandler, sessionHandler, dashboardHandler)
+	registerStudentRoutes(protected, deps.DB, activityHandler, dashboardHandler, kgHandler, achievementHandler)
+	registerAnalyticsRoutes(protected, deps.DB, dashboardHandler, analyticsHandler, exportHandler)
+	registerMarketplaceRoutes(protected, deps.DB, marketplaceHandler)
 
 	return r
 }
+
+// -- CORS Middleware --------------------------------------------------
 
 // corsMiddleware handles CORS with configurable allowed origins.
 // allowedOrigins is a comma-separated list (e.g. "http://localhost:3000,https://app.example.com")

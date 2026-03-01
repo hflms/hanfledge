@@ -1,11 +1,14 @@
 package safety
 
 import (
-	"log"
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogInject = logger.L("InjectionGuard")
 
 // ============================
 // Prompt Injection 防护
@@ -54,8 +57,7 @@ func NewInjectionGuard() *InjectionGuard {
 	g.initKeywordBlacklist()
 	g.initRegexPatterns()
 
-	log.Printf("🛡️  [Safety] Injection guard initialized: %d keywords, %d regex patterns",
-		len(g.keywordBlacklist), len(g.regexPatterns))
+	slogInject.Info("injection guard initialized", "keywords", len(g.keywordBlacklist), "regex_patterns", len(g.regexPatterns))
 
 	return g
 }
@@ -216,7 +218,7 @@ func (g *InjectionGuard) initRegexPatterns() {
 	for _, p := range patterns {
 		compiled, err := regexp.Compile(p.pattern)
 		if err != nil {
-			log.Printf("⚠️  [Safety] Invalid regex pattern %q: %v", p.pattern, err)
+			slogInject.Error("invalid regex pattern", "pattern", p.pattern, "err", err)
 			continue
 		}
 		g.regexPatterns = append(g.regexPatterns, compiled)

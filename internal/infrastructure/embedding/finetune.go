@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -12,8 +11,11 @@ import (
 	"time"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"gorm.io/gorm"
 )
+
+var slogFinetune = logger.L("Finetune")
 
 // ============================
 // Embedding Fine-tuning Pipeline (§8.3.1)
@@ -114,7 +116,7 @@ func NewFineTunePipeline(db *gorm.DB, llmClient llm.LLMProvider) *FineTunePipeli
 // CollectTrainingData 从交互日志中收集训练数据。
 // 提取"学生提问"与"RAG 检索到的教材段落"的配对关系。
 func (p *FineTunePipeline) CollectTrainingData(ctx context.Context, courseIDs []uint) (*TrainingDataset, error) {
-	log.Printf("📊 [EmbedFT] Collecting training data from %d courses...", len(courseIDs))
+	slogFinetune.Info("collecting training data", "courses", len(courseIDs))
 
 	// 查询所有会话交互中学生提问及对应的检索上下文
 	var rows []interactionRow
@@ -176,8 +178,7 @@ func (p *FineTunePipeline) CollectTrainingData(ctx context.Context, courseIDs []
 		Stats:     stats,
 	}
 
-	log.Printf("✅ [EmbedFT] Collected %d training pairs (filtered from %d, threshold=%.2f)",
-		len(filteredPairs), len(pairs), p.MinScore)
+	slogFinetune.Info("collected training pairs", "filtered", len(filteredPairs), "total", len(pairs), "threshold", p.MinScore)
 
 	return dataset, nil
 }
@@ -202,7 +203,7 @@ func (p *FineTunePipeline) matchQueryPassagePairs(ctx context.Context, interacti
 
 		queryEmbeddings, err := p.LLM.EmbedBatch(ctx, queryTexts)
 		if err != nil {
-			log.Printf("⚠️  [EmbedFT] Batch embed failed at offset %d: %v", i, err)
+			slogFinetune.Warn("batch embed failed", "offset", i, "err", err)
 			continue
 		}
 
@@ -277,8 +278,7 @@ func (p *FineTunePipeline) ComputeInfoNCELoss(ctx context.Context, dataset *Trai
 		return 0, fmt.Errorf("empty dataset")
 	}
 
-	log.Printf("📐 [EmbedFT] Computing InfoNCE loss over %d pairs (τ=%.3f, neg=%d)...",
-		len(dataset.Pairs), cfg.Temperature, cfg.NegativeSamples)
+	slogFinetune.Info("computing infonce loss", "pairs", len(dataset.Pairs), "temperature", cfg.Temperature, "negatives", cfg.NegativeSamples)
 
 	totalLoss := 0.0
 	validCount := 0
@@ -313,8 +313,7 @@ func (p *FineTunePipeline) ComputeInfoNCELoss(ctx context.Context, dataset *Trai
 		validCount++
 
 		if (i+1)%50 == 0 {
-			log.Printf("   → Processed %d/%d pairs, running avg loss=%.4f",
-				i+1, len(dataset.Pairs), totalLoss/float64(validCount))
+			slogFinetune.Debug("infonce progress", "processed", i+1, "total", len(dataset.Pairs), "avg_loss", totalLoss/float64(validCount))
 		}
 	}
 
@@ -323,7 +322,7 @@ func (p *FineTunePipeline) ComputeInfoNCELoss(ctx context.Context, dataset *Trai
 	}
 
 	avgLoss := totalLoss / float64(validCount)
-	log.Printf("✅ [EmbedFT] InfoNCE loss = %.4f (over %d valid pairs)", avgLoss, validCount)
+	slogFinetune.Info("infonce loss computed", "loss", avgLoss, "valid_pairs", validCount)
 
 	return avgLoss, nil
 }
@@ -371,7 +370,7 @@ func (p *FineTunePipeline) Evaluate(ctx context.Context, dataset *TrainingDatase
 		return nil, fmt.Errorf("need at least 10 pairs for evaluation, got %d", len(dataset.Pairs))
 	}
 
-	log.Printf("📊 [EmbedFT] Evaluating retrieval quality (K=%d) over %d pairs...", k, len(dataset.Pairs))
+	slogFinetune.Info("evaluating retrieval quality", "k", k, "pairs", len(dataset.Pairs))
 
 	// 将 20% 的数据作为测试集
 	splitIdx := len(dataset.Pairs) * 80 / 100
@@ -384,7 +383,7 @@ func (p *FineTunePipeline) Evaluate(ctx context.Context, dataset *TrainingDatase
 	}
 
 	// 批量生成语料库 embeddings
-	log.Printf("   → Generating embeddings for %d corpus passages...", len(allPassages))
+	slogFinetune.Debug("generating corpus embeddings", "passages", len(allPassages))
 	var corpusEmbeddings [][]float64
 	for i := 0; i < len(allPassages); i += p.BatchSize {
 		end := i + p.BatchSize
@@ -393,7 +392,7 @@ func (p *FineTunePipeline) Evaluate(ctx context.Context, dataset *TrainingDatase
 		}
 		batch, err := p.LLM.EmbedBatch(ctx, allPassages[i:end])
 		if err != nil {
-			log.Printf("⚠️  [EmbedFT] Batch embed failed: %v", err)
+			slogFinetune.Warn("batch embed failed", "err", err)
 			continue
 		}
 		corpusEmbeddings = append(corpusEmbeddings, batch...)
@@ -500,11 +499,11 @@ func (p *FineTunePipeline) Evaluate(ctx context.Context, dataset *TrainingDatase
 		MRR:        totalMRR / float64(validCount),
 	}
 
-	log.Printf("✅ [EmbedFT] Evaluation results:")
-	log.Printf("   Recall@5  = %.4f", metrics.RecallAt5)
-	log.Printf("   Recall@10 = %.4f", metrics.RecallAt10)
-	log.Printf("   NDCG@10   = %.4f", metrics.NDCGAt10)
-	log.Printf("   MRR       = %.4f", metrics.MRR)
+	slogFinetune.Info("evaluation results",
+		"recall_at_5", metrics.RecallAt5,
+		"recall_at_10", metrics.RecallAt10,
+		"ndcg_at_10", metrics.NDCGAt10,
+		"mrr", metrics.MRR)
 
 	return metrics, nil
 }
@@ -538,7 +537,7 @@ func (p *FineTunePipeline) ExportDataset(dataset *TrainingDataset, format string
 		}
 	}
 
-	log.Printf("📁 [EmbedFT] Exported %d pairs to %s", len(dataset.Pairs), filename)
+	slogFinetune.Info("exported training pairs", "count", len(dataset.Pairs), "file", filename)
 	return filename, nil
 }
 
@@ -566,7 +565,7 @@ func (p *FineTunePipeline) ExportEvalReport(metrics *EvalMetrics, loss float64) 
 		return "", fmt.Errorf("write report failed: %w", err)
 	}
 
-	log.Printf("📁 [EmbedFT] Exported eval report to %s", filename)
+	slogFinetune.Info("exported eval report", "file", filename)
 	return filename, nil
 }
 

@@ -1,0 +1,38 @@
+package http
+
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/hflms/hanfledge/internal/delivery/http/handler"
+	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
+	"github.com/hflms/hanfledge/internal/domain/model"
+	"gorm.io/gorm"
+)
+
+// registerActivityRoutes sets up learning activity and session endpoints.
+func registerActivityRoutes(
+	protected *gin.RouterGroup,
+	db *gorm.DB,
+	activityHandler *handler.ActivityHandler,
+	sessionHandler *handler.SessionHandler,
+	dashboardHandler *handler.DashboardHandler,
+) {
+	teacherRoles := middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin)
+
+	// Learning Activities (TEACHER) — Phase 4
+	activities := protected.Group("/activities")
+	activities.Use(teacherRoles)
+	{
+		activities.POST("", activityHandler.CreateActivity)
+		activities.GET("", activityHandler.ListActivities)
+		activities.POST("/:id/publish", activityHandler.PublishActivity)
+		activities.POST("/:id/preview", activityHandler.PreviewActivity)      // Sandbox preview
+		activities.GET("/:id/sessions", dashboardHandler.GetActivitySessions) // Phase 5
+	}
+
+	// Activity Join & Sessions (any authenticated user)
+	protected.POST("/activities/:id/join", activityHandler.JoinActivity)
+	protected.GET("/sessions/:id", activityHandler.GetSession)
+
+	// WebSocket Session Stream — Phase 4
+	protected.GET("/sessions/:id/stream", sessionHandler.StreamSession)
+}

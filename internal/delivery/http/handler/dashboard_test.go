@@ -18,12 +18,12 @@ import (
 // -- DashboardHandler Constructor Test ------------------------
 
 func TestNewDashboardHandler(t *testing.T) {
-	h := NewDashboardHandler(nil)
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil)
 	if h == nil {
 		t.Fatal("NewDashboardHandler returned nil")
 	}
-	if h.DB != nil {
-		t.Error("expected nil DB when no DB provided")
+	if h.Courses != nil {
+		t.Error("expected nil Courses when no repo provided")
 	}
 }
 
@@ -301,7 +301,7 @@ func TestGetKnowledgeRadar_Success(t *testing.T) {
 	db.Create(&model.StudentKPMastery{StudentID: student.ID, KPID: kp1.ID, MasteryScore: 0.9})
 	db.Create(&model.StudentKPMastery{StudentID: student.ID, KPID: kp2.ID, MasteryScore: 0.6})
 
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 	w, c := newTestContextWithQuery(http.MethodGet,
 		fmt.Sprintf("/api/v1/dashboard/knowledge-radar?course_id=%d", course.ID),
 		teacher.ID)
@@ -325,7 +325,7 @@ func TestGetKnowledgeRadar_Success(t *testing.T) {
 func TestGetKnowledgeRadar_MissingCourseID(t *testing.T) {
 	db := setupTestDB(t)
 	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithQuery(http.MethodGet,
 		"/api/v1/dashboard/knowledge-radar", teacher.ID)
@@ -339,7 +339,7 @@ func TestGetKnowledgeRadar_MissingCourseID(t *testing.T) {
 func TestGetKnowledgeRadar_CourseNotFound(t *testing.T) {
 	db := setupTestDB(t)
 	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithQuery(http.MethodGet,
 		"/api/v1/dashboard/knowledge-radar?course_id=999", teacher.ID)
@@ -354,7 +354,7 @@ func TestGetKnowledgeRadar_Forbidden(t *testing.T) {
 	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
 	other := seedUser(t, db, "13800000002", "pass", "赵老师", model.UserStatusActive)
 	course := seedCourse(t, db, teacher.ID, "物理学")
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithQuery(http.MethodGet,
 		fmt.Sprintf("/api/v1/dashboard/knowledge-radar?course_id=%d", course.ID),
@@ -369,7 +369,7 @@ func TestGetKnowledgeRadar_EmptyKPs(t *testing.T) {
 	db := setupTestDB(t)
 	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
 	course := seedCourse(t, db, teacher.ID, "空课程")
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithQuery(http.MethodGet,
 		fmt.Sprintf("/api/v1/dashboard/knowledge-radar?course_id=%d", course.ID),
@@ -408,7 +408,7 @@ func TestGetStudentMastery_Success(t *testing.T) {
 		UpdatedAt:    now,
 	})
 
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 	w, c := newTestContextWithParams(http.MethodGet,
 		fmt.Sprintf("/api/v1/students/%d/mastery", student.ID), "",
 		teacher.ID,
@@ -432,7 +432,7 @@ func TestGetStudentMastery_Success(t *testing.T) {
 
 func TestGetStudentMastery_StudentNotFound(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithParams(http.MethodGet,
 		"/api/v1/students/999/mastery", "",
@@ -446,7 +446,7 @@ func TestGetStudentMastery_StudentNotFound(t *testing.T) {
 
 func TestGetStudentMastery_InvalidID(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithParams(http.MethodGet,
 		"/api/v1/students/abc/mastery", "",
@@ -471,7 +471,7 @@ func TestGetActivitySessions_Success(t *testing.T) {
 	seedSession(t, db, student.ID, activity.ID, kp.ID, model.SessionStatusCompleted)
 	seedSession(t, db, student.ID, activity.ID, kp.ID, model.SessionStatusActive)
 
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 	w, c := newTestContextWithParams(http.MethodGet,
 		"/api/v1/activities/1/sessions", "",
 		teacher.ID, gin.Params{{Key: "id", Value: "1"}})
@@ -501,7 +501,7 @@ func TestGetActivitySessions_Success(t *testing.T) {
 func TestGetActivitySessions_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithParams(http.MethodGet,
 		"/api/v1/activities/999/sessions", "",
@@ -519,7 +519,7 @@ func TestGetActivitySessions_Forbidden(t *testing.T) {
 	course := seedCourse(t, db, teacher.ID, "物理学")
 	seedActivity(t, db, teacher.ID, course.ID, "课堂练习1")
 
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 	w, c := newTestContextWithParams(http.MethodGet,
 		"/api/v1/activities/1/sessions", "",
 		other.ID, gin.Params{{Key: "id", Value: "1"}})
@@ -549,7 +549,7 @@ func TestGetSelfMastery_Success(t *testing.T) {
 		UpdatedAt:    now,
 	})
 
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 	w, c := newTestContextWithQuery(http.MethodGet,
 		"/api/v1/student/mastery", student.ID)
 
@@ -598,7 +598,7 @@ func TestGetErrorNotebook_Success(t *testing.T) {
 		ArchivedAt:     time.Now(),
 	})
 
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 	w, c := newTestContextWithQuery(http.MethodGet,
 		"/api/v1/student/error-notebook", student.ID)
 
@@ -650,7 +650,7 @@ func TestGetErrorNotebook_FilterResolved(t *testing.T) {
 		ArchivedAt:     time.Now(),
 	})
 
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	// Filter unresolved only
 	w, c := newTestContextWithQuery(http.MethodGet,
@@ -670,7 +670,7 @@ func TestGetErrorNotebook_FilterResolved(t *testing.T) {
 func TestGetErrorNotebook_EmptyNotebook(t *testing.T) {
 	db := setupTestDB(t)
 	student := seedUser(t, db, "13800000002", "pass", "李同学", model.UserStatusActive)
-	h := NewDashboardHandler(db)
+	h := newTestDashboardHandler(db)
 
 	w, c := newTestContextWithQuery(http.MethodGet,
 		"/api/v1/student/error-notebook", student.ID)

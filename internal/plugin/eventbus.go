@@ -2,9 +2,12 @@ package plugin
 
 import (
 	"context"
-	"log"
 	"sync"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogEventBus = logger.L("EventBus")
 
 // ============================
 // EventBus -- Plugin Event Bus
@@ -88,7 +91,7 @@ func (eb *EventBus) Subscribe(hook HookPoint, pluginID string, handler HookHandl
 		handler:  handler,
 	})
 
-	log.Printf("[EventBus] %s subscribed to %s", pluginID, hook)
+	slogEventBus.Debug("subscribed", "plugin", pluginID, "hook", hook)
 }
 
 // Unsubscribe removes all handlers registered by a specific plugin.
@@ -106,7 +109,7 @@ func (eb *EventBus) Unsubscribe(pluginID string) {
 		eb.subscribers[hook] = filtered
 	}
 
-	log.Printf("[EventBus] %s unsubscribed from all hooks", pluginID)
+	slogEventBus.Debug("unsubscribed from all hooks", "plugin", pluginID)
 }
 
 // Publish fires an event to all subscribers of the given hook point.
@@ -127,8 +130,8 @@ func (eb *EventBus) Publish(ctx context.Context, event HookEvent) error {
 	var firstErr error
 	for _, sub := range subsCopy {
 		if err := sub.handler(ctx, event); err != nil {
-			log.Printf("[EventBus] Handler %s for %s failed: %v",
-				sub.pluginID, event.Hook, err)
+			slogEventBus.Warn("handler failed",
+				"plugin", sub.pluginID, "hook", event.Hook, "err", err)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -149,8 +152,8 @@ func (eb *EventBus) PublishAbortable(ctx context.Context, event HookEvent) error
 
 	for _, sub := range subsCopy {
 		if err := sub.handler(ctx, event); err != nil {
-			log.Printf("[EventBus] Aborted by %s at %s: %v",
-				sub.pluginID, event.Hook, err)
+			slogEventBus.Warn("aborted by handler",
+				"plugin", sub.pluginID, "hook", event.Hook, "err", err)
 			return err
 		}
 	}
@@ -163,4 +166,24 @@ func (eb *EventBus) SubscriberCount(hook HookPoint) int {
 	eb.mu.RLock()
 	defer eb.mu.RUnlock()
 	return len(eb.subscribers[hook])
+}
+
+// -- Nil-safe Helpers -------------------------------------------
+
+// PublishEvent fires an event if the EventBus is non-nil (no-op otherwise).
+// Use this instead of duplicating nil-guard boilerplate in every caller.
+func PublishEvent(eb *EventBus, ctx context.Context, hook HookPoint, payload map[string]interface{}) {
+	if eb == nil {
+		return
+	}
+	eb.Publish(ctx, HookEvent{Hook: hook, Payload: payload})
+}
+
+// PublishAbortableEvent fires an abortable event if the EventBus is non-nil.
+// Returns nil when the bus is nil. Returns error if any handler aborts.
+func PublishAbortableEvent(eb *EventBus, ctx context.Context, hook HookPoint, payload map[string]interface{}) error {
+	if eb == nil {
+		return nil
+	}
+	return eb.PublishAbortable(ctx, HookEvent{Hook: hook, Payload: payload})
 }
