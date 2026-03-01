@@ -2,8 +2,11 @@ package agent
 
 import (
 	"fmt"
-	"log"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogTrunc = logger.L("Truncator")
 
 // ============================
 // Token Truncation Middleware
@@ -105,8 +108,9 @@ func (t *TokenTruncator) TruncateChunks(chunks []RetrievedChunk) TruncatedOutput
 
 	totalPages := (len(chunks) + t.pageSize() - 1) / t.pageSize()
 
-	log.Printf("✂️  [Truncator] Truncated: %d→%d chunks, %d→%d tokens, %d pages",
-		len(chunks), len(truncated), totalTokens, accTokens, totalPages)
+	slogTrunc.Debug("truncated output",
+		"chunksFrom", len(chunks), "chunksTo", len(truncated),
+		"tokensFrom", totalTokens, "tokensTo", accTokens, "pages", totalPages)
 
 	return TruncatedOutput{
 		Data:       truncated,
@@ -130,7 +134,8 @@ func (t *TokenTruncator) TruncateSystemPrompt(prompt string, maxTokens int) (str
 	truncated := truncateToTokens(prompt, maxTokens)
 	truncated += "\n\n[...上下文已截断，请基于已提供的材料回答...]"
 
-	log.Printf("✂️  [Truncator] System prompt truncated: %d→%d tokens", tokens, maxTokens)
+	slogTrunc.Debug("system prompt truncated",
+		"tokensFrom", tokens, "tokensTo", maxTokens)
 	return truncated, true
 }
 

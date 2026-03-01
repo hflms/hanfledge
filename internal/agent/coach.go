@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/plugin"
 	"gorm.io/gorm"
 )
+
+var slogCoach = logger.L("Coach")
 
 // ============================
 // Coach Agent — 教练
@@ -74,7 +76,7 @@ func (a *CoachAgent) Name() string { return "Coach" }
 // onToken 回调用于逐 token 发送给前端。如果 onToken 为 nil，则仅静默累积。
 // 这使得编排器可以控制何时流式输出（仅在最终被采纳的草稿时）。
 func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMaterial, onToken func(string)) (DraftResponse, error) {
-	log.Printf("🎓 [Coach] Generating response for session=%d", tc.SessionID)
+	slogCoach.Info("generating response", "session_id", tc.SessionID)
 
 	// Step 1: 加载技能约束
 	skillID := material.Prescription.RecommendedSkill
@@ -114,7 +116,7 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 	// 剥离 <reasoning> 块 — 不发送给学生 (§8.2.3)
 	cleanResponse, reasoning := stripReasoningBlock(response)
 	if reasoning != "" {
-		log.Printf("   → Coach CoT reasoning: %s", truncate(reasoning, 100))
+		slogCoach.Debug("CoT reasoning trace", "reasoning", truncate(reasoning, 100))
 	}
 
 	draft := DraftResponse{
@@ -125,14 +127,14 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 		TokensUsed:    tokensUsed,
 	}
 
-	log.Printf("   → Coach draft: %d chars, %d tokens", len(cleanResponse), tokensUsed)
+	slogCoach.Debug("draft stats", "chars", len(cleanResponse), "tokens", tokensUsed)
 	return draft, nil
 }
 
 // ReviseResponse 根据 Critic 反馈修订回复（流式）。
 // onToken 回调用于逐 token 发送给前端。如果 onToken 为 nil，则仅静默累积。
 func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMaterial, review *ReviewResult, onToken func(string)) (DraftResponse, error) {
-	log.Printf("🎓 [Coach] Revising response based on Critic feedback (session=%d)", tc.SessionID)
+	slogCoach.Info("revising response based on critic feedback", "session_id", tc.SessionID)
 
 	// 在原始消息后追加 Critic 反馈
 	skillID := material.Prescription.RecommendedSkill
@@ -219,8 +221,8 @@ func (a *CoachAgent) redactPII(messages []llm.ChatMessage, sessionID uint) []llm
 	}
 
 	if totalRedacted > 0 {
-		log.Printf("🛡️  [PII] Redacted %d PII items in session=%d before LLM call",
-			totalRedacted, sessionID)
+		slogCoach.Info("PII redacted before LLM call",
+			"redacted_count", totalRedacted, "session_id", sessionID)
 	}
 
 	return result
@@ -234,7 +236,7 @@ func (a *CoachAgent) loadSkillConstraints(skillID string) string {
 
 	constraints, err := a.registry.LoadConstraints(skillID)
 	if err != nil {
-		log.Printf("⚠️  [Coach] Load SKILL.md for %s failed: %v", skillID, err)
+		slogCoach.Warn("load skill constraints failed", "skill_id", skillID, "err", err)
 		return ""
 	}
 
@@ -273,6 +275,13 @@ func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMateria
 		systemContent += quizCtx
 	}
 
+	// 学情问卷诊断技能: 注入问卷状态上下文
+	if isSurveyActive(skillID) {
+		state := a.loadSurveyState(tc.SessionID)
+		surveyCtx := buildSurveyContext(state)
+		systemContent += surveyCtx
+	}
+
 	// 交错思考 (Interleaved Thinking) — 强制 <reasoning> 块 (§8.2.3)
 	systemContent += "\n" + cotReasoningDirective
 
@@ -299,7 +308,7 @@ func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, limit int)
 	if a.cache != nil {
 		cached, err := a.cache.GetSessionHistory(ctx, sessionID)
 		if err != nil {
-			log.Printf("⚠️  [Cache] Get history session=%d failed: %v", sessionID, err)
+			slogCoach.Warn("cache get history failed", "session_id", sessionID, "err", err)
 		} else if cached != nil && len(cached) > 0 {
 			messages := make([]llm.ChatMessage, 0, len(cached))
 			for _, cm := range cached {
@@ -308,7 +317,7 @@ func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, limit int)
 					Content: cm.Content,
 				})
 			}
-			log.Printf("📦 [Cache] HIT session=%d history (%d messages)", sessionID, len(messages))
+			slogCoach.Debug("cache hit session history", "session_id", sessionID, "messages", len(messages))
 			return messages
 		}
 	}
@@ -348,7 +357,7 @@ func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, limit int)
 			cached[i] = cache.CachedMessage{Role: m.Role, Content: m.Content}
 		}
 		if err := a.cache.AppendSessionHistory(ctx, sessionID, cached...); err != nil {
-			log.Printf("⚠️  [Cache] Backfill history session=%d failed: %v", sessionID, err)
+			slogCoach.Warn("cache backfill history failed", "session_id", sessionID, "err", err)
 		}
 	}
 
@@ -410,7 +419,7 @@ func isFallacyDetectiveActive(skillID string) bool {
 func (a *CoachAgent) loadFallacyState(sessionID uint) FallacySessionState {
 	var session model.StudentSession
 	if err := a.db.Select("skill_state").First(&session, sessionID).Error; err != nil {
-		log.Printf("⚠️  [Coach] Load fallacy state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("load fallacy state failed", "session_id", sessionID, "err", err)
 		return defaultFallacyState()
 	}
 
@@ -420,7 +429,7 @@ func (a *CoachAgent) loadFallacyState(sessionID uint) FallacySessionState {
 
 	var state FallacySessionState
 	if err := json.Unmarshal([]byte(*session.SkillState), &state); err != nil {
-		log.Printf("⚠️  [Coach] Parse fallacy state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("parse fallacy state failed", "session_id", sessionID, "err", err)
 		return defaultFallacyState()
 	}
 
@@ -431,13 +440,13 @@ func (a *CoachAgent) loadFallacyState(sessionID uint) FallacySessionState {
 func (a *CoachAgent) saveFallacyState(sessionID uint, state FallacySessionState) {
 	data, err := json.Marshal(state)
 	if err != nil {
-		log.Printf("⚠️  [Coach] Marshal fallacy state failed: %v", err)
+		slogCoach.Warn("marshal fallacy state failed", "err", err)
 		return
 	}
 	stateStr := string(data)
 	if err := a.db.Model(&model.StudentSession{}).Where("id = ?", sessionID).
 		Update("skill_state", stateStr).Error; err != nil {
-		log.Printf("⚠️  [Coach] Save fallacy state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("save fallacy state failed", "session_id", sessionID, "err", err)
 	}
 }
 
@@ -519,19 +528,19 @@ func (a *CoachAgent) AdvanceFallacyPhase(sessionID uint, studentIdentified bool)
 		// Coach 刚输出了含谬误的讲解 → 进入等待识别
 		state.EmbeddedCount++
 		state.Phase = FallacyPhaseAwaiting
-		log.Printf("🎯 [Fallacy] Session=%d: trap presented (%d/%d), awaiting identification",
-			sessionID, state.EmbeddedCount, state.MaxPerSession)
+		slogCoach.Info("trap presented, awaiting identification",
+			"session_id", sessionID, "embedded", state.EmbeddedCount, "max", state.MaxPerSession)
 
 	case FallacyPhaseAwaiting:
 		if studentIdentified {
 			// 学生正确识别 → 进入揭示阶段
 			state.IdentifiedCount++
 			state.Phase = FallacyPhaseRevealed
-			log.Printf("✅ [Fallacy] Session=%d: student identified trap! (%d/%d identified)",
-				sessionID, state.IdentifiedCount, state.EmbeddedCount)
+			slogCoach.Info("student identified trap",
+				"session_id", sessionID, "identified", state.IdentifiedCount, "embedded", state.EmbeddedCount)
 		} else {
-			log.Printf("🔄 [Fallacy] Session=%d: student did not identify, staying in awaiting",
-				sessionID)
+			slogCoach.Info("student did not identify, staying in awaiting",
+				"session_id", sessionID)
 		}
 
 	case FallacyPhaseRevealed:
@@ -539,10 +548,10 @@ func (a *CoachAgent) AdvanceFallacyPhase(sessionID uint, studentIdentified bool)
 		state.CurrentTrapDesc = ""
 		if state.EmbeddedCount < state.MaxPerSession {
 			state.Phase = FallacyPhasePresentTrap
-			log.Printf("🔄 [Fallacy] Session=%d: reveal complete, ready for next trap", sessionID)
+			slogCoach.Info("reveal complete, ready for next trap", "session_id", sessionID)
 		} else {
-			log.Printf("🏁 [Fallacy] Session=%d: all traps completed (%d/%d)",
-				sessionID, state.IdentifiedCount, state.EmbeddedCount)
+			slogCoach.Info("all traps completed",
+				"session_id", sessionID, "identified", state.IdentifiedCount, "embedded", state.EmbeddedCount)
 		}
 	}
 
@@ -567,7 +576,7 @@ func isRolePlayActive(skillID string) bool {
 func (a *CoachAgent) loadRolePlayState(sessionID uint) RolePlaySessionState {
 	var session model.StudentSession
 	if err := a.db.Select("skill_state").First(&session, sessionID).Error; err != nil {
-		log.Printf("⚠️  [Coach] Load role-play state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("load role-play state failed", "session_id", sessionID, "err", err)
 		return defaultRolePlayState()
 	}
 
@@ -577,7 +586,7 @@ func (a *CoachAgent) loadRolePlayState(sessionID uint) RolePlaySessionState {
 
 	var state RolePlaySessionState
 	if err := json.Unmarshal([]byte(*session.SkillState), &state); err != nil {
-		log.Printf("⚠️  [Coach] Parse role-play state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("parse role-play state failed", "session_id", sessionID, "err", err)
 		return defaultRolePlayState()
 	}
 
@@ -588,13 +597,13 @@ func (a *CoachAgent) loadRolePlayState(sessionID uint) RolePlaySessionState {
 func (a *CoachAgent) saveRolePlayState(sessionID uint, state RolePlaySessionState) {
 	data, err := json.Marshal(state)
 	if err != nil {
-		log.Printf("⚠️  [Coach] Marshal role-play state failed: %v", err)
+		slogCoach.Warn("marshal role-play state failed", "err", err)
 		return
 	}
 	stateStr := string(data)
 	if err := a.db.Model(&model.StudentSession{}).Where("id = ?", sessionID).
 		Update("skill_state", stateStr).Error; err != nil {
-		log.Printf("⚠️  [Coach] Save role-play state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("save role-play state failed", "session_id", sessionID, "err", err)
 	}
 }
 
@@ -669,7 +678,7 @@ func isQuizActive(skillID string) bool {
 func (a *CoachAgent) loadQuizState(sessionID uint) QuizSessionState {
 	var session model.StudentSession
 	if err := a.db.Select("skill_state").First(&session, sessionID).Error; err != nil {
-		log.Printf("⚠️  [Coach] Load quiz state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("load quiz state failed", "session_id", sessionID, "err", err)
 		return defaultQuizState()
 	}
 
@@ -679,7 +688,7 @@ func (a *CoachAgent) loadQuizState(sessionID uint) QuizSessionState {
 
 	var state QuizSessionState
 	if err := json.Unmarshal([]byte(*session.SkillState), &state); err != nil {
-		log.Printf("⚠️  [Coach] Parse quiz state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("parse quiz state failed", "session_id", sessionID, "err", err)
 		return defaultQuizState()
 	}
 
@@ -690,13 +699,13 @@ func (a *CoachAgent) loadQuizState(sessionID uint) QuizSessionState {
 func (a *CoachAgent) saveQuizState(sessionID uint, state QuizSessionState) {
 	data, err := json.Marshal(state)
 	if err != nil {
-		log.Printf("⚠️  [Coach] Marshal quiz state failed: %v", err)
+		slogCoach.Warn("marshal quiz state failed", "err", err)
 		return
 	}
 	stateStr := string(data)
 	if err := a.db.Model(&model.StudentSession{}).Where("id = ?", sessionID).
 		Update("skill_state", stateStr).Error; err != nil {
-		log.Printf("⚠️  [Coach] Save quiz state session=%d failed: %v", sessionID, err)
+		slogCoach.Warn("save quiz state failed", "session_id", sessionID, "err", err)
 	}
 }
 
@@ -769,7 +778,7 @@ func quizPhaseLabel(phase QuizPhase) string {
 //	answering  → grading    (学生提交答案后)
 //	grading    → reviewing  (批改完成后)
 //	reviewing  → generating (学生请求继续出题)
-func (a *CoachAgent) AdvanceQuizPhase(sessionID uint, questionsGenerated int, correctAnswers int) {
+func (a *CoachAgent) AdvanceQuizPhase(sessionID uint, questionsGenerated, correctAnswers int) {
 	state := a.loadQuizState(sessionID)
 
 	switch state.Phase {
@@ -779,27 +788,270 @@ func (a *CoachAgent) AdvanceQuizPhase(sessionID uint, questionsGenerated int, co
 			state.BatchCount++
 			state.TotalQuestions += questionsGenerated
 			state.Phase = QuizPhaseAnswering
-			log.Printf("📝 [Quiz] Session=%d: %d questions generated (batch %d), awaiting answers",
-				sessionID, questionsGenerated, state.BatchCount)
+			slogCoach.Info("questions generated, awaiting answers",
+				"session_id", sessionID, "questions", questionsGenerated, "batch", state.BatchCount)
 		}
 
 	case QuizPhaseAnswering:
 		// 学生提交答案 → 进入批改
 		state.Phase = QuizPhaseGrading
-		log.Printf("📝 [Quiz] Session=%d: student submitted answers, grading", sessionID)
+		slogCoach.Info("student submitted answers, grading", "session_id", sessionID)
 
 	case QuizPhaseGrading:
 		// 批改完成 → 进入查看结果
 		state.CorrectCount += correctAnswers
 		state.Phase = QuizPhaseReviewing
-		log.Printf("📝 [Quiz] Session=%d: grading complete, %d correct (total %d/%d)",
-			sessionID, correctAnswers, state.CorrectCount, state.TotalQuestions)
+		slogCoach.Info("grading complete",
+			"session_id", sessionID, "correct", correctAnswers, "total_correct", state.CorrectCount, "total_questions", state.TotalQuestions)
 
 	case QuizPhaseReviewing:
 		// 学生请求继续 → 回到生成阶段
 		state.Phase = QuizPhaseGenerating
-		log.Printf("📝 [Quiz] Session=%d: student requests more questions", sessionID)
+		slogCoach.Info("student requests more questions", "session_id", sessionID)
 	}
 
 	a.saveQuizState(sessionID, state)
+}
+
+// ── Learning Survey Session State ───────────────────────────
+
+// surveyIDs lists all valid skill IDs for the learning-survey skill.
+var surveyIDs = map[string]bool{
+	"general_diagnosis_survey": true,
+	"learning-survey":          true, // backward compat
+}
+
+// isSurveyActive 判断当前技能是否为学情问卷诊断。
+func isSurveyActive(skillID string) bool {
+	return surveyIDs[skillID]
+}
+
+// loadSurveyState 从 StudentSession.SkillState 加载学情问卷会话状态。
+// 如果不存在或解析失败，返回初始状态。
+func (a *CoachAgent) loadSurveyState(sessionID uint) SurveySessionState {
+	var session model.StudentSession
+	if err := a.db.Select("skill_state").First(&session, sessionID).Error; err != nil {
+		slogCoach.Warn("load survey state failed", "session_id", sessionID, "err", err)
+		return defaultSurveyState()
+	}
+
+	if session.SkillState == nil || *session.SkillState == "" || *session.SkillState == "null" {
+		return defaultSurveyState()
+	}
+
+	var state SurveySessionState
+	if err := json.Unmarshal([]byte(*session.SkillState), &state); err != nil {
+		slogCoach.Warn("parse survey state failed", "session_id", sessionID, "err", err)
+		return defaultSurveyState()
+	}
+
+	return state
+}
+
+// saveSurveyState 将学情问卷会话状态保存到 StudentSession.SkillState。
+func (a *CoachAgent) saveSurveyState(sessionID uint, state SurveySessionState) {
+	data, err := json.Marshal(state)
+	if err != nil {
+		slogCoach.Warn("marshal survey state failed", "err", err)
+		return
+	}
+	stateStr := string(data)
+	if err := a.db.Model(&model.StudentSession{}).Where("id = ?", sessionID).
+		Update("skill_state", stateStr).Error; err != nil {
+		slogCoach.Warn("save survey state failed", "session_id", sessionID, "err", err)
+	}
+}
+
+// defaultSurveyState 返回学情问卷的初始会话状态。
+func defaultSurveyState() SurveySessionState {
+	return SurveySessionState{
+		Phase:           SurveyPhaseWelcome,
+		CompletedDims:   []string{},
+		TotalDimensions: 6, // learning_style, prior_knowledge, motivation, self_efficacy, study_habits, subject_interest
+	}
+}
+
+// buildSurveyContext 构建学情问卷诊断技能的额外系统上下文。
+// 告知 LLM 当前的问卷进度和阶段，使 LLM 能够正确推进流程。
+func buildSurveyContext(state SurveySessionState) string {
+	var sb strings.Builder
+	sb.WriteString("\n【学情问卷会话状态】\n")
+	sb.WriteString(fmt.Sprintf("- 当前阶段: %s\n", surveyPhaseLabel(state.Phase)))
+	sb.WriteString(fmt.Sprintf("- 已完成维度: %d / %d\n", len(state.CompletedDims), state.TotalDimensions))
+	if len(state.CompletedDims) > 0 {
+		sb.WriteString(fmt.Sprintf("- 已完成: %s\n", strings.Join(state.CompletedDims, ", ")))
+	}
+	if state.CurrentDimension != "" {
+		sb.WriteString(fmt.Sprintf("- 当前维度: %s\n", surveyDimensionLabel(state.CurrentDimension)))
+	}
+	sb.WriteString(fmt.Sprintf("- 累计提问数: %d\n", state.TotalQuestions))
+	sb.WriteString(fmt.Sprintf("- 累计回答数: %d\n", state.TotalAnswered))
+
+	// 阶段指令
+	switch state.Phase {
+	case SurveyPhaseWelcome:
+		sb.WriteString("\n指令：这是问卷的开始。请简短自我介绍，说明问卷的目的，" +
+			"消除学生的紧张感，强调没有对错之分。\n" +
+			"然后推送第一个维度（learning_style）的问卷题目。\n")
+	case SurveyPhaseSurveying:
+		remaining := allSurveyDimensions(state.CompletedDims)
+		if len(remaining) > 0 {
+			sb.WriteString(fmt.Sprintf("\n指令：请对学生的上一批回答做简短反馈，"+
+				"然后推送下一个维度（%s）的问卷题目。\n", remaining[0]))
+			sb.WriteString("问题以 <survey>JSON</survey> 格式输出。\n")
+			sb.WriteString(fmt.Sprintf("待完成维度: %s\n", strings.Join(remaining, ", ")))
+		} else {
+			sb.WriteString("\n指令：所有维度的问卷已完成。请告知学生问卷结束，" +
+				"进入分析阶段。\n")
+		}
+	case SurveyPhaseAnalyzing:
+		sb.WriteString("\n指令：所有问卷回答已收集完毕。请汇总分析学生的回答，" +
+			"告知学生正在为其生成学习画像。\n")
+	case SurveyPhaseReporting:
+		sb.WriteString("\n指令：请以 <survey_profile>JSON</survey_profile> 格式输出完整的学习画像。\n" +
+			"然后用通俗易懂的语言向学生解释每个维度的诊断结果。\n" +
+			"强调优势，对薄弱点提出积极的改进建议。\n")
+	case SurveyPhasePlanning:
+		sb.WriteString("\n指令：请基于学习画像，以 <learning_plan>JSON</learning_plan> 格式输出学习建议方案。\n" +
+			"推荐适合学生的学习策略和技能，给出具体可行的学习建议。\n")
+	}
+
+	return sb.String()
+}
+
+// surveyPhaseLabel 将阶段枚举转换为中文标签。
+func surveyPhaseLabel(phase SurveyPhase) string {
+	switch phase {
+	case SurveyPhaseWelcome:
+		return "欢迎介绍"
+	case SurveyPhaseSurveying:
+		return "问卷进行中"
+	case SurveyPhaseAnalyzing:
+		return "分析中"
+	case SurveyPhaseReporting:
+		return "生成画像"
+	case SurveyPhasePlanning:
+		return "制定方案"
+	default:
+		return string(phase)
+	}
+}
+
+// surveyDimensionLabel 将维度 ID 转换为中文标签。
+func surveyDimensionLabel(dim string) string {
+	labels := map[string]string{
+		"learning_style":   "学习风格",
+		"prior_knowledge":  "前置知识",
+		"motivation":       "学习动机",
+		"self_efficacy":    "自我效能感",
+		"study_habits":     "学习习惯",
+		"subject_interest": "学科兴趣",
+	}
+	if label, ok := labels[dim]; ok {
+		return label
+	}
+	return dim
+}
+
+// allSurveyDimensions 返回尚未完成的诊断维度列表（按预定顺序）。
+func allSurveyDimensions(completed []string) []string {
+	allDims := []string{
+		"learning_style", "prior_knowledge", "motivation",
+		"self_efficacy", "study_habits", "subject_interest",
+	}
+	done := make(map[string]bool, len(completed))
+	for _, d := range completed {
+		done[d] = true
+	}
+	remaining := make([]string, 0)
+	for _, d := range allDims {
+		if !done[d] {
+			remaining = append(remaining, d)
+		}
+	}
+	return remaining
+}
+
+// AdvanceSurveyPhase 根据交互结果推进学情问卷的阶段状态。
+// 在 orchestrator 的 HandleTurn 完成后调用。
+//
+// 状态转换:
+//
+//	welcome    → surveying  (欢迎完成，开始第一个维度)
+//	surveying  → surveying  (完成一个维度，继续下一个)
+//	surveying  → analyzing  (所有维度完成)
+//	analyzing  → reporting  (分析完成，生成画像)
+//	reporting  → planning   (画像生成完成，制定方案)
+//	planning   → planning   (方案已生成，保持)
+func (a *CoachAgent) AdvanceSurveyPhase(sessionID uint, completedDimension string, questionsInBatch int) {
+	state := a.loadSurveyState(sessionID)
+
+	switch state.Phase {
+	case SurveyPhaseWelcome:
+		// 欢迎完成 → 进入问卷阶段
+		state.Phase = SurveyPhaseSurveying
+		if completedDimension != "" {
+			state.CurrentDimension = completedDimension
+		}
+		if questionsInBatch > 0 {
+			state.TotalQuestions += questionsInBatch
+		}
+		slogCoach.Info("survey welcome complete, starting survey",
+			"session_id", sessionID)
+
+	case SurveyPhaseSurveying:
+		// 完成当前维度
+		if completedDimension != "" {
+			state.CompletedDims = appendUnique(state.CompletedDims, completedDimension)
+			state.TotalAnswered += questionsInBatch
+		}
+
+		remaining := allSurveyDimensions(state.CompletedDims)
+		if len(remaining) == 0 {
+			// 所有维度完成 → 进入分析阶段
+			state.Phase = SurveyPhaseAnalyzing
+			state.CurrentDimension = ""
+			slogCoach.Info("all survey dimensions complete, analyzing",
+				"session_id", sessionID, "completed", len(state.CompletedDims))
+		} else {
+			// 还有维度未完成 → 继续下一个
+			state.CurrentDimension = remaining[0]
+			if questionsInBatch > 0 {
+				state.TotalQuestions += questionsInBatch
+			}
+			slogCoach.Info("survey dimension complete, next dimension",
+				"session_id", sessionID, "completed_dim", completedDimension, "next", remaining[0])
+		}
+
+	case SurveyPhaseAnalyzing:
+		// 分析完成 → 进入报告阶段
+		state.Phase = SurveyPhaseReporting
+		slogCoach.Info("survey analysis complete, generating profile",
+			"session_id", sessionID)
+
+	case SurveyPhaseReporting:
+		// 画像生成完成 → 进入规划阶段
+		state.ProfileGenerated = true
+		state.Phase = SurveyPhasePlanning
+		slogCoach.Info("survey profile generated, planning",
+			"session_id", sessionID)
+
+	case SurveyPhasePlanning:
+		// 方案已生成
+		state.PlanGenerated = true
+		slogCoach.Info("survey plan generated",
+			"session_id", sessionID)
+	}
+
+	a.saveSurveyState(sessionID, state)
+}
+
+// appendUnique 向切片中追加不重复的元素。
+func appendUnique(slice []string, item string) []string {
+	for _, s := range slice {
+		if s == item {
+			return slice
+		}
+	}
+	return append(slice, item)
 }

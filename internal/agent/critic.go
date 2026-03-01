@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogCritic = logger.L("Critic")
 
 // ============================
 // Critic Agent — 审查者
@@ -43,8 +45,7 @@ func (a *CriticAgent) Name() string { return "Critic" }
 // Review 审查 Coach 的回复草稿。
 // 使用 LLM 作为审查者，根据预设的苏格拉底评估模板打分。
 func (a *CriticAgent) Review(ctx context.Context, draft DraftResponse, material PersonalizedMaterial) (ReviewResult, error) {
-	log.Printf("🔍 [Critic] Reviewing draft for session=%d (%d chars)",
-		draft.SessionID, len(draft.Content))
+	slogCritic.Info("reviewing draft", "session_id", draft.SessionID, "draft_chars", len(draft.Content))
 
 	// 构建审查 Prompt
 	reviewPrompt := buildReviewPrompt(draft, material)
@@ -105,7 +106,7 @@ func (a *CriticAgent) Review(ctx context.Context, draft DraftResponse, material 
 	// 解析审查结果 (Fail-Closed: 解析失败 → 驳回)
 	result, err := parseCriticResponse(response, draft.SessionID)
 	if err != nil {
-		log.Printf("🛡️  [Critic] Parse response failed, REJECTING draft (fail-closed): %v", err)
+		slogCritic.Error("parse response failed, rejecting draft (fail-closed)", "err", err)
 		return ReviewResult{
 			SessionID:    draft.SessionID,
 			Approved:     false,
@@ -116,8 +117,9 @@ func (a *CriticAgent) Review(ctx context.Context, draft DraftResponse, material 
 		}, nil
 	}
 
-	log.Printf("   → Critic: approved=%t leakage=%.2f depth=%.2f safety=%.2f",
-		result.Approved, result.LeakageScore, result.DepthScore, result.SafetyScore)
+	slogCritic.Debug("review complete",
+		"approved", result.Approved, "leakage", result.LeakageScore,
+		"depth", result.DepthScore, "safety", result.SafetyScore)
 
 	return result, nil
 }

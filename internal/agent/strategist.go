@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"gorm.io/gorm"
 )
+
+var slogStrat = logger.L("Strategist")
 
 // ============================
 // Strategist Agent — 策略师
@@ -43,7 +45,7 @@ func (a *StrategistAgent) Name() string { return "Strategist" }
 // 3. 查询 Neo4j → 获取前置知识差距
 // 4. 决定支架等级和技能推荐
 func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, activityID uint) (LearningPrescription, error) {
-	log.Printf("🧠 [Strategist] Analyzing student=%d activity=%d", studentID, activityID)
+	slogStrat.Info("analyzing student", "student_id", studentID, "activity_id", activityID)
 
 	// Step 1: 加载学习活动 → 获取目标 KP IDs
 	var activity model.LearningActivity
@@ -86,8 +88,8 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		// 例如: 苏格拉底引导 mastery >= 0.8 → 自动切换为谬误侦探
 		if a.registry != nil && skillID != "" {
 			if newSkillID, switched := a.evaluateProgressiveTriggers(skillID, currentMastery); switched {
-				log.Printf("   → Progressive trigger fired: %s → %s (mastery=%.2f, kp=%d)",
-					skillID, newSkillID, currentMastery, kpID)
+				slogStrat.Info("progressive trigger fired",
+					"from", skillID, "to", newSkillID, "mastery", currentMastery, "kp_id", kpID)
 				skillID = newSkillID
 			}
 		}
@@ -126,8 +128,8 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		PrereqGaps:       prereqGaps,
 	}
 
-	log.Printf("   → Prescription: %d targets, scaffold=%s, gaps=%d",
-		len(targets), prescription.InitialScaffold, len(prereqGaps))
+	slogStrat.Debug("prescription generated",
+		"targets", len(targets), "scaffold", prescription.InitialScaffold, "gaps", len(prereqGaps))
 
 	return prescription, nil
 }
@@ -165,7 +167,7 @@ func (a *StrategistAgent) getSkillForKP(kpID uint) string {
 func (a *StrategistAgent) checkPrereqGapsEnriched(ctx context.Context, kpID, studentID uint, masteryMap map[uint]float64, inserted map[uint]bool) ([]KnowledgePointTarget, []string) {
 	prereqs, err := a.neo4j.GetPrerequisites(ctx, kpID)
 	if err != nil {
-		log.Printf("⚠️  [Strategist] Get prerequisites for kp=%d failed: %v", kpID, err)
+		slogStrat.Warn("get prerequisites failed", "kp_id", kpID, "err", err)
 		return nil, nil
 	}
 
@@ -202,7 +204,8 @@ func (a *StrategistAgent) checkPrereqGapsEnriched(ctx context.Context, kpID, stu
 					SkillID:        skillID,
 				})
 
-				log.Printf("   → Auto-inserted prereq KP=%d (%s) mastery=%.2f", numID, prereqTitle, mastery)
+				slogStrat.Info("auto-inserted prereq",
+					"kp_id", numID, "title", prereqTitle, "mastery", mastery)
 			}
 		}
 	}
@@ -320,7 +323,7 @@ func parseTriggerCondition(condition string, mastery float64) bool {
 	// 解析格式: "<variable> <operator> <value>"
 	parts := strings.Fields(condition)
 	if len(parts) != 3 {
-		log.Printf("⚠️  [Strategist] Invalid trigger condition format: %q (expected 3 parts)", condition)
+		slogStrat.Warn("invalid trigger condition format", "condition", condition)
 		return false
 	}
 
@@ -330,13 +333,13 @@ func parseTriggerCondition(condition string, mastery float64) bool {
 
 	// 当前仅支持 mastery_score
 	if variable != "mastery_score" {
-		log.Printf("⚠️  [Strategist] Unsupported trigger variable: %q (only mastery_score supported)", variable)
+		slogStrat.Warn("unsupported trigger variable", "variable", variable)
 		return false
 	}
 
 	threshold, err := strconv.ParseFloat(valueStr, 64)
 	if err != nil {
-		log.Printf("⚠️  [Strategist] Invalid trigger threshold: %q: %v", valueStr, err)
+		slogStrat.Warn("invalid trigger threshold", "value", valueStr, "err", err)
 		return false
 	}
 
@@ -354,7 +357,7 @@ func parseTriggerCondition(condition string, mastery float64) bool {
 	case "!=":
 		return mastery != threshold
 	default:
-		log.Printf("⚠️  [Strategist] Unsupported trigger operator: %q", operator)
+		slogStrat.Warn("unsupported trigger operator", "operator", operator)
 		return false
 	}
 }

@@ -3,17 +3,19 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/search"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"gorm.io/gorm"
 )
+
+var slogDesigner = logger.L("Designer")
 
 // ============================
 // Designer Agent — 设计师
@@ -64,8 +66,8 @@ func (a *DesignerAgent) Name() string { return "Designer" }
 // 5. CRAG 质量网关 — 评估检索质量，低质量时触发回退
 // 6. Token 截断 + 图谱上下文 + 系统 Prompt 组装
 func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPrescription, userInput string) (PersonalizedMaterial, error) {
-	log.Printf("🎨 [Designer] Assembling material for student=%d, %d KP targets",
-		prescription.StudentID, len(prescription.TargetKPSequence))
+	slogDesigner.Info("assembling material",
+		"student_id", prescription.StudentID, "kp_targets", len(prescription.TargetKPSequence))
 
 	// Step 1: 获取课程 ID（从活动关联）
 	courseID, err := a.getCourseIDFromSession(prescription.SessionID)
@@ -76,7 +78,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	// Step 2: RAG-Fusion 查询扩展 (§8.1.2)
 	// 将原始查询扩展为多个学术化变体，提升召回覆盖面
 	expandedQueries := a.expander.ExpandQuery(ctx, userInput)
-	log.Printf("   → RAG-Fusion: %d query variants", len(expandedQueries))
+	slogDesigner.Debug("rag-fusion query expansion", "variants", len(expandedQueries))
 
 	// Step 3: 多路语义检索
 	// 3a. 对每个变体独立执行 pgvector 语义检索 Top-50
@@ -84,7 +86,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	for i, query := range expandedQueries {
 		chunks, err := a.semanticSearch(ctx, courseID, query)
 		if err != nil {
-			log.Printf("⚠️  [Designer] Semantic search failed for variant %d: %v", i, err)
+			slogDesigner.Warn("semantic search failed", "variant", i, "err", err)
 			continue
 		}
 		allSemanticChunks = append(allSemanticChunks, chunks...)
@@ -93,15 +95,16 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	// 3b. 图谱引导检索 — Neo4j → KP titles → pgvector Top-50
 	graphChunks, err := a.graphContentSearch(ctx, courseID, prescription.TargetKPSequence)
 	if err != nil {
-		log.Printf("⚠️  [Designer] Graph content search failed: %v", err)
+		slogDesigner.Warn("graph content search failed", "err", err)
 	}
 
 	// Step 4: RRF 多路融合排序 → Top-20 (粗排候选池)
 	// 合并所有语义检索变体结果 + 图谱检索结果
 	mergedChunks := rrfMerge(allSemanticChunks, graphChunks, 20)
 
-	log.Printf("   → RRF merge: semantic=%d (from %d variants) + graph=%d → merged=%d",
-		len(allSemanticChunks), len(expandedQueries), len(graphChunks), len(mergedChunks))
+	slogDesigner.Debug("rrf merge complete",
+		"semantic", len(allSemanticChunks), "variants", len(expandedQueries),
+		"graph", len(graphChunks), "merged", len(mergedChunks))
 
 	// Step 4.5: Cross-Encoder 精重排 (§8.1.1 Stage 2)
 	// 对 RRF 粗排候选池中的每个 chunk 与原始查询做深度语义评分，精选 Top-5
@@ -115,8 +118,8 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	truncResult := a.truncator.TruncateChunks(mergedChunks)
 	mergedChunks = truncResult.Data
 	if truncResult.Truncated {
-		log.Printf("   → Truncator: %d→%d chunks (%d pages total)",
-			truncResult.TotalItems, len(mergedChunks), truncResult.TotalPages)
+		slogDesigner.Debug("truncator applied",
+			"before", truncResult.TotalItems, "after", len(mergedChunks), "pages", truncResult.TotalPages)
 	}
 
 	// Step 6: 图谱上下文 — 知识点关系（用于 Prompt 和前端展示）
@@ -126,7 +129,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	var misconceptions []MisconceptionItem
 	if isFallacyDetectiveSkill(prescription.RecommendedSkill) {
 		misconceptions = a.loadMisconceptions(prescription.TargetKPSequence)
-		log.Printf("   → Misconceptions: %d items loaded for fallacy-detective", len(misconceptions))
+		slogDesigner.Debug("misconceptions loaded", "count", len(misconceptions))
 	}
 
 	// Step 7: 组装系统 Prompt
@@ -145,7 +148,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	// Step 8: System Prompt Token 截断 — 防止超长上下文
 	systemPrompt, promptTruncated := a.truncator.TruncateSystemPrompt(systemPrompt, 2048)
 	if promptTruncated {
-		log.Printf("   → Truncator: system prompt truncated to 2048 tokens")
+		slogDesigner.Debug("system prompt truncated", "max_tokens", 2048)
 	}
 
 	material := PersonalizedMaterial{
@@ -157,8 +160,9 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 		SystemPrompt:    systemPrompt,
 	}
 
-	log.Printf("   → Material: %d chunks, %d graph nodes, prompt=%d chars, CRAG=%v (avg=%.4f)",
-		len(mergedChunks), len(graphNodes), len(systemPrompt), relevance.Passed, relevance.AvgScore)
+	slogDesigner.Debug("material assembled",
+		"chunks", len(mergedChunks), "graph_nodes", len(graphNodes),
+		"prompt_chars", len(systemPrompt), "crag_passed", relevance.Passed, "crag_avg", relevance.AvgScore)
 
 	return material, nil
 }
@@ -276,7 +280,7 @@ func (a *DesignerAgent) graphSearch(ctx context.Context, targets []KnowledgePoin
 		// 查询前置知识
 		prereqs, err := a.neo4j.GetPrerequisites(ctx, t.KPID)
 		if err != nil {
-			log.Printf("⚠️  [Designer] Get prereqs for kp=%d failed: %v", t.KPID, err)
+			slogDesigner.Warn("get prerequisites failed", "kp_id", t.KPID, "err", err)
 			continue
 		}
 

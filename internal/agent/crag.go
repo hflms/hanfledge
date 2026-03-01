@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
-	"log"
 
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/search"
 )
+
+var slogCRAG = logger.L("CRAG")
 
 // ============================
 // CRAG Quality Gateway (§8.1.2)
@@ -79,7 +81,7 @@ type RelevanceResult struct {
 // If chunks is empty, it returns Passed=false (no context available).
 func (g *QualityGateway) EvaluateRelevance(chunks []RetrievedChunk, query string) RelevanceResult {
 	if len(chunks) == 0 {
-		log.Printf("⚠️  [CRAG] No chunks to evaluate — flagging as low quality")
+		slogCRAG.Warn("no chunks to evaluate, flagging as low quality")
 		return RelevanceResult{
 			AvgScore:   0,
 			Passed:     false,
@@ -97,11 +99,12 @@ func (g *QualityGateway) EvaluateRelevance(chunks []RetrievedChunk, query string
 	passed := avgScore >= g.threshold
 
 	if passed {
-		log.Printf("✅ [CRAG] Quality check passed: avg_score=%.4f (threshold=%.4f, chunks=%d)",
-			avgScore, g.threshold, len(chunks))
+		slogCRAG.Info("quality check passed",
+			"avgScore", avgScore, "threshold", g.threshold, "chunks", len(chunks))
 	} else {
-		log.Printf("⚠️  [CRAG] Quality check FAILED: avg_score=%.4f < threshold=%.4f (chunks=%d) — query=%q",
-			avgScore, g.threshold, len(chunks), truncateForLog(query, 80))
+		slogCRAG.Warn("quality check failed",
+			"avgScore", avgScore, "threshold", g.threshold, "chunks", len(chunks),
+			"query", truncateForLog(query, 80))
 	}
 
 	return RelevanceResult{
@@ -121,7 +124,7 @@ func (g *QualityGateway) HandleFallback(systemPrompt string) string {
 		"请主要依靠你自身的知识储备来回答，" +
 		"同时提醒学生该问题可能超出当前课程材料的覆盖范围。】\n"
 
-	log.Printf("🔄 [CRAG] Fallback activated — appending low-confidence caveat to prompt")
+	slogCRAG.Info("fallback activated, appending low-confidence caveat to prompt")
 	return systemPrompt + caveat
 }
 
@@ -137,20 +140,20 @@ func (g *QualityGateway) HandleFallbackWithSearch(
 	query string,
 	connector *search.DynamicConnector,
 ) string {
-	log.Printf("🔄 [CRAG] Web search fallback triggered for query: %q", truncateForLog(query, 80))
+	slogCRAG.Info("web search fallback triggered", "query", truncateForLog(query, 80))
 
 	results, err := connector.SearchAndRank(ctx, query)
 	if err != nil {
-		log.Printf("⚠️  [CRAG] Web search failed, falling back to basic caveat: %v", err)
+		slogCRAG.Warn("web search failed, falling back to basic caveat", "err", err)
 		return g.HandleFallback(systemPrompt)
 	}
 
 	if len(results) == 0 {
-		log.Printf("⚠️  [CRAG] Web search returned no results, falling back to basic caveat")
+		slogCRAG.Warn("web search returned no results, falling back to basic caveat")
 		return g.HandleFallback(systemPrompt)
 	}
 
-	log.Printf("✅ [CRAG] Web search enriched prompt with %d results", len(results))
+	slogCRAG.Info("web search enriched prompt", "results", len(results))
 	return connector.EnhancePrompt(systemPrompt, results)
 }
 

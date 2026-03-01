@@ -1,12 +1,14 @@
 package agent
 
 import (
-	"log"
 	"time"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"gorm.io/gorm"
 )
+
+var slogBKT = logger.L("BKT")
 
 // ============================
 // BKT — 贝叶斯知识追踪
@@ -132,8 +134,9 @@ func (s *BKTService) UpdateStudentMastery(studentID, kpID uint, correct bool) (M
 		}
 	}
 
-	log.Printf("📊 [BKT] student=%d kp=%d correct=%t mastery: %.3f → %.3f (attempts=%d)",
-		studentID, kpID, correct, oldMastery, newMastery, mastery.AttemptCount)
+	slogBKT.Info("mastery updated",
+		"studentID", studentID, "kpID", kpID, "correct", correct,
+		"oldMastery", oldMastery, "newMastery", newMastery, "attempts", mastery.AttemptCount)
 
 	return MasteryUpdate{
 		StudentID:    studentID,

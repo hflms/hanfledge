@@ -3,13 +3,13 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/infrastructure/search"
 	"github.com/hflms/hanfledge/internal/plugin"
@@ -17,6 +17,8 @@ import (
 	"github.com/hflms/hanfledge/internal/usecase"
 	"gorm.io/gorm"
 )
+
+var slogOrch = logger.L("Orchestrator")
 
 // ============================
 // 多 Agent 编排引擎
@@ -44,6 +46,11 @@ type AgentOrchestrator struct {
 
 	// Actor-Critic 最大重试轮数
 	maxCriticRetries int
+
+	// evalNotify 评估引擎通知函数。
+	// saveInteraction 保存 coach 交互后调用此函数通知评估引擎即时评估。
+	// 通过 SetEvalNotifier 注入（nil-safe）。
+	evalNotify func(interactionID uint)
 }
 
 // NewAgentOrchestrator 创建一个新的 Agent 编排引擎。
@@ -80,8 +87,17 @@ func NewAgentOrchestrator(
 	o.critic = NewCriticAgent(llmClient)
 	o.bkt = NewBKTService(db)
 
-	log.Println("🎯 [Agent] Orchestrator initialized with 4 agents + BKT: Strategist, Designer, Coach, Critic")
+	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT")
 	return o
+}
+
+// SetEvalNotifier 注入评估引擎通知函数。
+// 在 main.go 中 orchestrator 和 evaluator 都创建完成后调用：
+//
+//	orchestrator.SetEvalNotifier(evaluator.Notify)
+func (o *AgentOrchestrator) SetEvalNotifier(fn func(interactionID uint)) {
+	o.evalNotify = fn
+	slogOrch.Info("eval notifier wired")
 }
 
 // ── Pipeline Execution ──────────────────────────────────────
@@ -98,8 +114,8 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	ctx := tc.Ctx
 	start := time.Now()
 
-	log.Printf("🎯 [Agent] HandleTurn: session=%d student=%d input=%q",
-		tc.SessionID, tc.StudentID, truncate(tc.UserInput, 50))
+	slogOrch.Info("handling turn",
+		"session_id", tc.SessionID, "student_id", tc.StudentID, "input", truncate(tc.UserInput, 50))
 
 	// Hook: before student query
 	o.publishEvent(ctx, plugin.HookBeforeStudentQuery, map[string]interface{}{
@@ -110,11 +126,10 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 
 	// ── Pre-Stage: L2 Semantic Cache Check (§8.1.3) ─────
 	if hit, err := o.checkSemanticCache(tc); err != nil {
-		log.Printf("⚠️  [L2-Cache] Check failed: %v", err)
+		slogOrch.Warn("L2 cache check failed", "err", err)
 	} else if hit != nil {
 		// Cache hit — return cached response directly
-		log.Printf("⚡ [L2-Cache] HIT: similarity=%.4f, skipping full pipeline",
-			hit.Similarity)
+		slogOrch.Info("L2 cache hit, skipping pipeline", "similarity", hit.Similarity)
 		return o.returnCachedResponse(tc, hit.Entry.Response, hit.Entry.SkillID, start)
 	}
 
@@ -129,8 +144,8 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 	tc.Prescription = &prescription
 
-	log.Printf("   → Strategist: %d KP targets, scaffold=%s, skill=%s",
-		len(prescription.TargetKPSequence), prescription.InitialScaffold, prescription.RecommendedSkill)
+	slogOrch.Debug("strategist results",
+		"kp_targets", len(prescription.TargetKPSequence), "scaffold", prescription.InitialScaffold, "skill", prescription.RecommendedSkill)
 
 	// Hook: after skill match
 	o.publishEvent(ctx, plugin.HookAfterSkillMatch, map[string]interface{}{
@@ -150,8 +165,8 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 	tc.Material = &material
 
-	log.Printf("   → Designer: %d chunks retrieved, %d graph nodes",
-		len(material.RetrievedChunks), len(material.GraphContext))
+	slogOrch.Debug("designer results",
+		"chunks", len(material.RetrievedChunks), "graph_nodes", len(material.GraphContext))
 
 	// ── Stage 2.5: Build TaskContext for ModelRouter (§8.3.3) ──
 	tc.LLMTaskContext = o.buildTaskContext(tc, material)
@@ -186,7 +201,7 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 
 	// ── Stage 5: 持久化交互记录 ─────────────────────────
 	if err := o.saveInteraction(tc, finalResponse); err != nil {
-		log.Printf("⚠️  [Agent] Save interaction failed: %v", err)
+		slogOrch.Warn("save interaction failed", "err", err)
 	}
 
 	// Hook: after student answer (interaction persisted)
@@ -205,7 +220,7 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	if !tc.IsSandbox {
 		o.updateMasteryAndFadeScaffold(tc)
 	} else {
-		log.Printf("🧪 [Sandbox] Skipping mastery update for sandbox session=%d", tc.SessionID)
+		slogOrch.Debug("skipping mastery update for sandbox", "session_id", tc.SessionID)
 	}
 
 	// ── Stage 6.5: 谬误侦探阶段推进 (§5.2 Step 2, item 5) ──
@@ -217,16 +232,19 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	// ── Stage 6.7: 自动出题阶段推进 (§7.13) ──
 	o.advanceQuizPhaseIfActive(tc, finalResponse)
 
+	// ── Stage 6.8: 学情问卷诊断阶段推进 ──
+	o.advanceSurveyPhaseIfActive(tc, finalResponse)
+
 	// ── Stage 7: 错题本自动归档 (§5.2 Step 3, item 3; skip in sandbox) ──
 	if !tc.IsSandbox {
 		o.archiveErrorIfIncorrect(tc, finalResponse)
 	} else {
-		log.Printf("🧪 [Sandbox] Skipping error notebook for sandbox session=%d", tc.SessionID)
+		slogOrch.Debug("skipping error notebook for sandbox", "session_id", tc.SessionID)
 	}
 
 	elapsed := time.Since(start)
-	log.Printf("✅ [Agent] Turn complete: session=%d tokens=%d elapsed=%s",
-		tc.SessionID, finalResponse.TokensUsed, elapsed)
+	slogOrch.Info("turn complete",
+		"session_id", tc.SessionID, "tokens", finalResponse.TokensUsed, "elapsed", elapsed)
 
 	if tc.OnTurnComplete != nil {
 		tc.OnTurnComplete(finalResponse.TokensUsed)
@@ -271,7 +289,7 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 
 		// 最后一轮不再审查，直接采用（已通过流式输出）
 		if isLastAttempt {
-			log.Printf("   → Actor-Critic: max retries reached, accepting draft")
+			slogOrch.Info("max critic retries reached, accepting draft")
 			break
 		}
 
@@ -282,7 +300,7 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 
 		review, err := o.critic.Review(tc.Ctx, draft, material)
 		if err != nil {
-			log.Printf("⚠️  [Agent] Critic failed, accepting draft: %v", err)
+			slogOrch.Warn("critic failed, accepting draft", "err", err)
 			// Critic 失败 → 接受当前草稿，需要补发缓冲内容
 			if tc.OnTokenDelta != nil {
 				tc.OnTokenDelta(draft.Content)
@@ -292,8 +310,8 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 
 		tc.Review = &review
 
-		log.Printf("   → Critic: approved=%t leakage=%.2f depth=%.2f (attempt %d)",
-			review.Approved, review.LeakageScore, review.DepthScore, attempt+1)
+		slogOrch.Debug("critic result details",
+			"approved", review.Approved, "leakage", review.LeakageScore, "depth", review.DepthScore, "attempt", attempt+1)
 
 		if review.Approved {
 			// Critic 通过 → 将缓冲的全文一次性发送给前端
@@ -335,13 +353,18 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 		return fmt.Errorf("save coach interaction: %w", err)
 	}
 
+	// 通知评估引擎即时评估该条 coach 交互
+	if o.evalNotify != nil {
+		o.evalNotify(coachMsg.ID)
+	}
+
 	// 更新 Redis 缓存中的会话历史
 	if o.cache != nil {
 		if err := o.cache.AppendSessionHistory(tc.Ctx, tc.SessionID,
 			cache.CachedMessage{Role: "user", Content: tc.UserInput},
 			cache.CachedMessage{Role: "assistant", Content: response.Content},
 		); err != nil {
-			log.Printf("⚠️  [Cache] Append history session=%d failed: %v", tc.SessionID, err)
+			slogOrch.Warn("append session history failed", "session_id", tc.SessionID, "err", err)
 		}
 	}
 
@@ -362,7 +385,7 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 	// 获取当前会话信息
 	var session model.StudentSession
 	if err := o.db.WithContext(tc.Ctx).First(&session, tc.SessionID).Error; err != nil {
-		log.Printf("⚠️  [Scaffold] Load session %d failed: %v", tc.SessionID, err)
+		slogOrch.Warn("load session failed", "session_id", tc.SessionID, "err", err)
 		return
 	}
 
@@ -372,7 +395,7 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 		kpID = tc.Prescription.TargetKPSequence[0].KPID
 	}
 	if kpID == 0 {
-		log.Printf("⚠️  [Scaffold] No current KP for session %d, skipping mastery update", tc.SessionID)
+		slogOrch.Warn("no current KP, skipping mastery update", "session_id", tc.SessionID)
 		return
 	}
 
@@ -386,8 +409,8 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 	// BKT 掌握度更新
 	update, err := o.bkt.UpdateStudentMastery(tc.StudentID, kpID, correct)
 	if err != nil {
-		log.Printf("⚠️  [Scaffold] BKT update failed for student=%d kp=%d: %v",
-			tc.StudentID, kpID, err)
+		slogOrch.Warn("BKT update failed",
+			"student_id", tc.StudentID, "kp_id", kpID, "err", err)
 		return
 	}
 
@@ -418,13 +441,13 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 
 	// 检查是否需要衰减
 	if newScaffold != oldScaffold {
-		log.Printf("🔄 [Scaffold] Fading: student=%d kp=%d mastery=%.3f scaffold %s→%s",
-			tc.StudentID, kpID, update.NewMastery, oldScaffold, newScaffold)
+		slogOrch.Info("scaffold fading",
+			"student_id", tc.StudentID, "kp_id", kpID, "mastery", update.NewMastery, "old", oldScaffold, "new", newScaffold)
 
 		// 更新数据库中的会话支架等级
 		if err := o.db.WithContext(tc.Ctx).Model(&model.StudentSession{}).Where("id = ?", tc.SessionID).
 			Update("scaffold", newScaffold).Error; err != nil {
-			log.Printf("⚠️  [Scaffold] Update session scaffold failed: %v", err)
+			slogOrch.Warn("update session scaffold failed", "err", err)
 			return
 		}
 
@@ -487,8 +510,8 @@ func (o *AgentOrchestrator) checkOutputSafety(tc *TurnContext, response *DraftRe
 
 	switch result.Risk {
 	case safety.OutputBlocked:
-		log.Printf("🛡️  [Output Guard] BLOCKED: session=%d category=%s reason=%q",
-			tc.SessionID, result.Category, result.Reason)
+		slogOrch.Warn("output guard blocked",
+			"session_id", tc.SessionID, "category", result.Category, "reason", result.Reason)
 		// 替换为安全回退消息
 		response.Content = o.outputGuard.FallbackResponse()
 		// 如果已经流式输出了不安全内容，需要通知前端覆盖
@@ -497,8 +520,8 @@ func (o *AgentOrchestrator) checkOutputSafety(tc *TurnContext, response *DraftRe
 		}
 
 	case safety.OutputWarning:
-		log.Printf("⚠️  [Output Guard] WARNING: session=%d category=%s reason=%q",
-			tc.SessionID, result.Category, result.Reason)
+		slogOrch.Warn("output guard warning",
+			"session_id", tc.SessionID, "category", result.Category, "reason", result.Reason)
 		// Warning 级别允许通过，仅记录日志
 	}
 
@@ -555,14 +578,14 @@ func (o *AgentOrchestrator) returnCachedResponse(tc *TurnContext, response, skil
 		TokensUsed: 0, // cached, no LLM tokens used
 	}
 	if err := o.saveInteraction(tc, cached); err != nil {
-		log.Printf("⚠️  [Agent] Save cached interaction failed: %v", err)
+		slogOrch.Warn("save cached interaction failed", "err", err)
 	}
 
 	// BKT update still needed
 	o.updateMasteryAndFadeScaffold(tc)
 
 	elapsed := time.Since(start)
-	log.Printf("⚡ [Agent] Turn complete (cached): session=%d elapsed=%s", tc.SessionID, elapsed)
+	slogOrch.Info("turn complete (cached)", "session_id", tc.SessionID, "elapsed", elapsed)
 
 	if tc.OnTurnComplete != nil {
 		tc.OnTurnComplete(0)
@@ -589,7 +612,7 @@ func (o *AgentOrchestrator) writeResponseToCache(tc *TurnContext, material Perso
 			CourseID:  tc.queryCourseID,
 		}
 		if err := o.cache.SetSemanticCache(ctx, entry); err != nil {
-			log.Printf("⚠️  [L2-Cache] Write failed: %v", err)
+			slogOrch.Warn("L2 cache write failed", "err", err)
 		}
 	}
 
@@ -601,7 +624,7 @@ func (o *AgentOrchestrator) writeResponseToCache(tc *TurnContext, material Perso
 		CourseID: tc.queryCourseID,
 	}
 	if err := o.cache.SetOutputCache(ctx, promptHash, outputEntry); err != nil {
-		log.Printf("⚠️  [L3-Cache] Write failed: %v", err)
+		slogOrch.Warn("L3 cache write failed", "err", err)
 	}
 }
 
@@ -628,18 +651,12 @@ func (o *AgentOrchestrator) getCourseIDFromSession(ctx context.Context, sessionI
 
 // publishEvent fires an EventBus event if the bus is available.
 func (o *AgentOrchestrator) publishEvent(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) {
-	if o.eventBus == nil {
-		return
-	}
-	o.eventBus.Publish(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+	plugin.PublishEvent(o.eventBus, ctx, hook, payload)
 }
 
 // publishAbortable fires an abortable EventBus event. Returns error if any handler aborts.
 func (o *AgentOrchestrator) publishAbortable(ctx context.Context, hook plugin.HookPoint, payload map[string]interface{}) error {
-	if o.eventBus == nil {
-		return nil
-	}
-	return o.eventBus.PublishAbortable(ctx, plugin.HookEvent{Hook: hook, Payload: payload})
+	return plugin.PublishAbortableEvent(o.eventBus, ctx, hook, payload)
 }
 
 // truncate 截断字符串到指定长度。
@@ -687,10 +704,10 @@ func (o *AgentOrchestrator) buildTaskContext(tc *TurnContext, material Personali
 		taskCtx.IsCrossDiscipline = len(relations) > 2
 	}
 
-	log.Printf("🔀 [Router] TaskContext: skill=%s mastery=%.2f turns=%d chunks=%d graph=%d complexity=%s(%.2f)",
-		taskCtx.SkillID, taskCtx.Mastery, taskCtx.TurnCount,
-		taskCtx.ChunkCount, taskCtx.GraphNodeCount,
-		taskCtx.EstimateComplexity(), taskCtx.ComplexityScore())
+	slogOrch.Debug("router task context",
+		"skill", taskCtx.SkillID, "mastery", taskCtx.Mastery, "turns", taskCtx.TurnCount,
+		"chunks", taskCtx.ChunkCount, "graph_nodes", taskCtx.GraphNodeCount,
+		"complexity", taskCtx.EstimateComplexity(), "complexity_score", taskCtx.ComplexityScore())
 
 	return taskCtx
 }
@@ -750,14 +767,14 @@ func (o *AgentOrchestrator) updateRolePlayStateIfActive(tc *TurnContext, respons
 	if state.CharacterName == "" {
 		// 首次保存初始状态，后续 LLM 对话中角色信息会通过 SKILL.md 约束自然维持
 		o.coach.saveRolePlayState(tc.SessionID, state)
-		log.Printf("🎭 [RolePlay] Session=%d: initial state saved (character TBD by LLM)",
-			tc.SessionID)
+		slogOrch.Info("roleplay initial state saved", "session_id", tc.SessionID)
 		return
 	}
 
 	// 如果角色已选定，仅记录日志
-	log.Printf("🎭 [RolePlay] Session=%d: character=%s, scenario_switches=%d/%d, active=%v",
-		tc.SessionID, state.CharacterName, state.ScenarioSwitches, state.MaxSwitches, state.Active)
+	slogOrch.Info("roleplay state",
+		"session_id", tc.SessionID, "character", state.CharacterName,
+		"scenario_switches", state.ScenarioSwitches, "max_switches", state.MaxSwitches, "active", state.Active)
 }
 
 // ── Quiz Phase Management (§7.13) ──────────────────────────
@@ -821,6 +838,146 @@ func (o *AgentOrchestrator) advanceQuizPhaseIfActive(tc *TurnContext, response *
 	}
 }
 
+// ── Learning Survey Phase Management ────────────────────────
+
+// advanceSurveyPhaseIfActive 当活跃技能为学情问卷诊断时，推进会话阶段。
+// 使用启发式方法从回复内容推断阶段转换:
+//   - Coach 回复中包含 <survey> 标签 → 生成了问卷题目
+//   - Coach 回复中包含 <survey_profile> 标签 → 生成了学习画像
+//   - Coach 回复中包含 <learning_plan> 标签 → 生成了学习方案
+func (o *AgentOrchestrator) advanceSurveyPhaseIfActive(tc *TurnContext, response *DraftResponse) {
+	if response == nil || !isSurveyActive(response.SkillID) {
+		return
+	}
+
+	state := o.coach.loadSurveyState(tc.SessionID)
+
+	switch state.Phase {
+	case SurveyPhaseWelcome:
+		// 检查回复中是否包含 <survey> 标签（第一批问卷已推送）
+		if strings.Contains(response.Content, "<survey>") {
+			// 从 JSON 中提取维度信息
+			dim := extractSurveyDimension(response.Content)
+			questionCount := strings.Count(response.Content, `"id"`)
+			if questionCount == 0 {
+				questionCount = 1
+			}
+			o.coach.AdvanceSurveyPhase(tc.SessionID, dim, questionCount)
+
+			// 发送问卷题目到前端
+			if tc.OnScaffold != nil {
+				tc.OnScaffold("survey_questions", map[string]interface{}{
+					"dimension":      dim,
+					"question_count": questionCount,
+					"phase":          "welcome",
+				})
+			}
+		} else {
+			// 纯欢迎消息，不含题目 → 仍推进到 surveying
+			o.coach.AdvanceSurveyPhase(tc.SessionID, "", 0)
+		}
+
+	case SurveyPhaseSurveying:
+		// 检查回复中是否包含新的 <survey> 标签（下一批问卷）
+		if strings.Contains(response.Content, "<survey>") {
+			dim := extractSurveyDimension(response.Content)
+			questionCount := strings.Count(response.Content, `"id"`)
+			if questionCount == 0 {
+				questionCount = 1
+			}
+
+			// 如果当前维度与上一个不同，说明上一个维度已完成
+			if state.CurrentDimension != "" && state.CurrentDimension != dim {
+				o.coach.AdvanceSurveyPhase(tc.SessionID, state.CurrentDimension, questionCount)
+			} else {
+				o.coach.AdvanceSurveyPhase(tc.SessionID, dim, questionCount)
+			}
+
+			// 发送问卷题目到前端
+			if tc.OnScaffold != nil {
+				tc.OnScaffold("survey_questions", map[string]interface{}{
+					"dimension":      dim,
+					"question_count": questionCount,
+					"completed_dims": len(state.CompletedDims),
+					"total_dims":     state.TotalDimensions,
+				})
+			}
+		} else {
+			// 学生回答了上一批问卷，Coach 做了反馈但没推新题目
+			// 推进维度完成
+			if state.CurrentDimension != "" {
+				o.coach.AdvanceSurveyPhase(tc.SessionID, state.CurrentDimension, 0)
+			}
+		}
+
+	case SurveyPhaseAnalyzing:
+		// 分析完成 → 检查是否包含画像
+		if strings.Contains(response.Content, "<survey_profile>") {
+			// 包含画像说明分析和报告一起完成了
+			o.coach.AdvanceSurveyPhase(tc.SessionID, "", 0) // analyzing → reporting
+			o.coach.AdvanceSurveyPhase(tc.SessionID, "", 0) // reporting → planning
+
+			if tc.OnScaffold != nil {
+				tc.OnScaffold("learning_profile", map[string]interface{}{
+					"status": "generated",
+				})
+			}
+		} else {
+			o.coach.AdvanceSurveyPhase(tc.SessionID, "", 0)
+		}
+
+	case SurveyPhaseReporting:
+		// 检查是否包含学习画像
+		if strings.Contains(response.Content, "<survey_profile>") {
+			o.coach.AdvanceSurveyPhase(tc.SessionID, "", 0)
+
+			if tc.OnScaffold != nil {
+				tc.OnScaffold("learning_profile", map[string]interface{}{
+					"status": "generated",
+				})
+			}
+		}
+
+	case SurveyPhasePlanning:
+		// 检查是否包含学习方案
+		if strings.Contains(response.Content, "<learning_plan>") {
+			o.coach.AdvanceSurveyPhase(tc.SessionID, "", 0)
+
+			if tc.OnScaffold != nil {
+				tc.OnScaffold("learning_plan", map[string]interface{}{
+					"status": "generated",
+				})
+			}
+		}
+	}
+}
+
+// extractSurveyDimension 从 <survey> JSON 中提取 dimension 字段。
+func extractSurveyDimension(content string) string {
+	// 简单提取 "dimension": "xxx" 的值
+	start := strings.Index(content, `"dimension"`)
+	if start == -1 {
+		return ""
+	}
+	sub := content[start:]
+	// 找到第一个 : 后的引号对
+	colonIdx := strings.Index(sub, ":")
+	if colonIdx == -1 {
+		return ""
+	}
+	sub = sub[colonIdx+1:]
+	firstQuote := strings.Index(sub, `"`)
+	if firstQuote == -1 {
+		return ""
+	}
+	sub = sub[firstQuote+1:]
+	secondQuote := strings.Index(sub, `"`)
+	if secondQuote == -1 {
+		return ""
+	}
+	return sub[:secondQuote]
+}
+
 // ── Error Notebook Auto-Archiving (§5.2 Step 3, item 3) ────
 
 // archiveErrorIfIncorrect 当推断学生回答错误时，自动将错误和 AI 引导归档到错题本。
@@ -862,13 +1019,13 @@ func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *D
 		}
 
 		if err := o.db.WithContext(tc.Ctx).Create(&entry).Error; err != nil {
-			log.Printf("⚠️  [ErrorNotebook] Archive failed: student=%d kp=%d: %v",
-				tc.StudentID, kpID, err)
+			slogOrch.Warn("error notebook archive failed",
+				"student_id", tc.StudentID, "kp_id", kpID, "err", err)
 			return
 		}
 
-		log.Printf("📝 [ErrorNotebook] Archived: student=%d kp=%d session=%d mastery=%.3f",
-			tc.StudentID, kpID, tc.SessionID, mastery)
+		slogOrch.Info("error notebook archived",
+			"student_id", tc.StudentID, "kp_id", kpID, "session_id", tc.SessionID, "mastery", mastery)
 	}
 
 	// 自动解决：当掌握度达到 0.8 时，标记该 KP 的未解决错题为已解决
@@ -882,8 +1039,8 @@ func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *D
 				"resolved_at": now,
 			})
 		if result.RowsAffected > 0 {
-			log.Printf("✅ [ErrorNotebook] Auto-resolved %d entries: student=%d kp=%d mastery=%.3f",
-				result.RowsAffected, tc.StudentID, kpID, currentMastery)
+			slogOrch.Info("error notebook auto-resolved",
+				"entries", result.RowsAffected, "student_id", tc.StudentID, "kp_id", kpID, "mastery", currentMastery)
 		}
 	}
 }

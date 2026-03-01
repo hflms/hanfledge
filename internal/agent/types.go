@@ -126,6 +126,32 @@ type QuizSessionState struct {
 	CurrentQuizJSON string    `json:"current_quiz_json,omitempty"` // 当前批次的题目 JSON（内部追踪用）
 }
 
+// ── Learning Survey Session State ────────────────────────────
+
+// SurveyPhase 学情问卷诊断技能的阶段枚举。
+type SurveyPhase string
+
+const (
+	SurveyPhaseWelcome   SurveyPhase = "welcome"   // 欢迎介绍，说明问卷目的
+	SurveyPhaseSurveying SurveyPhase = "surveying" // 正在进行问卷（按维度分批推送）
+	SurveyPhaseAnalyzing SurveyPhase = "analyzing" // 汇总分析学生回答
+	SurveyPhaseReporting SurveyPhase = "reporting" // 生成并展示学习画像
+	SurveyPhasePlanning  SurveyPhase = "planning"  // 生成学习建议方案
+)
+
+// SurveySessionState 学情问卷诊断技能的会话级状态，序列化为 JSONB 存储在 StudentSession.SkillState 中。
+type SurveySessionState struct {
+	Phase             SurveyPhase `json:"phase"`                         // 当前阶段
+	CompletedDims     []string    `json:"completed_dims"`                // 已完成的诊断维度
+	TotalDimensions   int         `json:"total_dimensions"`              // 总诊断维度数
+	TotalQuestions    int         `json:"total_questions"`               // 累计已提问数
+	TotalAnswered     int         `json:"total_answered"`                // 累计已回答数
+	CurrentDimension  string      `json:"current_dimension,omitempty"`   // 当前正在进行的维度
+	ProfileGenerated  bool        `json:"profile_generated"`             // 是否已生成学习画像
+	PlanGenerated     bool        `json:"plan_generated"`                // 是否已生成学习方案
+	CurrentSurveyJSON string      `json:"current_survey_json,omitempty"` // 当前批次的问卷 JSON（内部追踪用）
+}
+
 // RetrievedChunk 混合检索召回的文档片段。
 type RetrievedChunk struct {
 	Content    string  `json:"content"`
@@ -199,6 +225,10 @@ const (
 	EventRolePlayCharacter = "roleplay_character" // 角色扮演: 角色身份确认/切换
 	EventQuizQuestions     = "quiz_questions"     // 自动出题: 题目数据推送
 	EventQuizResult        = "quiz_result"        // 自动出题: 批改结果推送
+	EventSurveyQuestions   = "survey_questions"   // 学情问卷: 问卷题目推送
+	EventSurveyAnalysis    = "survey_analysis"    // 学情问卷: 分析结果推送
+	EventLearningProfile   = "learning_profile"   // 学情问卷: 学习画像推送
+	EventLearningPlan      = "learning_plan"      // 学情问卷: 学习方案推送
 	EventVoiceStart        = "voice_start"        // 语音输入开始
 	EventVoiceData         = "voice_data"         // 语音数据流
 	EventVoiceEnd          = "voice_end"          // 语音输入结束

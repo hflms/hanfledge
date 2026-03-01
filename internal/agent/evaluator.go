@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"gorm.io/gorm"
 )
+
+var slogEval = logger.L("Evaluator")
 
 // ============================
 // RAGAS + MRBench 异步评估引擎
@@ -38,8 +40,12 @@ import (
 type EvalConfig struct {
 	// BatchSize 每轮评估的最大交互数量。
 	BatchSize int
-	// PollInterval 轮询间隔（多久检查一次待评估的交互）。
+	// PollInterval 基础轮询间隔（初始值 / 活跃后重置值）。
 	PollInterval time.Duration
+	// MaxInterval 空闲状态下的最大轮询间隔（指数退避上限）。
+	MaxInterval time.Duration
+	// NotifyBuffer 通知通道的缓冲大小。
+	NotifyBuffer int
 }
 
 // DefaultEvalConfig 返回默认配置。
@@ -47,6 +53,8 @@ func DefaultEvalConfig() EvalConfig {
 	return EvalConfig{
 		BatchSize:    10,
 		PollInterval: 30 * time.Second,
+		MaxInterval:  5 * time.Minute,
+		NotifyBuffer: 64,
 	}
 }
 
@@ -57,35 +65,105 @@ type RAGASEvaluator struct {
 	db     *gorm.DB
 	llm    llm.LLMProvider
 	config EvalConfig
+
+	// evalCh 接收来自 Orchestrator 的实时评估通知。
+	// 当一条 coach 交互被保存时，交互 ID 被发送到此通道以触发即时评估。
+	evalCh chan uint
 }
 
 // NewRAGASEvaluator 创建新的评估引擎。
 func NewRAGASEvaluator(db *gorm.DB, llmClient llm.LLMProvider, cfg EvalConfig) *RAGASEvaluator {
+	bufSize := cfg.NotifyBuffer
+	if bufSize <= 0 {
+		bufSize = 64
+	}
 	return &RAGASEvaluator{
 		db:     db,
 		llm:    llmClient,
 		config: cfg,
+		evalCh: make(chan uint, bufSize),
+	}
+}
+
+// Notify 向评估引擎发送即时评估通知（非阻塞）。
+// 当 Orchestrator 保存了一条 coach 交互后调用此方法。
+// 如果通道已满则丢弃（后续 ticker 轮询会兜底）。
+func (e *RAGASEvaluator) Notify(interactionID uint) {
+	select {
+	case e.evalCh <- interactionID:
+	default:
+		slogEval.Warn("notify channel full, dropping interaction", "interaction_id", interactionID)
 	}
 }
 
 // Start 启动后台评估循环。传入的 context 控制生命周期（cancel 即停止）。
+//
+// 事件驱动 + 指数退避策略：
+//   - 收到 evalCh 通知时立即执行评估批次
+//   - 无通知时按 ticker 轮询，空闲时间隔指数增长（PollInterval → MaxInterval）
+//   - 有评估活动时重置间隔至 PollInterval
 func (e *RAGASEvaluator) Start(ctx context.Context) {
-	log.Printf("📊 [RAGAS] Evaluator started: batch=%d interval=%s",
-		e.config.BatchSize, e.config.PollInterval)
+	slogEval.Info("evaluator started",
+		"batch_size", e.config.BatchSize,
+		"base_interval", e.config.PollInterval,
+		"max_interval", e.config.MaxInterval,
+		"notify_buffer", cap(e.evalCh))
 
-	ticker := time.NewTicker(e.config.PollInterval)
+	currentInterval := e.config.PollInterval
+	ticker := time.NewTicker(currentInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("📊 [RAGAS] Evaluator shutting down")
+			slogEval.Info("evaluator shutting down")
 			return
+
+		case <-e.evalCh:
+			// 收到即时通知 — 排空通道中可能积攒的其他通知
+			e.drainNotifications()
+
+			evaluated := e.evaluateBatch(ctx)
+			if evaluated > 0 {
+				slogEval.Info("evaluated interactions", "count", evaluated, "trigger", "notification")
+				currentInterval = e.config.PollInterval
+				ticker.Reset(currentInterval)
+			}
+
 		case <-ticker.C:
 			evaluated := e.evaluateBatch(ctx)
 			if evaluated > 0 {
-				log.Printf("📊 [RAGAS] Evaluated %d interactions", evaluated)
+				slogEval.Info("evaluated interactions", "count", evaluated, "trigger", "poll")
+				// 有活动 → 重置为基础间隔
+				currentInterval = e.config.PollInterval
+				ticker.Reset(currentInterval)
+			} else {
+				// 无活动 → 指数退避（翻倍，不超过 MaxInterval）
+				currentInterval = e.backoff(currentInterval)
+				ticker.Reset(currentInterval)
 			}
+		}
+	}
+}
+
+// backoff 计算下一个退避间隔（翻倍，但不超过 MaxInterval）。
+func (e *RAGASEvaluator) backoff(current time.Duration) time.Duration {
+	next := current * 2
+	if next > e.config.MaxInterval {
+		next = e.config.MaxInterval
+	}
+	return next
+}
+
+// drainNotifications 非阻塞地排空 evalCh 中积攒的通知。
+// 批量评估已经会拉取所有 pending 交互，所以只需要一个"唤醒信号"，
+// 通道中的剩余 ID 可以安全丢弃。
+func (e *RAGASEvaluator) drainNotifications() {
+	for {
+		select {
+		case <-e.evalCh:
+		default:
+			return
 		}
 	}
 }
@@ -100,7 +178,7 @@ func (e *RAGASEvaluator) evaluateBatch(ctx context.Context) int {
 		Limit(e.config.BatchSize).
 		Find(&interactions).Error
 	if err != nil {
-		log.Printf("⚠️  [RAGAS] Fetch pending interactions failed: %v", err)
+		slogEval.Warn("fetch pending interactions failed", "err", err)
 		return 0
 	}
 
@@ -117,7 +195,7 @@ func (e *RAGASEvaluator) evaluateBatch(ctx context.Context) int {
 		}
 
 		if err := e.evaluateOne(ctx, inter); err != nil {
-			log.Printf("⚠️  [RAGAS] Evaluate interaction %d failed: %v", inter.ID, err)
+			slogEval.Warn("evaluate interaction failed", "interaction_id", inter.ID, "err", err)
 			// 标记为 skipped 避免反复失败重试
 			e.markSkipped(inter.ID)
 			continue
@@ -339,6 +417,6 @@ func (e *RAGASEvaluator) updateScores(interactionID uint, scores evalScores) err
 func (e *RAGASEvaluator) markSkipped(interactionID uint) {
 	if err := e.db.Model(&model.Interaction{}).Where("id = ?", interactionID).
 		Update("eval_status", "skipped").Error; err != nil {
-		log.Printf("⚠️  [RAGAS] Mark interaction %d as skipped failed: %v", interactionID, err)
+		slogEval.Warn("mark interaction as skipped failed", "interaction_id", interactionID, "err", err)
 	}
 }

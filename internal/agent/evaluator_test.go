@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // ============================
@@ -221,6 +222,12 @@ func TestDefaultEvalConfig(t *testing.T) {
 	if cfg.PollInterval.Seconds() != 30 {
 		t.Errorf("PollInterval = %v, want 30s", cfg.PollInterval)
 	}
+	if cfg.MaxInterval != 5*time.Minute {
+		t.Errorf("MaxInterval = %v, want 5m", cfg.MaxInterval)
+	}
+	if cfg.NotifyBuffer != 64 {
+		t.Errorf("NotifyBuffer = %d, want 64", cfg.NotifyBuffer)
+	}
 }
 
 // -- ragasSystemPrompt Tests ----------------------------------
@@ -237,5 +244,188 @@ func TestRagasSystemPrompt_ContainsDimensions(t *testing.T) {
 		if !strings.Contains(ragasSystemPrompt, dim) {
 			t.Errorf("ragasSystemPrompt should contain dimension %q", dim)
 		}
+	}
+}
+
+// -- Notify Tests ---------------------------------------------
+
+func TestNotify_SendsToChannel(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.NotifyBuffer = 4
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	e.Notify(42)
+
+	select {
+	case id := <-e.evalCh:
+		if id != 42 {
+			t.Errorf("Notify sent %d, want 42", id)
+		}
+	default:
+		t.Error("Notify should have sent to evalCh")
+	}
+}
+
+func TestNotify_NonBlockingWhenFull(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.NotifyBuffer = 2
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	// Fill the channel
+	e.Notify(1)
+	e.Notify(2)
+
+	// This should NOT block — it should drop silently
+	done := make(chan struct{})
+	go func() {
+		e.Notify(3)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success — Notify returned without blocking
+	case <-time.After(1 * time.Second):
+		t.Fatal("Notify blocked when channel was full")
+	}
+
+	// Verify channel still has exactly 2 items (original ones)
+	if len(e.evalCh) != 2 {
+		t.Errorf("channel length = %d, want 2", len(e.evalCh))
+	}
+}
+
+func TestNotify_MultipleSends(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.NotifyBuffer = 10
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	for i := uint(1); i <= 5; i++ {
+		e.Notify(i)
+	}
+
+	if len(e.evalCh) != 5 {
+		t.Errorf("channel length = %d, want 5", len(e.evalCh))
+	}
+}
+
+// -- drainNotifications Tests ---------------------------------
+
+func TestDrainNotifications_EmptiesChannel(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.NotifyBuffer = 10
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	// Fill channel with 5 notifications
+	for i := uint(1); i <= 5; i++ {
+		e.evalCh <- i
+	}
+
+	e.drainNotifications()
+
+	if len(e.evalCh) != 0 {
+		t.Errorf("after drain, channel length = %d, want 0", len(e.evalCh))
+	}
+}
+
+func TestDrainNotifications_EmptyChannelNoop(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.NotifyBuffer = 4
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	// Should not block on empty channel
+	done := make(chan struct{})
+	go func() {
+		e.drainNotifications()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Fatal("drainNotifications blocked on empty channel")
+	}
+}
+
+// -- backoff Tests --------------------------------------------
+
+func TestBackoff_Doubles(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.MaxInterval = 5 * time.Minute
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	next := e.backoff(30 * time.Second)
+	if next != 60*time.Second {
+		t.Errorf("backoff(30s) = %v, want 60s", next)
+	}
+}
+
+func TestBackoff_CapsAtMax(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.MaxInterval = 5 * time.Minute
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	next := e.backoff(3 * time.Minute)
+	if next != 5*time.Minute {
+		t.Errorf("backoff(3m) = %v, want 5m (max)", next)
+	}
+}
+
+func TestBackoff_AlreadyAtMax(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.MaxInterval = 5 * time.Minute
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	next := e.backoff(5 * time.Minute)
+	if next != 5*time.Minute {
+		t.Errorf("backoff(5m) = %v, want 5m (should stay at max)", next)
+	}
+}
+
+func TestBackoff_Progression(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.PollInterval = 30 * time.Second
+	cfg.MaxInterval = 5 * time.Minute
+	e := NewRAGASEvaluator(nil, nil, cfg)
+
+	expected := []time.Duration{
+		60 * time.Second,
+		120 * time.Second,
+		240 * time.Second,
+		5 * time.Minute, // 480s would exceed 300s max
+		5 * time.Minute, // stays at max
+	}
+
+	current := cfg.PollInterval
+	for i, want := range expected {
+		current = e.backoff(current)
+		if current != want {
+			t.Errorf("step %d: backoff = %v, want %v", i, current, want)
+		}
+	}
+}
+
+// -- NewRAGASEvaluator Tests ----------------------------------
+
+func TestNewRAGASEvaluator_DefaultBuffer(t *testing.T) {
+	cfg := EvalConfig{
+		BatchSize:    5,
+		PollInterval: 10 * time.Second,
+		MaxInterval:  1 * time.Minute,
+		NotifyBuffer: 0, // should default to 64
+	}
+	e := NewRAGASEvaluator(nil, nil, cfg)
+	if cap(e.evalCh) != 64 {
+		t.Errorf("evalCh capacity = %d, want 64 (default)", cap(e.evalCh))
+	}
+}
+
+func TestNewRAGASEvaluator_CustomBuffer(t *testing.T) {
+	cfg := DefaultEvalConfig()
+	cfg.NotifyBuffer = 128
+	e := NewRAGASEvaluator(nil, nil, cfg)
+	if cap(e.evalCh) != 128 {
+		t.Errorf("evalCh capacity = %d, want 128", cap(e.evalCh))
 	}
 }

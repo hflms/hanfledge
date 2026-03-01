@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogFusion = logger.L("RAGFusion")
 
 // ============================
 // RAG-Fusion Query Expansion (§8.1.2)
@@ -77,20 +79,20 @@ func (e *QueryExpander) ExpandQuery(ctx context.Context, originalQuery string) [
 		MaxTokens:   512,
 	})
 	if err != nil {
-		log.Printf("⚠️  [RAG-Fusion] Query expansion LLM call failed: %v", err)
+		slogFusion.Warn("query expansion LLM call failed", "err", err)
 		return queries
 	}
 
 	// Parse numbered lines from response
 	variants := parseNumberedLines(response)
 	if len(variants) == 0 {
-		log.Printf("⚠️  [RAG-Fusion] No variants parsed from LLM response")
+		slogFusion.Warn("no variants parsed from LLM response")
 		return queries
 	}
 
 	queries = append(queries, variants...)
-	log.Printf("🔀 [RAG-Fusion] Expanded query into %d variants (1 original + %d generated)",
-		len(queries), len(variants))
+	slogFusion.Info("expanded query",
+		"total", len(queries), "generated", len(variants))
 
 	return queries
 }
