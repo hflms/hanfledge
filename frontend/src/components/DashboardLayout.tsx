@@ -102,6 +102,13 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
                             ))}
                         </div>
                     </nav>
+
+                    <div className={styles.sidebarFooter}>
+                        <Link href="/help" className={styles.helpLink}>
+                            <span className={styles.navItemIcon}>❓</span>
+                            帮助文档
+                        </Link>
+                    </div>
                 </aside>
 
                 {/* Main */}
