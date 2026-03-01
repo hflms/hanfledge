@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import type { AgentWebSocketChannel } from '@/lib/plugin/types';
 import styles from '../page.module.css';
 
 const VoiceInput = dynamic(() => import('@/components/VoiceInput/VoiceInput'), { ssr: false });
@@ -10,7 +11,7 @@ interface SessionInputProps {
     sending: boolean;
     sessionActive: boolean;
     onSend: () => void;
-    wsRef: React.RefObject<WebSocket | null>;
+    agentChannel: AgentWebSocketChannel;
 }
 
 export default function SessionInput({
@@ -19,7 +20,7 @@ export default function SessionInput({
     sending,
     sessionActive,
     onSend,
-    wsRef,
+    agentChannel,
 }: SessionInputProps) {
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -47,7 +48,7 @@ export default function SessionInput({
         <div className={styles.inputArea}>
             <VoiceInput
                 onTranscript={handleVoiceTranscript}
-                wsRef={wsRef}
+                agentChannel={agentChannel}
                 disabled={!sessionActive || sending}
             />
             <textarea

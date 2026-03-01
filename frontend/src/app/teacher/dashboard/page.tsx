@@ -1,25 +1,23 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {
-    listCourses,
-    listTeacherActivities,
-    getKnowledgeRadar,
-    getActivitySessions,
-    getSkillEffectiveness,
     exportClassMastery,
     exportErrorNotebookCSV,
     exportActivitySessions,
     exportInteractionLog,
     previewActivity,
+    getActivitySessions,
     type Course,
     type LearningActivity,
     type KnowledgeRadarData,
     type ActivitySessionStats,
     type SkillEffectivenessResponse,
+    type PaginatedResponse,
 } from '@/lib/api';
+import { useApi } from '@/lib/useApi';
 import styles from './page.module.css';
 import PluginSlot from '@/components/PluginSlot';
 import { useBuiltinDashboardPlugins } from '@/lib/plugin/DashboardPlugins';
@@ -37,59 +35,38 @@ const SkillEffectivenessChart = dynamic(() => import('./SkillEffectivenessChart'
 export default function TeacherDashboardPage() {
     const router = useRouter();
     const { toast } = useToast();
-    const [courses, setCourses] = useState<Course[]>([]);
+    const { data: coursesData, isLoading: loading } = useApi<PaginatedResponse<Course>>('/courses');
+    const courses = coursesData?.items || [];
+    
     const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
-    const [radarData, setRadarData] = useState<KnowledgeRadarData | null>(null);
-    const [activities, setActivities] = useState<LearningActivity[]>([]);
     const [selectedActivity, setSelectedActivity] = useState<ActivitySessionStats | null>(null);
     const closeActivityModal = useCallback(() => setSelectedActivity(null), []);
     const activityModalRef = useModalA11y(!!selectedActivity, closeActivityModal);
-    const [skillEffectiveness, setSkillEffectiveness] = useState<SkillEffectivenessResponse | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [radarLoading, setRadarLoading] = useState(false);
     const [exporting, setExporting] = useState<string | null>(null);
 
     // Register built-in dashboard widget plugins
     useBuiltinDashboardPlugins();
 
-    // Load courses on mount
+    // Auto-select first course
     useEffect(() => {
-        listCourses()
-            .then(data => {
-                const list = data?.items || [];
-                setCourses(list);
-                if (list.length > 0) {
-                    setSelectedCourseId(list[0].id);
-                }
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
-
-    // Load radar data + activities when course changes
-    const loadDashboardData = useCallback(async (courseId: number) => {
-        setRadarLoading(true);
-        try {
-            const [radar, acts, skillData] = await Promise.all([
-                getKnowledgeRadar(courseId),
-                listTeacherActivities(courseId),
-                getSkillEffectiveness(courseId).catch(() => null),
-            ]);
-            setRadarData(radar);
-            setActivities(acts?.items || []);
-            setSkillEffectiveness(skillData);
-        } catch (err) {
-            console.error('Failed to load dashboard data', err);
-        } finally {
-            setRadarLoading(false);
+        if (courses.length > 0 && !selectedCourseId) {
+            setSelectedCourseId(courses[0].id);
         }
-    }, []);
+    }, [courses, selectedCourseId]);
 
-    useEffect(() => {
-        if (selectedCourseId) {
-            loadDashboardData(selectedCourseId);
-        }
-    }, [selectedCourseId, loadDashboardData]);
+    // Data fetching via SWR handles caching, deduplication and avoids waterfalls
+    const { data: radarData, isLoading: radarLoading } = useApi<KnowledgeRadarData>(
+        selectedCourseId ? `/dashboard/knowledge-radar?course_id=${selectedCourseId}` : null
+    );
+
+    const { data: activitiesData } = useApi<PaginatedResponse<LearningActivity>>(
+        selectedCourseId ? `/activities?course_id=${selectedCourseId}` : null
+    );
+    const activities = activitiesData?.items || [];
+
+    const { data: skillEffectiveness } = useApi<SkillEffectivenessResponse>(
+        selectedCourseId ? `/dashboard/skill-effectiveness?course_id=${selectedCourseId}` : null
+    );
 
     // Handle activity click to show session details
     const handleActivityClick = async (activityId: number) => {

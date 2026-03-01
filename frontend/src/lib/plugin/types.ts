@@ -77,8 +77,8 @@ export interface InteractionEvent {
 /** WebSocket channel abstraction for Agent communication. */
 export interface AgentWebSocketChannel {
   send: (message: string) => void;
-  onMessage: (handler: (data: string) => void) => void;
-  onClose: (handler: () => void) => void;
+  onMessage: (handler: (data: string) => void) => () => void;
+  onClose: (handler: () => void) => () => void;
   close: () => void;
 }
 

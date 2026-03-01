@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import type { AgentWebSocketChannel } from '@/lib/plugin/types';
 import styles from './Avatar3D.module.css';
 
 // -- Types -----------------------------------------------
 
 interface Avatar3DProps {
-  wsRef: React.RefObject<WebSocket | null>;
+  agentChannel: AgentWebSocketChannel;
   active?: boolean;
 }
 
@@ -23,7 +24,7 @@ interface AvatarActionEvent {
 
 // -- Avatar3D Component -----------------------------------------------
 
-export default function Avatar3D({ wsRef, active = true }: Avatar3DProps) {
+export default function Avatar3D({ agentChannel, active = true }: Avatar3DProps) {
   const [avatarState, setAvatarState] = useState<AvatarState>('idle');
   const [statusText, setStatusText] = useState('待命中');
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,12 +70,9 @@ export default function Avatar3D({ wsRef, active = true }: Avatar3DProps) {
   // -- WebSocket Listener -----------------------------------------------
 
   useEffect(() => {
-    const ws = wsRef.current;
-    if (!ws) return;
-
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = (dataString: string) => {
       try {
-        const data: AvatarActionEvent = JSON.parse(event.data);
+        const data: AvatarActionEvent = JSON.parse(dataString);
         if (data.event === 'avatar_action' && data.payload) {
           handleAction(
             data.payload.action,
@@ -87,11 +85,11 @@ export default function Avatar3D({ wsRef, active = true }: Avatar3DProps) {
       }
     };
 
-    ws.addEventListener('message', handleMessage);
+    const unsubscribe = agentChannel.onMessage(handleMessage);
     return () => {
-      ws.removeEventListener('message', handleMessage);
+      unsubscribe();
     };
-  }, [wsRef, handleAction]);
+  }, [agentChannel, handleAction]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

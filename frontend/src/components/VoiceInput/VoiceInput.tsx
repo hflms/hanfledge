@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { AgentWebSocketChannel } from '@/lib/plugin/types';
 import styles from './VoiceInput.module.css';
 
 // -- Types -----------------------------------------------
 
 interface VoiceInputProps {
   onTranscript: (text: string) => void;
-  wsRef: React.RefObject<WebSocket | null>;
+  agentChannel: AgentWebSocketChannel;
   disabled?: boolean;
 }
 
@@ -22,23 +23,20 @@ interface VoiceResultEvent {
 
 // -- VoiceInput Component -----------------------------------------------
 
-export default function VoiceInput({ onTranscript, wsRef, disabled = false }: VoiceInputProps) {
+export default function VoiceInput({ onTranscript, agentChannel, disabled = false }: VoiceInputProps) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Listen for voice_result events from WebSocket
+  // Listen for voice_result events from WebSocket via agentChannel
   useEffect(() => {
-    const ws = wsRef.current;
-    if (!ws) return;
-
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = (data: string) => {
       try {
-        const data: VoiceResultEvent = JSON.parse(event.data);
-        if (data.event === 'voice_result' && data.payload) {
-          if (data.payload.is_final && data.payload.text) {
-            onTranscript(data.payload.text);
+        const parsed: VoiceResultEvent = JSON.parse(data);
+        if (parsed.event === 'voice_result' && parsed.payload) {
+          if (parsed.payload.is_final && parsed.payload.text) {
+            onTranscript(parsed.payload.text);
           }
         }
       } catch {
@@ -46,22 +44,19 @@ export default function VoiceInput({ onTranscript, wsRef, disabled = false }: Vo
       }
     };
 
-    ws.addEventListener('message', handleMessage);
+    const unsubscribe = agentChannel.onMessage(handleMessage);
     return () => {
-      ws.removeEventListener('message', handleMessage);
+      unsubscribe();
     };
-  }, [wsRef, onTranscript]);
+  }, [agentChannel, onTranscript]);
 
   // -- Send WS Event Helper -----------------------------------------------
 
   const sendWSEvent = useCallback(
     (event: string, payload: Record<string, unknown>) => {
-      const ws = wsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ event, payload, timestamp: Date.now() }));
-      }
+      agentChannel.send(JSON.stringify({ event, payload, timestamp: Date.now() }));
     },
-    [wsRef],
+    [agentChannel],
   );
 
   // -- Start Recording -----------------------------------------------

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import styles from '../page.module.css';
 
@@ -19,6 +19,41 @@ interface MessageListProps {
     thinkingStatus: string | null;
 }
 
+// -- Sub-components ----------------------------------------------
+
+const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => (
+    <div
+        className={`${styles.messageBubble} ${
+            msg.role === 'student' ? styles.messageStudent :
+            msg.role === 'teacher' ? styles.messageTeacher :
+            msg.role === 'coach' ? styles.messageCoach :
+            styles.messageSystem
+        }`}
+        style={{ contentVisibility: 'auto' }}
+    >
+        {msg.role !== 'system' && (
+            <div className={styles.messageHeader}>
+                <span className={`${styles.roleIcon} ${
+                    msg.role === 'student' ? styles.roleStudent : msg.role === 'teacher' ? styles.roleTeacher : styles.roleCoach
+                }`}>
+                    {msg.role === 'student' ? 'S' : msg.role === 'teacher' ? 'T' : 'AI'}
+                </span>
+                <span className={styles.roleLabel}>
+                    {msg.role === 'student' ? '我' : msg.role === 'teacher' ? '人类教师 (接管)' : 'AI 导师'}
+                </span>
+            </div>
+        )}
+        <div className={styles.messageContent}>
+            {msg.role === 'coach' ? (
+                <MarkdownRenderer content={msg.content} />
+            ) : (
+                msg.content
+            )}
+        </div>
+    </div>
+));
+MessageBubble.displayName = 'MessageBubble';
+
 // -- Component ---------------------------------------------------
 
 export default function MessageList({ messages, streamingContent, thinkingStatus }: MessageListProps) {
@@ -37,35 +72,7 @@ export default function MessageList({ messages, streamingContent, thinkingStatus
             )}
 
             {messages.map(msg => (
-                <div
-                    key={msg.id}
-                    className={`${styles.messageBubble} ${
-                        msg.role === 'student' ? styles.messageStudent :
-                        msg.role === 'teacher' ? styles.messageTeacher :
-                        msg.role === 'coach' ? styles.messageCoach :
-                        styles.messageSystem
-                    }`}
-                >
-                    {msg.role !== 'system' && (
-                        <div className={styles.messageHeader}>
-                            <span className={`${styles.roleIcon} ${
-                                msg.role === 'student' ? styles.roleStudent : msg.role === 'teacher' ? styles.roleTeacher : styles.roleCoach
-                            }`}>
-                                {msg.role === 'student' ? 'S' : msg.role === 'teacher' ? 'T' : 'AI'}
-                            </span>
-                            <span className={styles.roleLabel}>
-                                {msg.role === 'student' ? '我' : msg.role === 'teacher' ? '人类教师 (接管)' : 'AI 导师'}
-                            </span>
-                        </div>
-                    )}
-                    <div className={styles.messageContent}>
-                        {msg.role === 'coach' ? (
-                            <MarkdownRenderer content={msg.content} />
-                        ) : (
-                            msg.content
-                        )}
-                    </div>
-                </div>
+                <MessageBubble key={msg.id} msg={msg} />
             ))}
 
             {/* Streaming content (partial coach response) */}

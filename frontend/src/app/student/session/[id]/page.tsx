@@ -207,7 +207,7 @@ export default function SessionPage() {
 
     // -- WebSocket Hook ---------------------------------------------
 
-    const { wsRef, wsStatus, reconnectCount, agentChannel } = useSessionWebSocket({
+    const { wsStatus, reconnectCount, agentChannel } = useSessionWebSocket({
         sessionId,
         sessionStatus: session?.status,
         onEvent: handleWSEvent,
@@ -265,7 +265,7 @@ export default function SessionPage() {
 
     const handleSend = useCallback(async () => {
         const text = input.trim();
-        if (!text || sending || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        if (!text || sending || wsStatus !== 'connected') return;
 
         setMessages(prev => [
             ...prev,
@@ -305,8 +305,8 @@ export default function SessionPage() {
             payload: { text },
             timestamp: Math.floor(Date.now() / 1000),
         };
-        wsRef.current.send(JSON.stringify(event));
-    }, [input, sending, sessionId, wsRef]);
+        agentChannel.send(JSON.stringify(event));
+    }, [input, sending, sessionId, wsStatus, agentChannel]);
 
     // -- Render Skill Renderer (plugin mode) ------------------------
 
@@ -413,14 +413,14 @@ export default function SessionPage() {
                             sending={sending}
                             sessionActive={session.status === 'active'}
                             onSend={handleSend}
-                            wsRef={wsRef}
+                            agentChannel={agentChannel}
                         />
                     </>
                 )}
 
                 {/* 3D Avatar — visible alongside the default chat */}
                 {!matchedPlugin && (
-                    <Avatar3D wsRef={wsRef} active={wsStatus === 'connected'} />
+                    <Avatar3D agentChannel={agentChannel} active={wsStatus === 'connected'} />
                 )}
             </div>
         </div>

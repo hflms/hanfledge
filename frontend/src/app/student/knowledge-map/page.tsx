@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
-    listCourses,
-    getStudentKnowledgeMap,
     type Course,
     type KnowledgeMapData,
+    type PaginatedResponse,
 } from '@/lib/api';
+import { useApi } from '@/lib/useApi';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
 
@@ -16,45 +16,22 @@ const KnowledgeGraph = dynamic(() => import('./KnowledgeGraph'), { ssr: false })
 // -- Component ----------------------------------------------------
 
 export default function KnowledgeMapPage() {
-    const [courses, setCourses] = useState<Course[]>([]);
+    const { data: coursesData, isLoading: loading } = useApi<PaginatedResponse<Course>>('/courses');
+    const courses = coursesData?.items || [];
+    
     const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
-    const [mapData, setMapData] = useState<KnowledgeMapData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [mapLoading, setMapLoading] = useState(false);
 
-    // Load courses on mount
+    // Auto-select first course when courses load
     useEffect(() => {
-        listCourses()
-            .then((data) => {
-                const list = data?.items || [];
-                setCourses(list);
-                if (list.length > 0) {
-                    setSelectedCourseId(list[0].id);
-                }
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
-    }, []);
-
-    // Load knowledge map when course changes
-    const fetchMap = useCallback(async (courseId: number) => {
-        setMapLoading(true);
-        try {
-            const data = await getStudentKnowledgeMap(courseId);
-            setMapData(data);
-        } catch (err) {
-            console.error('Failed to load knowledge map:', err);
-            setMapData(null);
-        } finally {
-            setMapLoading(false);
+        if (courses.length > 0 && !selectedCourseId) {
+            setSelectedCourseId(courses[0].id);
         }
-    }, []);
+    }, [courses, selectedCourseId]);
 
-    useEffect(() => {
-        if (selectedCourseId) {
-            fetchMap(selectedCourseId);
-        }
-    }, [selectedCourseId, fetchMap]);
+    // Data fetching via SWR handles caching, deduplication and avoids waterfalls
+    const { data: mapData, isLoading: mapLoading } = useApi<KnowledgeMapData>(
+        selectedCourseId ? `/student/knowledge-map?course_id=${selectedCourseId}` : null
+    );
 
     // -- Render ----------------------------------------------------
 

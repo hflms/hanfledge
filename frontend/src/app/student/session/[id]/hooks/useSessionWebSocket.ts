@@ -61,9 +61,15 @@ export function useSessionWebSocket({
         },
         onMessage: (handler: (data: string) => void) => {
             wsMessageHandlersRef.current.push(handler);
+            return () => {
+                wsMessageHandlersRef.current = wsMessageHandlersRef.current.filter(h => h !== handler);
+            };
         },
         onClose: (handler: () => void) => {
             wsCloseHandlersRef.current.push(handler);
+            return () => {
+                wsCloseHandlersRef.current = wsCloseHandlersRef.current.filter(h => h !== handler);
+            };
         },
         close: () => {
             intentionalCloseRef.current = true;
