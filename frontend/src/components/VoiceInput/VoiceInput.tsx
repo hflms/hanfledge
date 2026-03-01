@@ -28,6 +28,15 @@ export default function VoiceInput({ onTranscript, agentChannel, disabled = fals
   const [error, setError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef(true);
+
+  // Track mount status to prevent async state updates on unmounted component
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Listen for voice_result events from WebSocket via agentChannel
   useEffect(() => {
@@ -73,6 +82,13 @@ export default function VoiceInput({ onTranscript, agentChannel, disabled = fals
           noiseSuppression: true,
         },
       });
+
+      // If unmounted while waiting for permissions, stop stream immediately
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
       streamRef.current = stream;
 
       // Notify server that voice input is starting
@@ -88,10 +104,12 @@ export default function VoiceInput({ onTranscript, agentChannel, disabled = fals
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (e: BlobEvent) => {
+        if (!isMountedRef.current) return;
         if (e.data.size > 0) {
           // Convert blob to base64 and send through WebSocket
           const reader = new FileReader();
           reader.onloadend = () => {
+            if (!isMountedRef.current) return;
             const base64 = (reader.result as string).split(',')[1];
             if (base64) {
               sendWSEvent('voice_data', { data: base64 });
@@ -104,6 +122,7 @@ export default function VoiceInput({ onTranscript, agentChannel, disabled = fals
       mediaRecorder.start(250); // Send chunks every 250ms
       setRecording(true);
     } catch (err) {
+      if (!isMountedRef.current) return;
       if (err instanceof DOMException && err.name === 'NotAllowedError') {
         setError('麦克风权限被拒绝，请在浏览器设置中允许访问');
       } else if (err instanceof DOMException && err.name === 'NotFoundError') {
@@ -137,11 +156,20 @@ export default function VoiceInput({ onTranscript, agentChannel, disabled = fals
 
   // -- Toggle Handler -----------------------------------------------
 
-  const handleToggle = useCallback(() => {
+  const isStartingRef = useRef(false);
+
+  const handleToggle = useCallback(async () => {
+    if (isStartingRef.current) return;
+
     if (recording) {
       stopRecording();
     } else {
-      startRecording();
+      isStartingRef.current = true;
+      try {
+        await startRecording();
+      } finally {
+        isStartingRef.current = false;
+      }
     }
   }, [recording, startRecording, stopRecording]);
 

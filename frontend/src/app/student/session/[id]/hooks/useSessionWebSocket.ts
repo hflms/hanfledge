@@ -149,8 +149,9 @@ export function useSessionWebSocket({
         if (sessionStatus !== 'active') return;
 
         intentionalCloseRef.current = false;
-        wsMessageHandlersRef.current = [];
-        wsCloseHandlersRef.current = [];
+        // DO NOT clear handlers here. Child components register their handlers
+        // in their own useEffects which run BEFORE this parent useEffect.
+        // Clearing them here wipes out their subscriptions.
         connectWebSocket();
 
         return () => {

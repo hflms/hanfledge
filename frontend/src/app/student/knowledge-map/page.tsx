@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
     type Course,
@@ -21,16 +21,12 @@ export default function KnowledgeMapPage() {
     
     const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
 
-    // Auto-select first course when courses load
-    useEffect(() => {
-        if (courses.length > 0 && !selectedCourseId) {
-            setSelectedCourseId(courses[0].id);
-        }
-    }, [courses, selectedCourseId]);
+    // Derive effective course ID synchronously to avoid useEffect waterfall
+    const effectiveCourseId = selectedCourseId ?? (courses.length > 0 ? courses[0].id : null);
 
     // Data fetching via SWR handles caching, deduplication and avoids waterfalls
     const { data: mapData, isLoading: mapLoading } = useApi<KnowledgeMapData>(
-        selectedCourseId ? `/student/knowledge-map?course_id=${selectedCourseId}` : null
+        effectiveCourseId ? `/student/knowledge-map?course_id=${effectiveCourseId}` : null
     );
 
     // -- Render ----------------------------------------------------
@@ -61,7 +57,7 @@ export default function KnowledgeMapPage() {
                     {courses.length > 1 && (
                         <select
                             className={styles.courseSelect}
-                            value={selectedCourseId || ''}
+                            value={effectiveCourseId || ''}
                             onChange={(e) => setSelectedCourseId(Number(e.target.value))}
                         >
                             {courses.map((c) => (

@@ -70,6 +70,8 @@ export default function Avatar3D({ agentChannel, active = true }: Avatar3DProps)
   // -- WebSocket Listener -----------------------------------------------
 
   useEffect(() => {
+    if (!active) return;
+
     const handleMessage = (dataString: string) => {
       try {
         const data: AvatarActionEvent = JSON.parse(dataString);
@@ -89,7 +91,7 @@ export default function Avatar3D({ agentChannel, active = true }: Avatar3DProps)
     return () => {
       unsubscribe();
     };
-  }, [agentChannel, handleAction]);
+  }, [agentChannel, handleAction, active]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

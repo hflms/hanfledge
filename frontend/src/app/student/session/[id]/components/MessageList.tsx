@@ -54,6 +54,18 @@ const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => (
 ));
 MessageBubble.displayName = 'MessageBubble';
 
+// Extract the mapping into a memoized component so it skips re-rendering during streaming
+const StableMessageList = React.memo(({ messages }: { messages: ChatMessage[] }) => {
+    return (
+        <>
+            {messages.map(msg => (
+                <MessageBubble key={msg.id} msg={msg} />
+            ))}
+        </>
+    );
+});
+StableMessageList.displayName = 'StableMessageList';
+
 // -- Component ---------------------------------------------------
 
 export default function MessageList({ messages, streamingContent, thinkingStatus }: MessageListProps) {
@@ -71,9 +83,7 @@ export default function MessageList({ messages, streamingContent, thinkingStatus
                 </div>
             )}
 
-            {messages.map(msg => (
-                <MessageBubble key={msg.id} msg={msg} />
-            ))}
+            <StableMessageList messages={messages} />
 
             {/* Streaming content (partial coach response) */}
             {streamingContent && (

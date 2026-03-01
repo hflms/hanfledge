@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {
@@ -47,25 +47,21 @@ export default function TeacherDashboardPage() {
     // Register built-in dashboard widget plugins
     useBuiltinDashboardPlugins();
 
-    // Auto-select first course
-    useEffect(() => {
-        if (courses.length > 0 && !selectedCourseId) {
-            setSelectedCourseId(courses[0].id);
-        }
-    }, [courses, selectedCourseId]);
+    // Derive effective course ID synchronously to avoid useEffect waterfall
+    const effectiveCourseId = selectedCourseId ?? (courses.length > 0 ? courses[0].id : null);
 
     // Data fetching via SWR handles caching, deduplication and avoids waterfalls
     const { data: radarData, isLoading: radarLoading } = useApi<KnowledgeRadarData>(
-        selectedCourseId ? `/dashboard/knowledge-radar?course_id=${selectedCourseId}` : null
+        effectiveCourseId ? `/dashboard/knowledge-radar?course_id=${effectiveCourseId}` : null
     );
 
     const { data: activitiesData } = useApi<PaginatedResponse<LearningActivity>>(
-        selectedCourseId ? `/activities?course_id=${selectedCourseId}` : null
+        effectiveCourseId ? `/activities?course_id=${effectiveCourseId}` : null
     );
     const activities = activitiesData?.items || [];
 
     const { data: skillEffectiveness } = useApi<SkillEffectivenessResponse>(
-        selectedCourseId ? `/dashboard/skill-effectiveness?course_id=${selectedCourseId}` : null
+        effectiveCourseId ? `/dashboard/skill-effectiveness?course_id=${effectiveCourseId}` : null
     );
 
     // Handle activity click to show session details
@@ -132,7 +128,7 @@ export default function TeacherDashboardPage() {
                 <div className={styles.controls}>
                     <select
                         className={styles.select}
-                        value={selectedCourseId || ''}
+                        value={effectiveCourseId || ''}
                         onChange={e => setSelectedCourseId(Number(e.target.value))}
                     >
                         {courses.map(c => (
@@ -142,15 +138,15 @@ export default function TeacherDashboardPage() {
                     <div className={styles.exportGroup}>
                         <button
                             className={styles.exportBtn}
-                            disabled={!!exporting || !selectedCourseId}
-                            onClick={() => selectedCourseId && handleExport('mastery', () => exportClassMastery(selectedCourseId))}
+                            disabled={!!exporting || !effectiveCourseId}
+                            onClick={() => effectiveCourseId && handleExport('mastery', () => exportClassMastery(effectiveCourseId))}
                         >
                             {exporting === 'mastery' ? '导出中...' : '导出掌握度'}
                         </button>
                         <button
                             className={styles.exportBtn}
-                            disabled={!!exporting || !selectedCourseId}
-                            onClick={() => selectedCourseId && handleExport('errors', () => exportErrorNotebookCSV(selectedCourseId))}
+                            disabled={!!exporting || !effectiveCourseId}
+                            onClick={() => effectiveCourseId && handleExport('errors', () => exportErrorNotebookCSV(effectiveCourseId))}
                         >
                             {exporting === 'errors' ? '导出中...' : '导出错题本'}
                         </button>
@@ -238,8 +234,8 @@ export default function TeacherDashboardPage() {
             <PluginSlot
                 name="teacher.dashboard.widget"
                 context={{
-                    courseId: selectedCourseId || 0,
-                    courseTitle: courses.find(c => c.id === selectedCourseId)?.title || '',
+                    courseId: effectiveCourseId || 0,
+                    courseTitle: courses.find(c => c.id === effectiveCourseId)?.title || '',
                 }}
             />
 

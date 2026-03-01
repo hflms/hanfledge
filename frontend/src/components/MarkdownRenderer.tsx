@@ -116,7 +116,7 @@ const markdownComponents: Components = {
 
 // -- Component ---------------------------------------------------
 
-export default function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
+const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
     return (
         <div className={styles.markdown}>
             <ReactMarkdown
@@ -128,4 +128,6 @@ export default function MarkdownRenderer({ content, isStreaming = false }: Markd
             {isStreaming && <span className={styles.cursor} />}
         </div>
     );
-}
+});
+
+export default MarkdownRenderer;
