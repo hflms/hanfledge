@@ -101,6 +101,7 @@ import RolePlayRenderer from './renderers/RolePlayRenderer';
 import QuizRenderer from './renderers/QuizRenderer';
 import ErrorDiagnosisRenderer from './renderers/ErrorDiagnosisRenderer';
 import CrossDisciplinaryRenderer from './renderers/CrossDisciplinaryRenderer';
+import LearningSurveyRenderer from './renderers/LearningSurveyRenderer';
 
 const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_concept_socratic: SocraticRenderer,
@@ -109,6 +110,7 @@ const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_assessment_quiz: QuizRenderer,
   general_diagnosis_error: ErrorDiagnosisRenderer as unknown as FC<SkillRendererProps>,
   general_synthesis_crosslink: CrossDisciplinaryRenderer as unknown as FC<SkillRendererProps>,
+  general_diagnosis_survey: LearningSurveyRenderer,
 };
 
 const errorDiagnosisManifest: PluginManifest = {
@@ -139,6 +141,21 @@ const crossDisciplinaryManifest: PluginManifest = {
   permissions: ['getStudentContext', 'getKnowledgePoint'],
 };
 
+const learningSurveyManifest: PluginManifest = {
+  id: 'learning-survey-renderer',
+  name: '学情问卷诊断渲染器',
+  version: '1.0.0',
+  type: 'skill_renderer',
+  skillId: 'general_diagnosis_survey',
+  trust_level: 'domain',
+  author: 'hanfledge-team',
+  description: '学情诊断 — 通过结构化问卷生成学生学习画像',
+  entry: '@/lib/plugin/renderers/LearningSurveyRenderer',
+  slots: ['student.interaction.main'],
+  supported_interaction_modes: ['text'],
+  permissions: ['getStudentContext', 'getKnowledgePoint', 'sendMessageToAgent', 'reportInteractionEvent'],
+};
+
 // -- All Discovered Manifests ----------------------------------------
 
 /**
@@ -152,6 +169,7 @@ export const SKILL_MANIFESTS: PluginManifest[] = [
   quizManifest,
   errorDiagnosisManifest,
   crossDisciplinaryManifest,
+  learningSurveyManifest,
 ];
 
 // -- Manifest -> SkillUIRenderer Conversion --------------------------

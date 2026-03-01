@@ -1,0 +1,36 @@
+{
+  "id": "general_diagnosis_survey",
+  "name": "学情问卷诊断",
+  "description": "AI 通过结构化问卷对学生的学习风格、前置知识、学习动机、自我效能感和学习习惯进行全面诊断。诊断结果生成学生画像，供后续技能制定个性化学习方案。",
+  "version": "1.0.0",
+  "author": "system",
+  "category": "diagnosis",
+  "subjects": ["math", "physics", "chemistry", "biology", "chinese", "english", "history", "geography"],
+  "tags": ["学情诊断", "问卷调查", "学习画像", "个性化学习", "学习风格"],
+  "scaffolding_levels": ["high", "medium", "low"],
+  "constraints": {
+    "must_match_knowledge_point": false,
+    "must_complete_all_dimensions": true,
+    "max_questions_per_dimension": 5,
+    "min_questions_per_dimension": 2,
+    "must_generate_learning_profile": true,
+    "must_explain_diagnosis_result": true,
+    "never_judge_student_negatively": true
+  },
+  "tools": {
+    "leveler": {
+      "enabled": false,
+      "description": "学情诊断不使用难度调节，问卷难度固定"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "session_start",
+    "deactivate_when": "survey_complete"
+  },
+  "evaluation_dimensions": [
+    "question_coverage",
+    "diagnosis_accuracy",
+    "profile_completeness",
+    "feedback_constructiveness"
+  ]
+}
