@@ -17,36 +17,14 @@ import {
     type CustomSkillStatus,
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { CATEGORY_MAP, CATEGORY_ICONS, SUBJECT_MAP, CUSTOM_SKILL_STATUS_LABELS } from '@/lib/constants';
+import { useModalA11y, cardA11yProps } from '@/lib/a11y';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
 // -- Constants ------------------------------------------------
-
-const CATEGORY_MAP: Record<string, string> = {
-    'inquiry-based': '探究式教学',
-    'critical-thinking': '批判性思维',
-    'collaborative': '协作学习',
-    'role-play': '角色扮演',
-};
-
-const SUBJECT_MAP: Record<string, string> = {
-    math: '数学',
-    physics: '物理',
-    chemistry: '化学',
-    biology: '生物',
-    chinese: '语文',
-    english: '英语',
-    history: '历史',
-    geography: '地理',
-};
-
-const CATEGORY_ICONS: Record<string, string> = {
-    'inquiry-based': '🔍',
-    'critical-thinking': '🧐',
-    'collaborative': '🤝',
-    'role-play': '🎭',
-};
 
 /** Teaching stages mapped to recommended skill categories (design §6.1) */
 const TEACHING_STAGES: { key: string; label: string; icon: string; categories: string[] }[] = [
@@ -59,13 +37,6 @@ const TEACHING_STAGES: { key: string; label: string; icon: string; categories: s
 const TOOL_LABELS: Record<string, string> = {
     leveler: '难度调节器',
     make_it_relevant: '时事关联',
-};
-
-const STATUS_LABELS: Record<CustomSkillStatus, string> = {
-    draft: '草稿',
-    published: '已发布',
-    shared: '已共享',
-    archived: '已归档',
 };
 
 const STATUS_CLASSES: Record<CustomSkillStatus, string> = {
@@ -107,6 +78,12 @@ export default function SkillStorePage() {
     const [customStatusFilter, setCustomStatusFilter] = useState<CustomSkillStatus | ''>('');
     const [selectedCustomSkill, setSelectedCustomSkill] = useState<CustomSkill | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
+
+    // -- Modal a11y hooks --
+    const closeBuiltinModal = useCallback(() => setSelectedSkill(null), []);
+    const closeCustomModal = useCallback(() => setSelectedCustomSkill(null), []);
+    const builtinModalRef = useModalA11y(!!selectedSkill && !detailLoading, closeBuiltinModal);
+    const customModalRef = useModalA11y(!!selectedCustomSkill, closeCustomModal);
 
     // -- Fetch built-in skills --
 
@@ -175,7 +152,7 @@ export default function SkillStorePage() {
             await publishCustomSkill(skill.id);
             toast('技能已发布', 'success');
             fetchCustomSkills();
-            setSelectedCustomSkill(null);
+            closeCustomModal();
         } catch (err) {
             toast(err instanceof Error ? err.message : '发布失败', 'error');
         } finally {
@@ -189,7 +166,7 @@ export default function SkillStorePage() {
             await archiveCustomSkill(skill.id);
             toast('技能已归档', 'success');
             fetchCustomSkills();
-            setSelectedCustomSkill(null);
+            closeCustomModal();
         } catch (err) {
             toast(err instanceof Error ? err.message : '归档失败', 'error');
         } finally {
@@ -204,7 +181,7 @@ export default function SkillStorePage() {
             await deleteCustomSkill(skill.id);
             toast('技能已删除', 'success');
             fetchCustomSkills();
-            setSelectedCustomSkill(null);
+            closeCustomModal();
         } catch (err) {
             toast(err instanceof Error ? err.message : '删除失败', 'error');
         } finally {
@@ -218,7 +195,7 @@ export default function SkillStorePage() {
             await shareCustomSkill(skill.id, visibility);
             toast(`技能已共享到${visibility === 'school' ? '学校' : '平台'}`, 'success');
             fetchCustomSkills();
-            setSelectedCustomSkill(null);
+            closeCustomModal();
         } catch (err) {
             toast(err instanceof Error ? err.message : '共享失败', 'error');
         } finally {
@@ -268,9 +245,7 @@ export default function SkillStorePage() {
 
     if (loading && mainTab === 'builtin') {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 
@@ -398,6 +373,7 @@ export default function SkillStorePage() {
                                 <div
                                     key={skill.id}
                                     className={`card ${styles.skillCard}`}
+                                    {...cardA11yProps}
                                     onClick={() => handleViewDetail(skill.id)}
                                 >
                                     <div className={styles.skillCardTop}>
@@ -466,9 +442,7 @@ export default function SkillStorePage() {
                     )}
 
                     {customLoading ? (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                            <div className="spinner" />
-                        </div>
+                        <LoadingSpinner />
                     ) : customSkills.length === 0 ? (
                         <div className={styles.emptyState}>
                             <div className={styles.emptyIcon}>🛠️</div>
@@ -491,6 +465,7 @@ export default function SkillStorePage() {
                                     <div
                                         key={skill.id}
                                         className={`card ${styles.skillCard}`}
+                                        {...cardA11yProps}
                                         onClick={() => setSelectedCustomSkill(skill)}
                                     >
                                         <div className={styles.skillCardTop}>
@@ -504,7 +479,7 @@ export default function SkillStorePage() {
                                                 </div>
                                             </div>
                                             <span className={`${styles.statusBadge} ${styles[STATUS_CLASSES[skill.status]] || ''}`}>
-                                                {STATUS_LABELS[skill.status]}
+                                                {CUSTOM_SKILL_STATUS_LABELS[skill.status]}
                                             </span>
                                         </div>
 
@@ -551,21 +526,21 @@ export default function SkillStorePage() {
 
             {/* Built-in Skill Detail Modal */}
             {selectedSkill && !detailLoading && (
-                <div className={styles.modalOverlay} onClick={() => setSelectedSkill(null)}>
-                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
+                <div className={styles.modalOverlay} onClick={closeBuiltinModal}>
+                    <div className={styles.modal} ref={builtinModalRef} role="dialog" aria-modal="true" aria-labelledby="builtin-skill-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                         <div className={styles.modalHeader}>
                             <div className={styles.modalIcon}>
                                 {CATEGORY_ICONS[selectedSkill.metadata.category] || '🧩'}
                             </div>
                             <div>
-                                <h2 className={styles.modalTitle}>{selectedSkill.metadata.name}</h2>
+                                <h2 id="builtin-skill-title" className={styles.modalTitle}>{selectedSkill.metadata.name}</h2>
                                 <div className={styles.modalSubtitle}>
                                     {CATEGORY_MAP[selectedSkill.metadata.category] || selectedSkill.metadata.category}
                                     {' · '}v{selectedSkill.metadata.version}
                                     {' · '}{selectedSkill.metadata.author}
                                 </div>
                             </div>
-                            <button className={styles.closeBtn} onClick={() => setSelectedSkill(null)}>✕</button>
+                            <button className={styles.closeBtn} onClick={closeBuiltinModal}>✕</button>
                         </div>
 
                         <div className={styles.modalBody}>
@@ -645,7 +620,7 @@ export default function SkillStorePage() {
                                 <div className={styles.scaffoldFlow}>
                                     {selectedSkill.metadata.scaffolding_levels.map((level, i) => (
                                         <span key={level} className={styles.scaffoldItem}>
-                                            <span className={styles.scaffoldDot} />
+                                            <span className={styles.scaffoldDot} aria-hidden="true" />
                                             {level === 'high' ? '高支架' : level === 'medium' ? '中支架' : level === 'low' ? '低支架' : level}
                                             {i < selectedSkill.metadata.scaffolding_levels.length - 1 && (
                                                 <span className={styles.scaffoldArrow}>→</span>
@@ -681,21 +656,21 @@ export default function SkillStorePage() {
 
             {/* Custom Skill Detail Modal */}
             {selectedCustomSkill && (
-                <div className={styles.modalOverlay} onClick={() => setSelectedCustomSkill(null)}>
-                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
+                <div className={styles.modalOverlay} onClick={closeCustomModal}>
+                    <div className={styles.modal} ref={customModalRef} role="dialog" aria-modal="true" aria-labelledby="custom-skill-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                         <div className={styles.modalHeader}>
                             <div className={styles.modalIcon}>
                                 {CATEGORY_ICONS[selectedCustomSkill.category] || '🧩'}
                             </div>
                             <div>
-                                <h2 className={styles.modalTitle}>{selectedCustomSkill.name}</h2>
+                                <h2 id="custom-skill-title" className={styles.modalTitle}>{selectedCustomSkill.name}</h2>
                                 <div className={styles.modalSubtitle}>
                                     {selectedCustomSkill.skill_id}
                                     {' · '}v{selectedCustomSkill.version}
-                                    {' · '}{STATUS_LABELS[selectedCustomSkill.status]}
+                                    {' · '}{CUSTOM_SKILL_STATUS_LABELS[selectedCustomSkill.status]}
                                 </div>
                             </div>
-                            <button className={styles.closeBtn} onClick={() => setSelectedCustomSkill(null)}>✕</button>
+                            <button className={styles.closeBtn} onClick={closeCustomModal}>✕</button>
                         </div>
 
                         <div className={styles.modalBody}>

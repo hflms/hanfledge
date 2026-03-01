@@ -13,6 +13,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { SkillRendererProps } from '@/lib/plugin/types';
+import { useModalA11y, cardA11yProps } from '@/lib/a11y';
 import styles from './RolePlayRenderer.module.css';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
@@ -74,6 +75,10 @@ export default function RolePlayRenderer({
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // -- Modal a11y for summary overlay --------------------------
+    const closeSummary = useCallback(() => setShowSummary(false), []);
+    const summaryModalRef = useModalA11y(showSummary, closeSummary);
 
     // -- Scroll to bottom ----------------------------------------
 
@@ -294,6 +299,7 @@ export default function RolePlayRenderer({
                             <div
                                 key={char.name}
                                 className={styles.characterCard}
+                                {...cardA11yProps}
                                 onClick={() => handleSelectCharacter(char)}
                             >
                                 <div className={styles.characterAvatar}>{char.avatar}</div>
@@ -450,14 +456,14 @@ export default function RolePlayRenderer({
 
             {/* Learning summary overlay */}
             {showSummary && (
-                <div className={styles.summaryOverlay} onClick={() => setShowSummary(false)}>
-                    <div className={styles.summaryCard} onClick={e => e.stopPropagation()}>
+                <div className={styles.summaryOverlay} onClick={closeSummary}>
+                    <div className={styles.summaryCard} ref={summaryModalRef} role="dialog" aria-modal="true" aria-labelledby="roleplay-summary-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                         <div className={styles.summaryIcon}>&#x1F4DA;</div>
-                        <div className={styles.summaryTitle}>角色扮演学习总结</div>
+                        <div id="roleplay-summary-title" className={styles.summaryTitle}>角色扮演学习总结</div>
                         <div className={styles.summaryContent}>
                             <MarkdownRenderer content={summaryContent} />
                         </div>
-                        <button className={styles.summaryCloseBtn} onClick={() => setShowSummary(false)}>
+                        <button className={styles.summaryCloseBtn} onClick={closeSummary}>
                             关闭
                         </button>
                     </div>

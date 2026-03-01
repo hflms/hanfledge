@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, ReactNode } from 'react';
+import { useEffect, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { getMe, clearToken, type User } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import { PluginRegistryProvider } from '@/lib/plugin/PluginRegistry';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './DashboardLayout.module.css';
 
 interface NavItem {
@@ -42,7 +43,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children, variant }: DashboardLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const [user, setUser] = useState<User | null>(null);
+    const { user, loading, fetchUser, logout } = useAuthStore();
 
     // Auto-detect variant from pathname if not provided
     const layoutVariant = variant || (pathname.startsWith('/student') ? 'student' : 'teacher');
@@ -50,32 +51,35 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
     const sectionLabel = layoutVariant === 'student' ? '学习中心' : '教学管理';
 
     useEffect(() => {
-        getMe()
-            .then(setUser)
-            .catch(() => {
-                clearToken();
+        fetchUser().then(() => {
+            // Redirect to login if user couldn't be loaded (token expired/invalid)
+            if (!useAuthStore.getState().user) {
                 router.push('/login');
-            });
-    }, [router]);
+            }
+        });
+    }, [fetchUser, router]);
 
     const handleLogout = () => {
-        clearToken();
+        logout();
         router.push('/login');
     };
 
     const primaryRole = user?.school_roles?.[0]?.role?.name || (layoutVariant === 'student' ? 'STUDENT' : 'TEACHER');
 
-    if (!user) {
+    if (loading || !user) {
         return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner size="fullscreen" />
         );
     }
 
     return (
         <PluginRegistryProvider>
             <div className={styles.layoutWrapper}>
+                {/* Skip to content link for keyboard/screen-reader users */}
+                <a href="#main-content" className={styles.skipLink}>
+                    跳转到主要内容
+                </a>
+
                 {/* Sidebar */}
                 <aside className={styles.sidebar}>
                     <div className={styles.sidebarBrand}>
@@ -117,7 +121,7 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
                         </div>
                     </header>
 
-                    <main className={styles.content}>
+                    <main id="main-content" className={styles.content}>
                         {children}
                     </main>
                 </div>

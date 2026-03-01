@@ -8,7 +8,7 @@ import {
     type Course,
     type KnowledgeMapData,
 } from '@/lib/api';
-import DashboardLayout from '@/components/DashboardLayout';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
 
 const KnowledgeGraph = dynamic(() => import('./KnowledgeGraph'), { ssr: false });
@@ -25,7 +25,8 @@ export default function KnowledgeMapPage() {
     // Load courses on mount
     useEffect(() => {
         listCourses()
-            .then((list) => {
+            .then((data) => {
+                const list = data?.items || [];
                 setCourses(list);
                 if (list.length > 0) {
                     setSelectedCourseId(list[0].id);
@@ -58,34 +59,25 @@ export default function KnowledgeMapPage() {
     // -- Render ----------------------------------------------------
 
     if (loading) {
-        return (
-            <DashboardLayout variant="student">
-                <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                    <div className="spinner" />
-                </div>
-            </DashboardLayout>
-        );
+        return <LoadingSpinner />;
     }
 
     if (courses.length === 0) {
         return (
-            <DashboardLayout variant="student">
-                <div className="fade-in">
-                    <div className={styles.pageHeader}>
-                        <h1 className={styles.pageTitle}>知识图谱</h1>
-                    </div>
-                    <div className={styles.emptyState}>
-                        <div className={styles.emptyIcon}>🗺️</div>
-                        <div className={styles.emptyText}>暂无课程数据</div>
-                    </div>
+            <div className="fade-in">
+                <div className={styles.pageHeader}>
+                    <h1 className={styles.pageTitle}>知识图谱</h1>
                 </div>
-            </DashboardLayout>
+                <div className={styles.emptyState}>
+                    <div className={styles.emptyIcon}>🗺️</div>
+                    <div className={styles.emptyText}>暂无课程数据</div>
+                </div>
+            </div>
         );
     }
 
     return (
-        <DashboardLayout variant="student">
-            <div className="fade-in">
+        <div className="fade-in">
                 {/* Header with course selector */}
                 <div className={styles.pageHeader}>
                     <h1 className={styles.pageTitle}>知识图谱</h1>
@@ -105,9 +97,7 @@ export default function KnowledgeMapPage() {
                 </div>
 
                 {mapLoading && (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                        <div className="spinner" />
-                    </div>
+                    <LoadingSpinner />
                 )}
 
                 {!mapLoading && mapData && mapData.nodes.length > 0 && (
@@ -161,6 +151,7 @@ export default function KnowledgeMapPage() {
                                         <span
                                             className={styles.legendDot}
                                             style={{ background: '#00b894' }}
+                                            aria-hidden="true"
                                         />
                                         已掌握
                                     </div>
@@ -168,6 +159,7 @@ export default function KnowledgeMapPage() {
                                         <span
                                             className={styles.legendDot}
                                             style={{ background: '#fdcb6e' }}
+                                            aria-hidden="true"
                                         />
                                         学习中
                                     </div>
@@ -175,6 +167,7 @@ export default function KnowledgeMapPage() {
                                         <span
                                             className={styles.legendDot}
                                             style={{ background: '#e17055' }}
+                                            aria-hidden="true"
                                         />
                                         待加强
                                     </div>
@@ -182,6 +175,7 @@ export default function KnowledgeMapPage() {
                                         <span
                                             className={styles.legendDot}
                                             style={{ background: '#5e5e7a' }}
+                                            aria-hidden="true"
                                         />
                                         暂无数据
                                     </div>
@@ -222,6 +216,5 @@ export default function KnowledgeMapPage() {
                     </div>
                 )}
             </div>
-        </DashboardLayout>
     );
 }

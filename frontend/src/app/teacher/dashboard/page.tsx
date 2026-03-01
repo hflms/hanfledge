@@ -24,27 +24,13 @@ import styles from './page.module.css';
 import PluginSlot from '@/components/PluginSlot';
 import { useBuiltinDashboardPlugins } from '@/lib/plugin/DashboardPlugins';
 import { useToast } from '@/components/Toast';
+import { ACTIVITY_STATUS_MAP, SCAFFOLD_MAP } from '@/lib/constants';
+import { useModalA11y } from '@/lib/a11y';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 const RadarChart = dynamic(() => import('./RadarChart'), { ssr: false });
 const MasteryBarChart = dynamic(() => import('./MasteryBarChart'), { ssr: false });
 const SkillEffectivenessChart = dynamic(() => import('./SkillEffectivenessChart'), { ssr: false });
-
-// -- Status Maps ------------------------------------------
-
-const STATUS_MAP: Record<string, string> = {
-    draft: '草稿',
-    published: '已发布',
-    closed: '已关闭',
-    active: '进行中',
-    completed: '已完成',
-    abandoned: '已放弃',
-};
-
-const SCAFFOLD_MAP: Record<string, string> = {
-    high: '高',
-    medium: '中',
-    low: '低',
-};
 
 // -- Main Component ---------------------------------------
 
@@ -56,6 +42,8 @@ export default function TeacherDashboardPage() {
     const [radarData, setRadarData] = useState<KnowledgeRadarData | null>(null);
     const [activities, setActivities] = useState<LearningActivity[]>([]);
     const [selectedActivity, setSelectedActivity] = useState<ActivitySessionStats | null>(null);
+    const closeActivityModal = useCallback(() => setSelectedActivity(null), []);
+    const activityModalRef = useModalA11y(!!selectedActivity, closeActivityModal);
     const [skillEffectiveness, setSkillEffectiveness] = useState<SkillEffectivenessResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [radarLoading, setRadarLoading] = useState(false);
@@ -68,7 +56,7 @@ export default function TeacherDashboardPage() {
     useEffect(() => {
         listCourses()
             .then(data => {
-                const list = data || [];
+                const list = data?.items || [];
                 setCourses(list);
                 if (list.length > 0) {
                     setSelectedCourseId(list[0].id);
@@ -88,7 +76,7 @@ export default function TeacherDashboardPage() {
                 getSkillEffectiveness(courseId).catch(() => null),
             ]);
             setRadarData(radar);
-            setActivities(acts || []);
+            setActivities(acts?.items || []);
             setSkillEffectiveness(skillData);
         } catch (err) {
             console.error('Failed to load dashboard data', err);
@@ -139,9 +127,7 @@ export default function TeacherDashboardPage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 
@@ -232,9 +218,7 @@ export default function TeacherDashboardPage() {
 
             {/* Charts */}
             {radarLoading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
-                    <div className="spinner" />
-                </div>
+                <LoadingSpinner size="small" />
             ) : radarData && radarData.labels.length > 0 ? (
                 <div className={styles.chartsGrid}>
                     <div className={styles.chartCard}>
@@ -304,7 +288,7 @@ export default function TeacherDashboardPage() {
                                 <td className={styles.activityTitle}>{act.title}</td>
                                 <td>
                                     <span className={`badge badge-${act.status}`}>
-                                        {STATUS_MAP[act.status] || act.status}
+                                        {ACTIVITY_STATUS_MAP[act.status] || act.status}
                                     </span>
                                 </td>
                                 <td>{new Date(act.created_at).toLocaleDateString('zh-CN')}</td>
@@ -331,9 +315,10 @@ export default function TeacherDashboardPage() {
 
             {/* Activity Sessions Modal */}
             {selectedActivity && (
-                <div className={styles.modalOverlay} onClick={() => setSelectedActivity(null)}>
-                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
-                        <h2 className={styles.modalTitle}>{selectedActivity.activity_title} — 会话统计</h2>
+                <div className={styles.modalOverlay} onClick={closeActivityModal}>
+                    <div className={styles.modal} onClick={e => e.stopPropagation()}
+                         ref={activityModalRef} role="dialog" aria-modal="true" aria-labelledby="activity-modal-title" tabIndex={-1}>
+                        <h2 className={styles.modalTitle} id="activity-modal-title">{selectedActivity.activity_title} — 会话统计</h2>
 
                         <div className={styles.statsRow}>
                             <div className={styles.statCard}>
@@ -389,7 +374,7 @@ export default function TeacherDashboardPage() {
                                                 <td>{s.student_name}</td>
                                                 <td>
                                                     <span className={`badge badge-${s.status}`}>
-                                                        {STATUS_MAP[s.status] || s.status}
+                                                        {ACTIVITY_STATUS_MAP[s.status] || s.status}
                                                     </span>
                                                 </td>
                                                 <td>{SCAFFOLD_MAP[s.scaffold_level] || s.scaffold_level}</td>
@@ -440,7 +425,7 @@ export default function TeacherDashboardPage() {
                             >
                                 {exporting === 'sessions' ? '导出中...' : '导出会话 CSV'}
                             </button>
-                            <button className="btn btn-secondary" onClick={() => setSelectedActivity(null)}>
+                            <button className="btn btn-secondary" onClick={closeActivityModal}>
                                 关闭
                             </button>
                         </div>

@@ -1,0 +1,40 @@
+.wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* -- Size variants ----------------------------------------- */
+
+.small {
+    padding: 40px 0;
+}
+
+.medium {
+    padding: 60px 0;
+}
+
+.large {
+    padding: 80px 0;
+}
+
+.fullscreen {
+    height: 100vh;
+}
+
+/* -- Spinner element --------------------------------------- */
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 2.5px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

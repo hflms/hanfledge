@@ -8,23 +8,10 @@ import {
     type Document,
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { DOCUMENT_STATUS_LABEL, DOCUMENT_STATUS_ICON } from '@/lib/constants';
+import { handleCardKeyDown } from '@/lib/a11y';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
-
-// -- Constants -----------------------------------------------
-
-const STATUS_LABEL: Record<string, string> = {
-    uploaded: '已上传',
-    processing: '处理中...',
-    completed: '已完成',
-    failed: '处理失败',
-};
-
-const STATUS_ICON: Record<string, string> = {
-    uploaded: '📄',
-    processing: '⏳',
-    completed: '✅',
-    failed: '❌',
-};
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
@@ -255,9 +242,7 @@ export default function MaterialsPage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 
@@ -295,7 +280,11 @@ export default function MaterialsPage() {
             {/* Upload Zone */}
             <div
                 className={`${styles.uploadZone} ${dragging ? styles.uploadZoneDragging : ''}`}
+                role="button"
+                tabIndex={0}
+                aria-label="上传 PDF 文件"
                 onClick={() => fileInput.current?.click()}
+                onKeyDown={handleCardKeyDown}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -377,7 +366,7 @@ export default function MaterialsPage() {
                             <div key={doc.id} className={styles.docCard}>
                                 <div className={styles.docCardHeader}>
                                     <span className={styles.docIcon}>
-                                        {STATUS_ICON[doc.status] || '📄'}
+                                        {DOCUMENT_STATUS_ICON[doc.status] || '📄'}
                                     </span>
                                     <div className={styles.docInfo}>
                                         <span className={styles.docName}>{doc.file_name}</span>
@@ -387,7 +376,7 @@ export default function MaterialsPage() {
                                         </span>
                                     </div>
                                     <span className={`${styles.statusBadge} ${styles[`status_${doc.status}`]}`}>
-                                        {STATUS_LABEL[doc.status] || doc.status}
+                                        {DOCUMENT_STATUS_LABEL[doc.status] || doc.status}
                                     </span>
                                 </div>
 

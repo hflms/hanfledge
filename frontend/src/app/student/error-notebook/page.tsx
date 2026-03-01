@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { getErrorNotebook, type ErrorNotebookData, type ErrorNotebookItem } from '@/lib/api';
-import DashboardLayout from '@/components/DashboardLayout';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
 
 // -- Filter type --------------------------------------------------
@@ -57,8 +57,7 @@ export default function ErrorNotebookPage() {
     // -- Render ----------------------------------------------------
 
     return (
-        <DashboardLayout variant="student">
-            <div className="fade-in">
+        <div className="fade-in">
                 <div className={styles.pageHeader}>
                     <h1 className={styles.pageTitle}>错题本</h1>
                     <div className={styles.filterBar}>
@@ -84,9 +83,7 @@ export default function ErrorNotebookPage() {
                 </div>
 
                 {loading && (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                        <div className="spinner" />
-                    </div>
+                    <LoadingSpinner />
                 )}
 
                 {!loading && data && (
@@ -212,6 +209,5 @@ export default function ErrorNotebookPage() {
                     </div>
                 )}
             </div>
-        </DashboardLayout>
     );
 }

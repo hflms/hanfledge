@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getMyAchievements, type StudentAchievementsData, type AchievementProgress } from '@/lib/api';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
 
 // -- Achievement Type Labels ----------------------------------------
@@ -51,9 +52,7 @@ export default function StudentAchievementsPage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 

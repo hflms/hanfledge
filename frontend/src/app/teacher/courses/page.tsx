@@ -1,21 +1,20 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { listCourses, createCourse, type Course } from '@/lib/api';
+import { COURSE_STATUS_MAP } from '@/lib/constants';
+import { useModalA11y, cardA11yProps } from '@/lib/a11y';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
-
-const STATUS_MAP: Record<string, string> = {
-    draft: '草稿',
-    published: '已发布',
-    archived: '已归档',
-};
 
 export default function CoursesPage() {
     const router = useRouter();
     const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const closeModal = useCallback(() => setShowModal(false), []);
+    const modalRef = useModalA11y(showModal, closeModal);
 
     // Create form state
     const [form, setForm] = useState({
@@ -29,7 +28,7 @@ export default function CoursesPage() {
     const fetchCourses = async () => {
         try {
             const data = await listCourses();
-            setCourses(data || []);
+            setCourses(data?.items || []);
         } catch (err) {
             console.error('Failed to fetch courses', err);
         } finally {
@@ -61,9 +60,7 @@ export default function CoursesPage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 
@@ -88,6 +85,7 @@ export default function CoursesPage() {
                             key={course.id}
                             className={`card ${styles.courseCard}`}
                             onClick={() => router.push(`/teacher/courses/${course.id}/outline`)}
+                            {...cardA11yProps}
                         >
                             <div className={styles.courseCardTop}>
                                 <div>
@@ -95,7 +93,7 @@ export default function CoursesPage() {
                                     <div className={styles.courseSubject}>{course.subject} · {course.grade_level}年级</div>
                                 </div>
                                 <span className={`badge badge-${course.status}`}>
-                                    {STATUS_MAP[course.status] || course.status}
+                                    {COURSE_STATUS_MAP[course.status] || course.status}
                                 </span>
                             </div>
                             {course.description && (
@@ -116,9 +114,10 @@ export default function CoursesPage() {
 
             {/* Create Modal */}
             {showModal && (
-                <div className={styles.modalOverlay} onClick={() => setShowModal(false)}>
-                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
-                        <h2 className={styles.modalTitle}>创建新课程</h2>
+                <div className={styles.modalOverlay} onClick={closeModal}>
+                    <div className={styles.modal} onClick={e => e.stopPropagation()}
+                         ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="create-course-title" tabIndex={-1}>
+                        <h2 className={styles.modalTitle} id="create-course-title">创建新课程</h2>
                         <form onSubmit={handleCreate}>
                             <div className="form-group">
                                 <label className="label" htmlFor="title">课程名称</label>
@@ -141,7 +140,7 @@ export default function CoursesPage() {
                                     value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
                             </div>
                             <div className={styles.modalActions}>
-                                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>取消</button>
+                                <button type="button" className="btn btn-secondary" onClick={closeModal}>取消</button>
                                 <button type="submit" className="btn btn-primary" disabled={creating}>
                                     {creating ? '创建中...' : '创建'}
                                 </button>

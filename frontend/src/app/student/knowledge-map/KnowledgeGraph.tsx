@@ -2,13 +2,8 @@
 
 import { useCallback } from 'react';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
-import * as echarts from 'echarts/core';
-import { GraphChart } from 'echarts/charts';
-import { TooltipComponent, LegendComponent } from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
+import echarts from '@/lib/echarts-setup';
 import type { KnowledgeMapData, KnowledgeMapNode } from '@/lib/api';
-
-echarts.use([GraphChart, TooltipComponent, LegendComponent, CanvasRenderer]);
 
 // -- Color helpers ------------------------------------------------
 
@@ -53,7 +48,10 @@ export default function KnowledgeGraph({ data }: KnowledgeGraphProps) {
                 show: true,
                 fontSize: 11,
                 color: '#f0f0f5',
-                formatter: n.title.length > 6 ? n.title.slice(0, 6) + '...' : n.title,
+                formatter: () => {
+                    const shortTitle = n.title.length > 6 ? n.title.slice(0, 6) + '...' : n.title;
+                    return `${shortTitle}\n${masteryLabel(n.mastery)}`;
+                },
             },
             value: n.mastery,
             category: n.chapter_title,

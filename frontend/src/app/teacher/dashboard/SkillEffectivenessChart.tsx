@@ -1,13 +1,8 @@
 'use client';
 
 import ReactEChartsCore from 'echarts-for-react/lib/core';
-import * as echarts from 'echarts/core';
-import { BarChart } from 'echarts/charts';
-import { TooltipComponent, GridComponent, LegendComponent } from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
+import echarts from '@/lib/echarts-setup';
 import type { SkillEffectivenessItem } from '@/lib/api';
-
-echarts.use([BarChart, TooltipComponent, GridComponent, LegendComponent, CanvasRenderer]);
 
 // -- Skill Label Helpers --------------------------------------
 

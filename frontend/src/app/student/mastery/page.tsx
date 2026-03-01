@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { getSelfMastery, type StudentMasteryData } from '@/lib/api';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
 
 const MasteryTrendChart = dynamic(() => import('./MasteryTrendChart'), { ssr: false });
@@ -20,9 +21,7 @@ export default function StudentMasteryPage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 

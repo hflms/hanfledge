@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { handleCardKeyDown } from '@/lib/a11y';
 import styles from './ErrorDiagnosisRenderer.module.css';
 
 interface DiagnosisNode {
@@ -52,7 +53,11 @@ export function ErrorDiagnosisRenderer({
           <div className={styles.tree}>
             <div
               className={`${styles.node} ${styles[diagnosis.type]}`}
+              role="button"
+              tabIndex={0}
+              aria-expanded={expandedNodes.has('root')}
               onClick={() => toggleNode('root')}
+              onKeyDown={handleCardKeyDown}
             >
               <span className={styles.nodeLabel}>{diagnosis.title}</span>
               <p className={styles.nodeDesc}>{diagnosis.description}</p>

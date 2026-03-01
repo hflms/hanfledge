@@ -3,6 +3,26 @@
     min-height: 100vh;
 }
 
+/* === Skip to Content Link === */
+.skipLink {
+    position: absolute;
+    top: -100%;
+    left: 16px;
+    z-index: 1000;
+    padding: 8px 16px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: top 0.2s ease;
+}
+
+.skipLink:focus {
+    top: 12px;
+}
+
 /* === Sidebar === */
 .sidebar {
     width: var(--sidebar-width);

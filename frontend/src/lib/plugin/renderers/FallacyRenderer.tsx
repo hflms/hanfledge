@@ -13,6 +13,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { SkillRendererProps } from '@/lib/plugin/types';
+import { useModalA11y } from '@/lib/a11y';
 import styles from './FallacyRenderer.module.css';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
@@ -66,6 +67,10 @@ export default function FallacyRenderer({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const statementRef = useRef<HTMLDivElement>(null);
+
+    // -- Modal a11y for reveal overlay ----------------------------
+    const closeReveal = useCallback(() => setRevealData(null), []);
+    const revealModalRef = useModalA11y(!!revealData, closeReveal);
 
     // -- Scroll to bottom ----------------------------------------
 
@@ -463,14 +468,14 @@ export default function FallacyRenderer({
 
             {/* Reveal overlay */}
             {revealData && (
-                <div className={styles.revealOverlay} onClick={() => setRevealData(null)}>
-                    <div className={styles.revealCard} onClick={e => e.stopPropagation()}>
+                <div className={styles.revealOverlay} onClick={closeReveal}>
+                    <div className={styles.revealCard} ref={revealModalRef} role="dialog" aria-modal="true" aria-labelledby="fallacy-reveal-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                         <div className={styles.revealIcon}>&#x2705;</div>
-                        <div className={styles.revealTitle}>{revealData.title}</div>
+                        <div id="fallacy-reveal-title" className={styles.revealTitle}>{revealData.title}</div>
                         <div className={styles.revealExplanation}>
                             <MarkdownRenderer content={revealData.explanation} />
                         </div>
-                        <button className={styles.revealCloseBtn} onClick={() => setRevealData(null)}>
+                        <button className={styles.revealCloseBtn} onClick={closeReveal}>
                             继续学习
                         </button>
                     </div>

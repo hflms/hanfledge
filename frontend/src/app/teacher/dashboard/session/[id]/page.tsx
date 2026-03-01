@@ -11,6 +11,9 @@ import {
     type InteractionLogEntry,
 } from '@/lib/api';
 import styles from './page.module.css';
+import { SCAFFOLD_MAP } from '@/lib/constants';
+import { useModalA11y, handleCardKeyDown } from '@/lib/a11y';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 // -- Tab Types ------------------------------------------------
 
@@ -57,12 +60,6 @@ const ROLE_LABELS: Record<string, string> = {
     system: '系统',
 };
 
-const SCAFFOLD_MAP: Record<string, string> = {
-    high: '高',
-    medium: '中',
-    low: '低',
-};
-
 // -- Main Component -------------------------------------------
 
 export default function SessionAnalyticsPage() {
@@ -99,9 +96,7 @@ export default function SessionAnalyticsPage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 
@@ -221,7 +216,7 @@ function TreeNode({ node, isLast }: { node: InquiryTreeNode; isLast: boolean }) 
             <div className={styles.treeNodeLine}>
                 {/* Vertical connector */}
                 <div className={styles.treeConnector}>
-                    <div className={`${styles.treeDot} ${node.role === 'student' ? styles.treeDotStudent : styles.treeDotCoach}`} />
+                    <div className={`${styles.treeDot} ${node.role === 'student' ? styles.treeDotStudent : styles.treeDotCoach}`} aria-hidden="true" />
                     {!isLast && <div className={styles.treeLine} />}
                 </div>
 
@@ -229,6 +224,10 @@ function TreeNode({ node, isLast }: { node: InquiryTreeNode; isLast: boolean }) 
                 <div
                     className={styles.treeNodeContent}
                     onClick={() => hasChildren && setExpanded(!expanded)}
+                    onKeyDown={hasChildren ? handleCardKeyDown : undefined}
+                    role={hasChildren ? 'button' : undefined}
+                    tabIndex={hasChildren ? 0 : undefined}
+                    aria-expanded={hasChildren ? expanded : undefined}
                     style={{ cursor: hasChildren ? 'pointer' : 'default' }}
                 >
                     <div className={styles.treeNodeHeader}>
@@ -281,6 +280,8 @@ function TreeNode({ node, isLast }: { node: InquiryTreeNode; isLast: boolean }) 
 
 function InteractionLog({ data }: { data: InteractionLogResponse }) {
     const [selectedEntry, setSelectedEntry] = useState<InteractionLogEntry | null>(null);
+    const closeEntryModal = useCallback(() => setSelectedEntry(null), []);
+    const entryModalRef = useModalA11y(!!selectedEntry, closeEntryModal);
 
     if (data.interactions.length === 0) {
         return (
@@ -300,6 +301,9 @@ function InteractionLog({ data }: { data: InteractionLogResponse }) {
                         key={entry.id}
                         className={`${styles.logEntry} ${entry.role === 'student' ? styles.logEntryStudent : styles.logEntryCoach}`}
                         onClick={() => setSelectedEntry(entry)}
+                        onKeyDown={handleCardKeyDown}
+                        role="button"
+                        tabIndex={0}
                     >
                         <div className={styles.logEntryHeader}>
                             <span className={styles.logRole}>
@@ -354,9 +358,10 @@ function InteractionLog({ data }: { data: InteractionLogResponse }) {
 
             {/* Detail Modal */}
             {selectedEntry && (
-                <div className={styles.modalOverlay} onClick={() => setSelectedEntry(null)}>
-                    <div className={styles.modal} onClick={e => e.stopPropagation()}>
-                        <div className={styles.modalTitle}>
+                <div className={styles.modalOverlay} onClick={closeEntryModal}>
+                    <div className={styles.modal} onClick={e => e.stopPropagation()}
+                         ref={entryModalRef} role="dialog" aria-modal="true" aria-labelledby="entry-detail-title" tabIndex={-1}>
+                        <div className={styles.modalTitle} id="entry-detail-title">
                             {ROLE_LABELS[selectedEntry.role] || selectedEntry.role} — 完整内容
                         </div>
                         <div className={styles.logDetailContent}>
@@ -373,7 +378,7 @@ function InteractionLog({ data }: { data: InteractionLogResponse }) {
                             </div>
                         )}
                         <div className={styles.modalClose}>
-                            <button className="btn btn-secondary" onClick={() => setSelectedEntry(null)}>
+                            <button className="btn btn-secondary" onClick={closeEntryModal}>
                                 关闭
                             </button>
                         </div>

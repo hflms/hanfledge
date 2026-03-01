@@ -1,12 +1,7 @@
 'use client';
 
 import ReactEChartsCore from 'echarts-for-react/lib/core';
-import * as echarts from 'echarts/core';
-import { LineChart } from 'echarts/charts';
-import { TooltipComponent, GridComponent } from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
-
-echarts.use([LineChart, TooltipComponent, GridComponent, CanvasRenderer]);
+import echarts from '@/lib/echarts-setup';
 
 interface MasteryTrendChartProps {
     dates: string[];

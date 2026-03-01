@@ -2,7 +2,8 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { login, setToken } from '@/lib/api';
+import { login } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import styles from './page.module.css';
 
 export default function LoginPage() {
@@ -11,6 +12,7 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const loginUser = useAuthStore((s) => s.loginUser);
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -19,7 +21,7 @@ export default function LoginPage() {
 
         try {
             const res = await login(phone, password);
-            setToken(res.token);
+            loginUser(res.token, res.user);
 
             // Route based on user role
             const roles = res.user.school_roles || [];

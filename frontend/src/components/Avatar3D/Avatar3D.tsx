@@ -132,6 +132,7 @@ export default function Avatar3D({ wsRef, active = true }: Avatar3DProps) {
       <div className={styles.statusBar}>
         <span
           className={`${styles.statusDot} ${avatarState !== 'idle' ? styles.statusActive : ''}`}
+          aria-hidden="true"
         />
         <span className={styles.statusText}>{statusText}</span>
       </div>

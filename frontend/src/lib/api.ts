@@ -72,6 +72,30 @@ export async function apiFetch<T>(
 
 // ── Auth API ────────────────────────────────────────────────
 
+// -- Pagination Types -----------------------------------------
+
+/** Standard paginated response from the backend. */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Common pagination query parameters. */
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
+
+/** Appends pagination params to a URLSearchParams object. */
+function appendPagination(params: URLSearchParams, pg?: PaginationParams): void {
+  if (pg?.page) params.set('page', String(pg.page));
+  if (pg?.limit) params.set('limit', String(pg.limit));
+}
+
+// -- Auth Types -----------------------------------------------
+
 export interface LoginResponse {
   token: string;
   user: User;
@@ -160,8 +184,11 @@ export interface Document {
   created_at: string;
 }
 
-export async function listCourses(): Promise<Course[]> {
-  return apiFetch<Course[]>('/courses');
+export async function listCourses(pg?: PaginationParams): Promise<PaginatedResponse<Course>> {
+  const params = new URLSearchParams();
+  appendPagination(params, pg);
+  const qs = params.toString();
+  return apiFetch<PaginatedResponse<Course>>(`/courses${qs ? '?' + qs : ''}`);
 }
 
 export async function createCourse(data: {
@@ -453,11 +480,12 @@ export async function getSelfMastery(courseId?: number): Promise<StudentMasteryD
 
 // ── Teacher Activity API ────────────────────────────────────
 
-export async function listTeacherActivities(courseId?: number): Promise<LearningActivity[]> {
+export async function listTeacherActivities(courseId?: number, pg?: PaginationParams): Promise<PaginatedResponse<LearningActivity>> {
   const params = new URLSearchParams();
   if (courseId) params.set('course_id', String(courseId));
+  appendPagination(params, pg);
   const qs = params.toString();
-  return apiFetch<LearningActivity[]>(`/activities${qs ? '?' + qs : ''}`);
+  return apiFetch<PaginatedResponse<LearningActivity>>(`/activities${qs ? '?' + qs : ''}`);
 }
 
 // ── Analytics V2 API — Phase G ──────────────────────────────
@@ -880,7 +908,7 @@ export async function listMarketplacePlugins(params?: {
   q?: string;
   page?: number;
   limit?: number;
-}): Promise<{ plugins: MarketplacePlugin[]; total: number }> {
+}): Promise<PaginatedResponse<MarketplacePlugin>> {
   const searchParams = new URLSearchParams();
   if (params?.type) searchParams.set('type', params.type);
   if (params?.category) searchParams.set('category', params.category);

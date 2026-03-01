@@ -9,21 +9,10 @@ import {
     type Course, type Document, type SkillMetadata, type MountedSkill,
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { DOCUMENT_STATUS_LABEL, CATEGORY_ICONS } from '@/lib/constants';
+import { useModalA11y, handleCardKeyDown } from '@/lib/a11y';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
-
-const STATUS_LABEL: Record<string, string> = {
-    uploaded: '已上传',
-    processing: '处理中...',
-    completed: '已完成',
-    failed: '处理失败',
-};
-
-const CATEGORY_ICONS: Record<string, string> = {
-    'inquiry-based': '🔍',
-    'critical-thinking': '🧐',
-    'collaborative': '🤝',
-    'role-play': '🎭',
-};
 
 export default function OutlinePage() {
     const params = useParams();
@@ -47,6 +36,8 @@ export default function OutlinePage() {
 
     // -- Skill config panel state ------------------------------------
     const [configMount, setConfigMount] = useState<{ mount: MountedSkill; chapterId: number } | null>(null);
+    const closeConfigModal = useCallback(() => setConfigMount(null), []);
+    const configModalRef = useModalA11y(!!configMount, closeConfigModal);
     const [configLevel, setConfigLevel] = useState<string>('high');
     const [configThreshold, setConfigThreshold] = useState<string>('');
     const [configDegradeTo, setConfigDegradeTo] = useState<string>('');
@@ -215,9 +206,7 @@ export default function OutlinePage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner />
         );
     }
 
@@ -314,7 +303,7 @@ export default function OutlinePage() {
                                         <div className={styles.kpList}>
                                             {ch.knowledge_points.map(kp => (
                                                 <div key={kp.id} className={styles.kpItem}>
-                                                    <div className={`${styles.kpDot} ${kp.is_key_point ? styles.kpDotKey : ''}`} />
+                                                    <div className={`${styles.kpDot} ${kp.is_key_point ? styles.kpDotKey : ''}`} aria-hidden="true" />
                                                     <span className={styles.kpTitle}>
                                                         {kp.title}
                                                         {kp.is_key_point && ' ⭐'}
@@ -328,7 +317,10 @@ export default function OutlinePage() {
                                                                 key={s.id}
                                                                 className={`${styles.skillTag} ${styles.skillTagInteractive}`}
                                                                 title={`点击配置 ${s.skill_id}`}
+                                                                role="button"
+                                                                tabIndex={0}
                                                                 onClick={(e) => openConfigPanel(s, ch.id, e)}
+                                                                onKeyDown={handleCardKeyDown}
                                                             >
                                                                 {s.skill_id}
                                                                 <span className={styles.scaffoldBadge}>{s.scaffold_level === 'high' ? '高' : s.scaffold_level === 'medium' ? '中' : '低'}</span>
@@ -351,7 +343,11 @@ export default function OutlinePage() {
 
                     <div
                         className={`${styles.uploadZone} ${dragging ? styles.uploadZoneDragging : ''}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="上传 PDF 文件"
                         onClick={() => fileInput.current?.click()}
+                        onKeyDown={handleCardKeyDown}
                         onDragOver={e => { e.preventDefault(); setDragging(true); }}
                         onDragLeave={() => setDragging(false)}
                         onDrop={handleDrop}
@@ -386,7 +382,7 @@ export default function OutlinePage() {
                                     <span className={styles.docPages}>{doc.page_count}页</span>
                                 )}
                                 <span className={`badge badge-${doc.status}`}>
-                                    {STATUS_LABEL[doc.status] || doc.status}
+                                    {DOCUMENT_STATUS_LABEL[doc.status] || doc.status}
                                 </span>
                             </div>
                         ))}
@@ -396,12 +392,12 @@ export default function OutlinePage() {
 
             {/* Skill Config Modal */}
             {configMount && (
-                <div className={styles.configOverlay} onClick={() => setConfigMount(null)}>
-                    <div className={styles.configModal} onClick={e => e.stopPropagation()}>
+                <div className={styles.configOverlay} onClick={closeConfigModal}>
+                    <div className={styles.configModal} ref={configModalRef} role="dialog" aria-modal="true" aria-labelledby="skill-config-title" tabIndex={-1} onClick={e => e.stopPropagation()}>
                         <div className={styles.configHeader}>
-                            <h3 className={styles.configTitle}>技能配置</h3>
+                            <h3 id="skill-config-title" className={styles.configTitle}>技能配置</h3>
                             <span className={styles.configSkillId}>{configMount.mount.skill_id}</span>
-                            <button className={styles.configCloseBtn} onClick={() => setConfigMount(null)}>✕</button>
+                            <button className={styles.configCloseBtn} onClick={closeConfigModal}>✕</button>
                         </div>
 
                         <div className={styles.configBody}>
@@ -470,7 +466,7 @@ export default function OutlinePage() {
                                 {unmounting === configMount.mount.id ? '卸载中...' : '卸载技能'}
                             </button>
                             <div className={styles.configActions}>
-                                <button className={styles.cancelBtn} onClick={() => setConfigMount(null)}>取消</button>
+                                <button className={styles.cancelBtn} onClick={closeConfigModal}>取消</button>
                                 <button
                                     className={styles.saveBtn}
                                     onClick={handleSaveConfig}

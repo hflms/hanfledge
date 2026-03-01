@@ -4,15 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listStudentActivities, joinActivity, type LearningActivity } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { SESSION_STATUS_MAP } from '@/lib/constants';
+import LoadingSpinner from '@/components/LoadingSpinner';
 import styles from './page.module.css';
-
-// -- Status Labels -----------------------------------------------
-
-const SESSION_STATUS_MAP: Record<string, string> = {
-    active: '学习中',
-    completed: '已完成',
-    abandoned: '已放弃',
-};
 
 export default function StudentActivitiesPage() {
     const router = useRouter();
@@ -55,9 +49,7 @@ export default function StudentActivitiesPage() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
-                <div className="spinner" />
-            </div>
+            <LoadingSpinner size="large" />
         );
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import styles from '../error.module.css';
+import ErrorBoundaryFallback from '@/components/ErrorBoundaryFallback';
 
 export default function StudentError({
   error,
@@ -10,20 +10,11 @@ export default function StudentError({
   reset: () => void;
 }) {
   return (
-    <div className={styles.container}>
-      <div className={styles.card}>
-        <div className={styles.icon}>⚠</div>
-        <h2 className={styles.title}>学生端出错了</h2>
-        <p className={styles.message}>
-          {error.message || '页面加载异常，请刷新后重试。'}
-        </p>
-        {error.digest && (
-          <p className={styles.digest}>错误代码: {error.digest}</p>
-        )}
-        <button className={styles.button} onClick={reset}>
-          重新加载
-        </button>
-      </div>
-    </div>
+    <ErrorBoundaryFallback
+      title="学生端出错了"
+      fallbackMessage="页面加载异常，请刷新后重试。"
+      error={error}
+      reset={reset}
+    />
   );
 }
