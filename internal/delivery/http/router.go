@@ -9,6 +9,7 @@ import (
 	"github.com/hflms/hanfledge/internal/delivery/http/handler"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/asr"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/i18n"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
@@ -33,6 +34,7 @@ type RouterDeps struct {
 	FileStorage    storage.FileStorage
 	Translator     *i18n.Translator
 	EventBus       *plugin.EventBus
+	ASRProvider    asr.ASRProvider // 语音识别 (nil-safe)
 }
 
 // NewRouter creates and configures the Gin router with all routes.
@@ -56,7 +58,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	courseHandler := handler.NewCourseHandler(deps.DB, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry)
 	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus)
-	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard)
+	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider)
 	dashboardHandler := handler.NewDashboardHandler(deps.DB)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
 	analyticsHandler := handler.NewAnalyticsHandler(deps.DB, deps.PIIRedactor)

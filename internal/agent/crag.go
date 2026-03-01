@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"context"
 	"log"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/search"
 )
 
 // ============================
@@ -120,6 +123,35 @@ func (g *QualityGateway) HandleFallback(systemPrompt string) string {
 
 	log.Printf("🔄 [CRAG] Fallback activated — appending low-confidence caveat to prompt")
 	return systemPrompt + caveat
+}
+
+// -- Web Search Fallback (§8.1.2) ------------------------------------
+
+// HandleFallbackWithSearch performs web search via Dynamic Connector when
+// quality check fails, and enriches the system prompt with search results.
+// Falls back to the basic caveat if web search also fails.
+// §8.1.2: CRAG → fail → Dynamic Connector → Context Assembly
+func (g *QualityGateway) HandleFallbackWithSearch(
+	ctx context.Context,
+	systemPrompt string,
+	query string,
+	connector *search.DynamicConnector,
+) string {
+	log.Printf("🔄 [CRAG] Web search fallback triggered for query: %q", truncateForLog(query, 80))
+
+	results, err := connector.SearchAndRank(ctx, query)
+	if err != nil {
+		log.Printf("⚠️  [CRAG] Web search failed, falling back to basic caveat: %v", err)
+		return g.HandleFallback(systemPrompt)
+	}
+
+	if len(results) == 0 {
+		log.Printf("⚠️  [CRAG] Web search returned no results, falling back to basic caveat")
+		return g.HandleFallback(systemPrompt)
+	}
+
+	log.Printf("✅ [CRAG] Web search enriched prompt with %d results", len(results))
+	return connector.EnhancePrompt(systemPrompt, results)
 }
 
 // -- Helpers ----------------------------------------------------------

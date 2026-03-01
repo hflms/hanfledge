@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/asr"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"gorm.io/gorm"
 )
@@ -34,15 +36,17 @@ type SessionHandler struct {
 	Orchestrator   *agent.AgentOrchestrator
 	InjectionGuard *safety.InjectionGuard
 	Achievement    *AchievementHandler
+	ASR            asr.ASRProvider // ASR 语音识别 (nil-safe)
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard) *SessionHandler {
+func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard, asrProvider asr.ASRProvider) *SessionHandler {
 	return &SessionHandler{
 		DB:             db,
 		Orchestrator:   orchestrator,
 		InjectionGuard: injectionGuard,
 		Achievement:    NewAchievementHandler(db),
+		ASR:            asrProvider,
 	}
 }
 
@@ -161,6 +165,9 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 	}()
 
 	// Main read loop
+	var voiceBuffer []byte // Accumulates audio chunks during voice recording
+	var voiceLang string   // Language from voice_start
+
 	for {
 		_, msgBytes, err := rawWS.ReadMessage()
 		if err != nil {
@@ -188,6 +195,73 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			}
 			h.handleUserMessage(ws, &session, studentID, event)
 			turnMu.Unlock()
+
+		case agent.EventVoiceStart:
+			// Voice recording started — reset buffer and parse config
+			voiceBuffer = voiceBuffer[:0]
+			payloadBytes, _ := json.Marshal(event.Payload)
+			var startPayload agent.VoiceStartPayload
+			if err := json.Unmarshal(payloadBytes, &startPayload); err == nil {
+				voiceLang = startPayload.Language
+			}
+			if voiceLang == "" {
+				voiceLang = "zh-CN"
+			}
+			log.Printf("🎙️ [WebSocket] Voice start: session=%d lang=%s", sessionID, voiceLang)
+
+		case agent.EventVoiceData:
+			// Voice data chunk — decode base64 and append to buffer
+			payloadBytes, _ := json.Marshal(event.Payload)
+			var dataPayload agent.VoiceDataPayload
+			if err := json.Unmarshal(payloadBytes, &dataPayload); err != nil {
+				continue
+			}
+			decoded, err := base64.StdEncoding.DecodeString(dataPayload.Data)
+			if err != nil {
+				log.Printf("⚠️  [WebSocket] Voice data decode failed: %v", err)
+				continue
+			}
+			voiceBuffer = append(voiceBuffer, decoded...)
+
+		case agent.EventVoiceEnd:
+			// Voice recording ended — transcribe collected audio
+			log.Printf("🎙️ [WebSocket] Voice end: session=%d buffer=%d bytes", sessionID, len(voiceBuffer))
+			if h.ASR == nil {
+				h.sendWSError(ws, "语音识别服务未配置")
+				continue
+			}
+			if len(voiceBuffer) == 0 {
+				h.sendWSError(ws, "未收到语音数据")
+				continue
+			}
+
+			// Run ASR in background to avoid blocking the read loop
+			audioCopy := make([]byte, len(voiceBuffer))
+			copy(audioCopy, voiceBuffer)
+			voiceBuffer = voiceBuffer[:0]
+			lang := voiceLang
+
+			go func() {
+				result, err := h.ASR.Transcribe(context.Background(), audioCopy, asr.TranscribeConfig{
+					Language:          lang,
+					SampleRate:        16000,
+					Format:            "webm",
+					EnablePunctuation: true,
+				})
+				if err != nil {
+					log.Printf("⚠️  [ASR] Transcription failed: session=%d err=%v", sessionID, err)
+					h.sendWSError(ws, "语音识别失败，请重试")
+					return
+				}
+				h.sendEvent(ws, agent.EventVoiceResult, agent.VoiceResultPayload{
+					Text:       result.Text,
+					Confidence: result.Confidence,
+					IsFinal:    true,
+				})
+				log.Printf("🗣️ [ASR] Transcribed: session=%d text=%s",
+					sessionID, truncateStr(result.Text, 50))
+			}()
+
 		default:
 			h.sendWSError(ws, "未知事件类型: "+event.Event)
 		}

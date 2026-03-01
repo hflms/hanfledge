@@ -14,10 +14,12 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/config"
 	delivery "github.com/hflms/hanfledge/internal/delivery/http"
+	"github.com/hflms/hanfledge/internal/infrastructure/asr"
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/i18n"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
+	"github.com/hflms/hanfledge/internal/infrastructure/search"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
@@ -168,8 +170,37 @@ func main() {
 		log.Printf("⚠️  i18n loading failed (non-fatal): %v", err)
 	}
 
+	// ── Web Search Dynamic Connector (§8.1.2) ─────────
+	var searchConnector *search.DynamicConnector
+	if cfg.Search.BaseURL != "" {
+		searchCfg := search.SearchConfig{
+			Provider:   cfg.Search.Provider,
+			BaseURL:    cfg.Search.BaseURL,
+			APIKey:     cfg.Search.APIKey,
+			MaxResults: 10,
+			Timeout:    10 * time.Second,
+			SafeSearch: true,
+			EduFilter:  true,
+		}
+		searchConnector = search.NewDynamicConnector(searchCfg)
+		log.Printf("🌐 [Search] Dynamic Connector initialized: provider=%s url=%s", cfg.Search.Provider, cfg.Search.BaseURL)
+	}
+
+	// ── ASR Provider (语音识别) ────────────────────────
+	var asrProvider asr.ASRProvider
+	if cfg.ASR.WhisperURL != "" {
+		asrCfg := asr.ASRConfig{
+			Provider:   cfg.ASR.Provider,
+			WhisperURL: cfg.ASR.WhisperURL,
+			APIKey:     cfg.ASR.APIKey,
+			ModelSize:  cfg.ASR.ModelSize,
+		}
+		asrProvider = asr.NewWhisperProvider(asrCfg)
+		log.Printf("🎙️ [ASR] Provider initialized: provider=%s url=%s model=%s", cfg.ASR.Provider, cfg.ASR.WhisperURL, cfg.ASR.ModelSize)
+	}
+
 	// ── Agent Orchestrator ──────────────────────────────
-	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, eventBus, piiRedactor, redisCache, outputGuard)
+	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, eventBus, piiRedactor, redisCache, outputGuard, searchConnector)
 
 	// ── RAGAS Evaluator (§4.2 Background Quality Evaluation) ──
 	evaluator := agent.NewRAGASEvaluator(db, llmProvider, agent.DefaultEvalConfig())
@@ -191,6 +222,7 @@ func main() {
 		FileStorage:    fileStorage,
 		Translator:     translator,
 		EventBus:       eventBus,
+		ASRProvider:    asrProvider,
 	})
 
 	// ── Start Server (Graceful Shutdown) ───────────────

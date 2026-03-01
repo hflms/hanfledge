@@ -9,6 +9,7 @@ import (
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/search"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"gorm.io/gorm"
@@ -24,27 +25,29 @@ import (
 
 // DesignerAgent 设计师 Agent。
 type DesignerAgent struct {
-	db        *gorm.DB
-	llm       llm.LLMProvider
-	neo4j     *neo4jRepo.Client
-	karag     *usecase.KARAGEngine
-	truncator *TokenTruncator       // Token 截断中间件 (§8.2.2)
-	expander  *QueryExpander        // RAG-Fusion 查询扩展 (§8.1.2)
-	gateway   *QualityGateway       // CRAG 质量网关 (§8.1.2)
-	reranker  *CrossEncoderReranker // Cross-Encoder 精重排 (§8.1.1 Stage 2)
+	db         *gorm.DB
+	llm        llm.LLMProvider
+	neo4j      *neo4jRepo.Client
+	karag      *usecase.KARAGEngine
+	truncator  *TokenTruncator          // Token 截断中间件 (§8.2.2)
+	expander   *QueryExpander           // RAG-Fusion 查询扩展 (§8.1.2)
+	gateway    *QualityGateway          // CRAG 质量网关 (§8.1.2)
+	reranker   *CrossEncoderReranker    // Cross-Encoder 精重排 (§8.1.1 Stage 2)
+	searchConn *search.DynamicConnector // Web search fallback (§8.1.2, nil-safe)
 }
 
 // NewDesignerAgent 创建设计师 Agent。
-func NewDesignerAgent(db *gorm.DB, llmClient llm.LLMProvider, neo4jClient *neo4jRepo.Client, karag *usecase.KARAGEngine) *DesignerAgent {
+func NewDesignerAgent(db *gorm.DB, llmClient llm.LLMProvider, neo4jClient *neo4jRepo.Client, karag *usecase.KARAGEngine, searchConnector *search.DynamicConnector) *DesignerAgent {
 	return &DesignerAgent{
-		db:        db,
-		llm:       llmClient,
-		neo4j:     neo4jClient,
-		karag:     karag,
-		truncator: DefaultTokenTruncator(),
-		expander:  NewQueryExpander(llmClient),
-		gateway:   NewQualityGateway(),
-		reranker:  NewCrossEncoderReranker(llmClient),
+		db:         db,
+		llm:        llmClient,
+		neo4j:      neo4jClient,
+		karag:      karag,
+		truncator:  DefaultTokenTruncator(),
+		expander:   NewQueryExpander(llmClient),
+		gateway:    NewQualityGateway(),
+		reranker:   NewCrossEncoderReranker(llmClient),
+		searchConn: searchConnector,
 	}
 }
 
@@ -129,9 +132,14 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	// Step 7: 组装系统 Prompt
 	systemPrompt := a.buildSystemPrompt(prescription, mergedChunks, graphNodes, misconceptions)
 
-	// Step 7.5: CRAG 回退处理 — 如果检索质量不达标，追加低置信度提示
+	// Step 7.5: CRAG 回退处理 — 如果检索质量不达标，触发回退策略
 	if !relevance.Passed {
-		systemPrompt = a.gateway.HandleFallback(systemPrompt)
+		if a.searchConn != nil {
+			// §8.1.2: CRAG → fail → Dynamic Connector → Web Search Enrichment
+			systemPrompt = a.gateway.HandleFallbackWithSearch(ctx, systemPrompt, userInput, a.searchConn)
+		} else {
+			systemPrompt = a.gateway.HandleFallback(systemPrompt)
+		}
 	}
 
 	// Step 8: System Prompt Token 截断 — 防止超长上下文

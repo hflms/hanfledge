@@ -199,6 +199,11 @@ const (
 	EventRolePlayCharacter = "roleplay_character" // 角色扮演: 角色身份确认/切换
 	EventQuizQuestions     = "quiz_questions"     // 自动出题: 题目数据推送
 	EventQuizResult        = "quiz_result"        // 自动出题: 批改结果推送
+	EventVoiceStart        = "voice_start"        // 语音输入开始
+	EventVoiceData         = "voice_data"         // 语音数据流
+	EventVoiceEnd          = "voice_end"          // 语音输入结束
+	EventVoiceResult       = "voice_result"       // 语音识别结果
+	EventAvatarAction      = "avatar_action"      // 3D Avatar 动作指令
 )
 
 // ThinkingPayload agent_thinking 事件的载荷。
@@ -225,6 +230,32 @@ type TurnCompletePayload struct {
 // UserMessagePayload user_message 事件的载荷。
 type UserMessagePayload struct {
 	Text string `json:"text"`
+}
+
+// VoiceStartPayload voice_start event payload.
+type VoiceStartPayload struct {
+	SampleRate int    `json:"sample_rate"`
+	Format     string `json:"format"` // "webm", "pcm"
+	Language   string `json:"language"`
+}
+
+// VoiceDataPayload voice_data event payload (binary audio chunk, base64 encoded).
+type VoiceDataPayload struct {
+	Data string `json:"data"` // base64-encoded audio chunk
+}
+
+// VoiceResultPayload voice_result event payload.
+type VoiceResultPayload struct {
+	Text       string  `json:"text"`
+	Confidence float64 `json:"confidence"`
+	IsFinal    bool    `json:"is_final"`
+}
+
+// AvatarActionPayload avatar_action event payload.
+type AvatarActionPayload struct {
+	Action   string                 `json:"action"` // "speak", "gesture", "expression", "point"
+	Params   map[string]interface{} `json:"params"`
+	Duration float64                `json:"duration_ms"`
 }
 
 // ── Session Turn Context ────────────────────────────────────

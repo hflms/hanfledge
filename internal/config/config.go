@@ -19,6 +19,16 @@ type Config struct {
 	LLM      LLMConfig
 	Storage  StorageConfig
 	I18n     I18nConfig
+	Search   SearchConfig
+	ASR      ASRConfig
+}
+
+// ASRConfig holds speech-to-text service configuration.
+type ASRConfig struct {
+	Provider   string // "whisper" | "dashscope" | "local"
+	WhisperURL string // Whisper API endpoint
+	APIKey     string
+	ModelSize  string // "tiny" | "base" | "small" | "medium" | "large-v3"
 }
 
 // ServerConfig holds HTTP server settings.
@@ -98,6 +108,13 @@ type I18nConfig struct {
 	LocaleDir     string // Directory containing locale JSON files (default: "locales")
 }
 
+// SearchConfig holds web search fallback settings.
+type SearchConfig struct {
+	Provider string // "searxng" | "google" | "bing"
+	BaseURL  string // SearXNG instance URL or API endpoint
+	APIKey   string // API key (for Google/Bing)
+}
+
 // Load reads configuration from .env file and environment variables.
 // Environment variables take precedence over .env file values.
 func Load() *Config {
@@ -158,6 +175,17 @@ func Load() *Config {
 		I18n: I18nConfig{
 			DefaultLocale: getEnv("I18N_DEFAULT_LOCALE", "zh-CN"),
 			LocaleDir:     getEnv("I18N_LOCALE_DIR", "locales"),
+		},
+		Search: SearchConfig{
+			Provider: getEnv("SEARCH_PROVIDER", "searxng"),
+			BaseURL:  getEnv("SEARCH_BASE_URL", "http://localhost:8888"),
+			APIKey:   getEnv("SEARCH_API_KEY", ""),
+		},
+		ASR: ASRConfig{
+			Provider:   getEnv("ASR_PROVIDER", "whisper"),
+			WhisperURL: getEnv("ASR_WHISPER_URL", "http://localhost:9000"),
+			APIKey:     getEnv("ASR_API_KEY", ""),
+			ModelSize:  getEnv("ASR_MODEL_SIZE", "large-v3"),
 		},
 	}
 }

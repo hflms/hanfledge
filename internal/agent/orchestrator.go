@@ -11,6 +11,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
+	"github.com/hflms/hanfledge/internal/infrastructure/search"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
@@ -36,9 +37,10 @@ type AgentOrchestrator struct {
 	neo4j       *neo4jRepo.Client
 	karag       *usecase.KARAGEngine
 	registry    *plugin.Registry
-	eventBus    *plugin.EventBus    // Plugin event bus (nil-safe)
-	cache       *cache.RedisCache   // nil if Redis unavailable
-	outputGuard *safety.OutputGuard // 输出安全审核器
+	eventBus    *plugin.EventBus         // Plugin event bus (nil-safe)
+	cache       *cache.RedisCache        // nil if Redis unavailable
+	outputGuard *safety.OutputGuard      // 输出安全审核器
+	searchConn  *search.DynamicConnector // Web search fallback (§8.1.2, nil-safe)
 
 	// Actor-Critic 最大重试轮数
 	maxCriticRetries int
@@ -55,6 +57,7 @@ func NewAgentOrchestrator(
 	piiRedactor *safety.PIIRedactor,
 	redisCache *cache.RedisCache,
 	outputGuard *safety.OutputGuard,
+	searchConnector *search.DynamicConnector,
 ) *AgentOrchestrator {
 	o := &AgentOrchestrator{
 		db:          db,
@@ -65,13 +68,14 @@ func NewAgentOrchestrator(
 		eventBus:    eventBus,
 		cache:       redisCache,
 		outputGuard: outputGuard,
+		searchConn:  searchConnector,
 
 		maxCriticRetries: 2,
 	}
 
 	// 初始化各 Agent
 	o.strategist = NewStrategistAgent(db, neo4jClient, registry)
-	o.designer = NewDesignerAgent(db, llmClient, neo4jClient, karag)
+	o.designer = NewDesignerAgent(db, llmClient, neo4jClient, karag, searchConnector)
 	o.coach = NewCoachAgent(db, llmClient, registry, piiRedactor, redisCache)
 	o.critic = NewCriticAgent(llmClient)
 	o.bkt = NewBKTService(db)

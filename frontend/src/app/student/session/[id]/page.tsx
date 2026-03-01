@@ -23,6 +23,8 @@ import { useToast } from '@/components/Toast';
 import styles from './page.module.css';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
+const VoiceInput = dynamic(() => import('@/components/VoiceInput/VoiceInput'), { ssr: false });
+const Avatar3D = dynamic(() => import('@/components/Avatar3D/Avatar3D'), { ssr: false });
 
 // -- Types -------------------------------------------------------
 
@@ -467,6 +469,15 @@ export default function SessionPage() {
         textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
     }, []);
 
+    // -- Voice Transcript Handler --------------------------------
+
+    const handleVoiceTranscript = useCallback((text: string) => {
+        if (!text.trim()) return;
+        setInput(text);
+        // Auto-focus the input so user can review/edit before sending
+        inputRef.current?.focus();
+    }, []);
+
     // -- Render Scaffold UI (T-4.13) — fallback mode only --------
 
     const renderScaffold = () => {
@@ -626,6 +637,11 @@ export default function SessionPage() {
 
             {/* Input */}
             <div className={styles.inputArea}>
+                <VoiceInput
+                    onTranscript={handleVoiceTranscript}
+                    wsRef={wsRef}
+                    disabled={session!.status !== 'active' || sending}
+                />
                 <textarea
                     ref={inputRef}
                     className={styles.chatInput}
@@ -737,6 +753,11 @@ export default function SessionPage() {
 
                 {/* Skill Renderer or Default Chat */}
                 {matchedPlugin ? renderSkillRenderer() : renderDefaultChat()}
+
+                {/* 3D Avatar — visible alongside the default chat */}
+                {!matchedPlugin && (
+                    <Avatar3D wsRef={wsRef} active={wsStatus === 'connected'} />
+                )}
             </div>
         </div>
     );

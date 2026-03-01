@@ -75,7 +75,7 @@ func TestTruncateStr(t *testing.T) {
 // -- SessionHandler Constructor Test --------------------------
 
 func TestNewSessionHandler(t *testing.T) {
-	h := NewSessionHandler(nil, nil, nil)
+	h := NewSessionHandler(nil, nil, nil, nil)
 	if h == nil {
 		t.Fatal("NewSessionHandler returned nil")
 	}
@@ -87,5 +87,8 @@ func TestNewSessionHandler(t *testing.T) {
 	}
 	if h.InjectionGuard != nil {
 		t.Error("expected nil InjectionGuard")
+	}
+	if h.ASR != nil {
+		t.Error("expected nil ASR")
 	}
 }

@@ -1,6 +1,6 @@
 # Hanfledge MVP V1.0 — TODO Tasks
 
-**Last Updated:** 2026-02-28 23:30
+**Last Updated:** 2026-03-01
 **Tech Stack:** Go (Gin+GORM) / Next.js / PostgreSQL (pgvector) / Neo4j / Redis
 **Reference:** [design.md](./design.md)
 
@@ -26,11 +26,13 @@
 | **V3.0: 质量与架构治理** | **✅ 已完成** | **100%** | — |
 | **V3.1: Handler HTTP 测试** | **✅ 已完成** | **100%** | — |
 | **V4.0: 中期功能** | **✅ 已完成** | **7/7** | `ea8d183` |
+| **V5.0: 高级功能** | **✅ 已完成** | **6/6** | — |
 
 **MVP 总进度: 73 / 73 tasks (100%)**
 **V2.0 进度: Phase A ✅ + Phase B ✅ + Phase C ✅ + Phase D ✅ + Phase E ✅ + Phase F ✅ + Phase G ✅ + Phase H ✅ + Phase I ✅ + WS Robustness ✅**
 **V3.0 进度: 10 / 10 tasks (100%) ✅**
 **V4.0 进度: 7 / 7 tasks (100%) ✅**
+**V5.0 进度: 6 / 6 tasks (100%) ✅**
 
 ---
 
@@ -1736,3 +1738,122 @@ MCQ/填空题生成 + QuizRenderer (design.md §7.13)
   - 操作按钮: 发布 / 共享(学校/平台) / 归档 / 删除
   - 自定义技能详情弹窗 (SKILL.md 渲染)
 - [x] Coach Agent + Strategist 兼容性验证 (无需修改)
+
+---
+
+## V5.0: 高级功能 ✅
+
+### Task 1: Web Search Fallback (§8.1.2) ✅
+
+CRAG 质量网关检测低质量检索结果时，自动触发 Web 搜索增强。
+
+- [x] `internal/infrastructure/search/websearch.go` — DynamicConnector + SearXNG 搜索器
+  - `SearchResult` / `SearchConfig` 结构体，默认 SearXNG 后端
+  - `NewDynamicConnector()` 构造器 + `mockSearcher` 测试辅助
+  - `SearchAndRank()` — 并发搜索 + 去重 + 相关性排序 + 截断
+  - `FormatAsContext()` / `EnhancePrompt()` — 搜索结果格式化 + prompt 注入
+  - `truncateQuery()` — 查询长度限制
+- [x] `internal/infrastructure/search/websearch_test.go` — 12 个单元测试
+- [x] `internal/agent/crag.go` — 新增 `HandleFallbackWithSearch()` 方法
+  - 调用 `connector.SearchAndRank()` + `connector.EnhancePrompt()` 增强 prompt
+- [x] `internal/agent/designer.go` — Step 7.5 CRAG 网关集成
+  - 当 `searchConn != nil` 且检索质量低时，调用 web search fallback
+- [x] `internal/agent/orchestrator.go` — 构造器新增 `searchConn` 参数，传递给 DesignerAgent
+- [x] `internal/config/config.go` — 新增 `SearchConfig` (Endpoint, APIKey, MaxResults, Timeout)
+- [x] `cmd/server/main.go` — 初始化 `searchConnector`，传入 Orchestrator
+
+### Task 2: ASR / 语音输入 ✅
+
+WebSocket 语音事件处理 + Whisper ASR 转写。
+
+- [x] `internal/infrastructure/asr/asr.go` — WhisperProvider + 流式转写
+  - `ASRProvider` 接口: `Transcribe()` / `StreamTranscribe()`
+  - `WhisperProvider` 实现: HTTP multipart 上传到 Whisper API
+  - `TranscribeConfig` — 语言、温度、初始 prompt 配置
+- [x] `internal/infrastructure/asr/asr_test.go` — 9 个单元测试
+  - httptest mock 覆盖: 成功、APIKey 认证、错误响应、context 取消
+- [x] `internal/agent/types.go` — 新增语音/Avatar 事件类型
+  - `EventVoiceStart` / `EventVoiceData` / `EventVoiceEnd` / `EventVoiceResult`
+  - `EventAvatarAction` + `VoiceDataPayload` / `AvatarActionPayload`
+- [x] `internal/delivery/http/handler/session.go` — WebSocket voice 事件处理
+  - `voice_start` / `voice_data` / `voice_end` 消息处理
+  - ASR 转写结果通过 WebSocket 回传客户端
+- [x] `internal/delivery/http/handler/session_test.go` — 更新构造器签名 (4 参数)
+- [x] `internal/delivery/http/router.go` — `RouterDeps` 新增 `ASRProvider` 字段
+- [x] `internal/config/config.go` — 新增 `ASRConfig` (Endpoint, APIKey, Model, Language)
+- [x] `cmd/server/main.go` — 初始化 `asrProvider`，注入 RouterDeps
+
+### Task 3: 前端语音输入 + 3D Avatar 组件 ✅
+
+学生会话页面集成语音输入和 3D 虚拟形象组件。
+
+- [x] `frontend/src/components/VoiceInput/VoiceInput.tsx` — 语音输入组件
+  - WebSocket 实时传输音频数据 (MediaRecorder API)
+  - 录音状态指示 + 动画效果
+- [x] `frontend/src/components/VoiceInput/VoiceInput.module.css` — 语音输入样式
+- [x] `frontend/src/components/Avatar3D/Avatar3D.tsx` — 3D 虚拟形象组件
+  - WebSocket 驱动的 Avatar 状态 (idle / speaking / thinking)
+  - CSS 动画模拟 3D 效果
+- [x] `frontend/src/components/Avatar3D/Avatar3D.module.css` — Avatar 样式
+- [x] `frontend/src/app/student/session/[id]/page.tsx` — 集成 VoiceInput + Avatar3D
+  - `next/dynamic` 动态导入 (`ssr: false`)
+  - 通过 `wsRef` 共享 WebSocket 连接
+
+### Task 4: 小模型蒸馏 (§8.3.2) ✅
+
+SFT 蒸馏管线：大模型生成高质量教学样本，用于训练小模型。
+
+- [x] `internal/infrastructure/embedding/distillation.go` — DistillationPipeline
+  - `LoRAConfig` — LoRA 超参数 (rank, alpha, dropout, epochs, lr)
+  - `DistillationPipeline` — 调用大模型生成 SFT 训练对
+  - `DistillSkill()` — 按技能类型生成系统 prompt + 批量生成样本
+  - `buildDistillSystemPrompt()` — 5 种技能类型的专用 prompt 模板
+  - `parseDistillScore()` — 解析模型评分 + 质量过滤
+  - `estimateTokenCount()` — token 估算
+- [x] `internal/infrastructure/embedding/distillation_test.go` — 8 个单元测试
+
+### Task 5: Embedding 微调 (§8.3.1) ✅
+
+InfoNCE 对比学习 + 评估管线，优化领域向量表示。
+
+- [x] `internal/infrastructure/embedding/finetune.go` — FineTunePipeline
+  - `InfoNCEConfig` — 温度、负样本数、margin 配置
+  - `TrainingPair` — anchor/positive/negatives 训练三元组
+  - `FineTunePipeline` — 训练循环 + 评估
+  - `cosineSimilarity()` — 余弦相似度计算
+  - `computeStats()` — 统计摘要 (mean, std, min, max)
+  - `EvaluateEmbeddings()` — 微调前后效果对比评估
+- [x] `internal/infrastructure/embedding/finetune_test.go` — 6 个单元测试
+  - cosineSimilarity 5 种 case + 边界条件
+
+### Task 6: 联邦学习 (§8.4.2) ✅
+
+FedAvg 联邦聚合 + 差分隐私 + 梯度加密，支持多校协同训练。
+
+- [x] `internal/infrastructure/federated/privacy.go` — 隐私保护机制
+  - `ClipGradient()` — L2 范数梯度裁剪
+  - `AddGaussianNoise()` — 高斯噪声注入 (差分隐私)
+  - `Sanitize()` — 裁剪 + 噪声一体化
+  - `GradientEncryptor` — AES-256-GCM 梯度加密/解密
+- [x] `internal/infrastructure/federated/privacy_test.go` — 14 个单元测试
+  - 裁剪、噪声、Sanitize、加解密往返、错误处理、密文篡改检测
+- [x] `internal/infrastructure/federated/fedavg.go` — FedAvg 聚合服务器
+  - `FedAvgServer` — 学校注册 + 梯度提交 + 加权平均聚合
+  - `RegisterSchool()` / `SubmitGradient()` / `TryAggregate()`
+  - `fedAvg()` — 加权平均算法 + 维度校验
+  - `computeChecksum()` — SHA256 校验和
+  - `GetGlobalWeights()` — 全局模型权重分发
+- [x] `internal/infrastructure/federated/fedavg_test.go` — 17 个单元测试
+- [x] `internal/infrastructure/federated/trainer.go` — 本地学校训练器
+  - `LocalTrainer` — 本地 SGD 训练 + 梯度计算
+  - `AddTrainingPairs()` / `Train()` / `PrepareUpdate()` / `ApplyGlobalWeights()`
+- [x] `internal/infrastructure/federated/trainer_test.go` — 16 个单元测试
+  - 端到端集成测试: 训练 → 梯度上传 → 全局聚合 → 权重更新
+
+### V5.0 构建验证 ✅
+
+- [x] `go vet ./...` — 通过
+- [x] `go build -o /dev/null ./cmd/server/main.go` — 通过
+- [x] `go test ./...` — 全部通过 (82 个新测试)
+- [x] `npm run build` — 通过 (16 个路由编译成功)
+- [x] `npm run lint` — 无新增警告/错误

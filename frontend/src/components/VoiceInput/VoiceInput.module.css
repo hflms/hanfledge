@@ -1,0 +1,100 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* -- Mic Button ------------------------------------------------ */
+
+.micButton {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border, #d1d5db);
+  background: var(--color-bg-secondary, #f9fafb);
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  padding: 0;
+  outline: none;
+}
+
+.micButton:hover:not(:disabled) {
+  border-color: var(--color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
+  background: var(--color-bg-primary-subtle, #eff6ff);
+}
+
+.micButton:focus-visible {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.micButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* -- Recording State ------------------------------------------- */
+
+.micButton.recording {
+  border-color: #ef4444;
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+.micIcon {
+  width: 20px;
+  height: 20px;
+  position: relative;
+  z-index: 1;
+}
+
+/* -- Pulse Animation ------------------------------------------- */
+
+.pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.2);
+  transform: translate(-50%, -50%);
+  animation: pulseAnim 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pulseAnim {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* -- Status Text ----------------------------------------------- */
+
+.recordingText {
+  font-size: 13px;
+  color: #ef4444;
+  font-weight: 500;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.errorText {
+  font-size: 13px;
+  color: #ef4444;
+}
