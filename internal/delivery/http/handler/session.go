@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -193,6 +194,33 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 
 	slogSession.Info("websocket connected", "session", sessionID, "student", studentID)
 
+	// ── Welcome Message (first connection only) ──────────────
+	// Check if session has any prior interactions; if not, send a welcome message
+	var interactionCount int64
+	h.DB.Model(&model.Interaction{}).Where("session_id = ?", sessionID).Count(&interactionCount)
+	if interactionCount == 0 {
+		// Load activity and knowledge point context for the greeting
+		var activity model.LearningActivity
+		var kpTitle string
+		if err := h.DB.First(&activity, session.ActivityID).Error; err == nil {
+			var kp model.KnowledgePoint
+			if err := h.DB.First(&kp, session.CurrentKP).Error; err == nil {
+				kpTitle = kp.Title
+			}
+		}
+
+		// Build welcome content
+		welcome := fmt.Sprintf("👋 欢迎开始学习活动「%s」！", activity.Title)
+		if kpTitle != "" {
+			welcome += fmt.Sprintf("\n\n📚 当前知识点：**%s**", kpTitle)
+		}
+		welcome += "\n\n请在下方输入框中回答或提问，AI 导师会引导你逐步思考。准备好了就开始吧！"
+
+		h.sendEvent(ws, "system_message", map[string]string{
+			"content": welcome,
+		})
+	}
+
 	// ── Heartbeat: pong detection ────────────────────────────
 	rawWS.SetReadDeadline(time.Now().Add(wsPongWait))
 	rawWS.SetPongHandler(func(string) error {
@@ -359,13 +387,13 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 	defer agentCancel()
 
 	tc := &agent.TurnContext{
-		Ctx:        agentCtx,
-		SessionID:  session.ID,
-		StudentID:  studentID,
-		ActivityID: session.ActivityID,
-		UserInput:  payload.Text,
-		Scaffold:   session.Scaffold,
-		IsSandbox:  session.IsSandbox,
+		Ctx:              agentCtx,
+		SessionID:        session.ID,
+		StudentID:        studentID,
+		ActivityID:       session.ActivityID,
+		UserInput:        payload.Text,
+		Scaffold:         session.Scaffold,
+		IsSandbox:        session.IsSandbox,
 		ProviderOverride: payload.ProviderOverride,
 		ModelOverride:    payload.ModelOverride,
 

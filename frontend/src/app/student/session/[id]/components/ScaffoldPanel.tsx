@@ -44,10 +44,10 @@ export default function ScaffoldPanel({ level, data, transition }: ScaffoldPanel
 
 function ScaffoldHigh({ data, transition }: { data: ScaffoldData; transition: boolean }) {
     const steps = data.steps || [
-        '仔细阅读问题，理解要求',
+        '阅读 AI 导师的引导，理解学习目标',
         '回忆相关的知识点和概念',
         '尝试用自己的语言描述思路',
-        '逐步推导或分析',
+        '在对话中逐步推导和验证',
     ];
     const keywords = data.keywords || [];
 
