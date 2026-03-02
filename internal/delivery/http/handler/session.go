@@ -349,6 +349,10 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 				slogSession.Info("transcribed", "session", sessionID, "text", truncateStr(result.Text, 50))
 			}()
 
+		case "ping":
+			// Application-level heartbeat from frontend — silently ignore
+			// (WebSocket-level pings are handled separately by the gorilla library)
+
 		default:
 			h.sendWSError(ws, "未知事件类型: "+event.Event)
 		}
