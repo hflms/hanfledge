@@ -75,7 +75,7 @@ services:
   # WeKnora Knowledge Base Service (optional)
   # Enable by setting WEKNORA_ENABLED=true in .env
   weknora:
-    image: tencent/weknora:latest  # TODO: confirm official image name
+    image: wechatopenai/weknora-app:latest
     container_name: hanfledge-weknora
     restart: unless-stopped
     ports:
@@ -91,7 +91,7 @@ services:
     volumes:
       - weknora_data:/data
     profiles:
-      - weknora  # Only start when explicitly requested: docker-compose --profile weknora up
+      - weknora # Only start when explicitly requested: docker-compose --profile weknora up
     deploy:
       resources:
         limits:
