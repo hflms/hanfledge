@@ -84,6 +84,21 @@ const quizManifest: PluginManifest = {
   permissions: ['getStudentContext', 'getKnowledgePoint', 'sendMessageToAgent', 'reportInteractionEvent'],
 };
 
+const practiceQuizManifest: PluginManifest = {
+  id: 'practice-quiz-renderer',
+  name: '自动出题渲染器',
+  version: '1.0.0',
+  type: 'skill_renderer',
+  skillId: 'general_practice_quiz',
+  trust_level: 'domain',
+  author: 'hanfledge-team',
+  description: '智能出题 — 根据知识点自动生成选择题和填空题',
+  entry: '@/lib/plugin/renderers/QuizRenderer',
+  slots: ['student.interaction.main'],
+  supported_interaction_modes: ['text'],
+  permissions: ['getStudentContext', 'getKnowledgePoint', 'sendMessageToAgent', 'reportInteractionEvent'],
+};
+
 // -- Component Registry (maps skillId -> React component) --------
 //
 // Each manifest above has an "entry" field pointing to the renderer
@@ -108,10 +123,13 @@ const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_assessment_fallacy: FallacyRenderer,
   general_review_roleplay: RolePlayRenderer,
   general_assessment_quiz: QuizRenderer,
+  general_practice_quiz: QuizRenderer,
   general_diagnosis_error: ErrorDiagnosisRenderer as unknown as FC<SkillRendererProps>,
   general_synthesis_crosslink: CrossDisciplinaryRenderer as unknown as FC<SkillRendererProps>,
   general_diagnosis_survey: LearningSurveyRenderer,
 };
+
+const MISSING_RENDERER_SKILLS: string[] = [];
 
 const errorDiagnosisManifest: PluginManifest = {
   id: 'general_diagnosis_error',
@@ -167,6 +185,7 @@ export const SKILL_MANIFESTS: PluginManifest[] = [
   fallacyManifest,
   rolePlayManifest,
   quizManifest,
+  practiceQuizManifest,
   errorDiagnosisManifest,
   crossDisciplinaryManifest,
   learningSurveyManifest,
@@ -187,6 +206,7 @@ function resolveManifest(manifest: PluginManifest): SkillUIRenderer | null {
 
   const Component = COMPONENT_REGISTRY[skillId];
   if (!Component) {
+    MISSING_RENDERER_SKILLS.push(skillId);
     console.warn(`[PluginLoader] No component registered for skillId: ${skillId}`);
     return null;
   }
@@ -210,6 +230,10 @@ function resolveManifest(manifest: PluginManifest): SkillUIRenderer | null {
 export const MANIFEST_RENDERERS: SkillUIRenderer[] = SKILL_MANIFESTS
   .map(resolveManifest)
   .filter((r): r is SkillUIRenderer => r !== null);
+
+export function getMissingRendererSkillIds(): string[] {
+  return Array.from(new Set(MISSING_RENDERER_SKILLS));
+}
 
 /**
  * Look up a renderer by its skillId.

@@ -12,6 +12,7 @@ import {
 } from '@/lib/api';
 import { usePluginRegistry } from '@/lib/plugin/PluginRegistry';
 import { useBuiltinSkillRenderers } from '@/lib/plugin/SkillRendererPlugins';
+import { getMissingRendererSkillIds } from '@/lib/plugin/SkillManifestLoader';
 import type { SkillRendererProps, InteractionEvent } from '@/lib/plugin/types';
 import {
     getCachedResponse,
@@ -48,10 +49,20 @@ export default function SessionPage() {
     const params = useParams();
     const router = useRouter();
     const { toast } = useToast();
+    const missingToastShownRef = useRef(false);
     const sessionId = Number(params.id);
 
     // Register built-in skill renderers with plugin system
     useBuiltinSkillRenderers();
+
+    useEffect(() => {
+        if (missingToastShownRef.current) return;
+        const missing = getMissingRendererSkillIds();
+        if (missing.length > 0) {
+            toast(`缺少技能渲染器: ${missing.join(', ')}`, 'warning');
+            missingToastShownRef.current = true;
+        }
+    }, [toast]);
 
     // Core state
     const [session, setSession] = useState<StudentSession | null>(null);
@@ -86,12 +97,13 @@ export default function SessionPage() {
         if (!activeSkill) return null;
         return plugins.find(p => p.id === `skill-renderer-${activeSkill}`) || null;
     }, [plugins, activeSkill]);
+    const activePlugin = matchedPlugin?.Component ? matchedPlugin : null;
 
     // -- WebSocket Event Handler ------------------------------------
 
     const handleWSEvent = useCallback((event: WSEvent) => {
         // Skip events when a plugin renderer handles the WebSocket directly
-        if (matchedPlugin) return;
+        if (activePlugin) return;
 
         switch (event.event) {
             case 'agent_thinking': {
@@ -325,8 +337,8 @@ export default function SessionPage() {
     // -- Render Skill Renderer (plugin mode) ------------------------
 
     const renderSkillRenderer = () => {
-        if (!matchedPlugin || !session) return null;
-        const RendererComponent = matchedPlugin.Component as unknown as React.FC<SkillRendererProps>;
+        if (!activePlugin || !session) return null;
+        const RendererComponent = activePlugin.Component as unknown as React.FC<SkillRendererProps>;
         const rendererProps: SkillRendererProps = {
             studentContext: {
                 studentId: session.student_id,
@@ -409,7 +421,7 @@ export default function SessionPage() {
                 </div>
 
                 {/* Skill Renderer or Default Chat */}
-                {matchedPlugin ? renderSkillRenderer() : (
+                {activePlugin ? renderSkillRenderer() : (
                     <>
                         <MessageList
                             messages={messages}
@@ -437,7 +449,7 @@ export default function SessionPage() {
                 )}
 
                 {/* 3D Avatar — visible alongside the default chat */}
-                {!matchedPlugin && (
+                {!activePlugin && (
                     <Avatar3D agentChannel={agentChannel} active={wsStatus === 'connected'} />
                 )}
             </div>
