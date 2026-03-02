@@ -85,19 +85,20 @@ func main() {
 	switch cfg.LLM.Provider {
 	case "dashscope":
 		if cfg.LLM.DashScopeKey == "" {
-			logger.Fatal("DASHSCOPE_API_KEY is required when LLM_PROVIDER=dashscope")
+			log.Warn("DASHSCOPE_API_KEY is not set, LLM features will be unavailable until configured via settings")
+		} else {
+			embModel := cfg.LLM.EmbeddingModel
+			if embModel == "" {
+				embModel = "text-embedding-v3"
+			}
+			llmProvider = llm.NewDashScopeClient(llm.DashScopeConfig{
+				APIKey:         cfg.LLM.DashScopeKey,
+				ChatModel:      cfg.LLM.DashScopeModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  cfg.LLM.DashScopeCompatURL,
+			})
+			log.Info("using DashScope provider", "chat_model", cfg.LLM.DashScopeModel, "embed_model", embModel)
 		}
-		embModel := cfg.LLM.EmbeddingModel
-		if embModel == "" {
-			embModel = "text-embedding-v3"
-		}
-		llmProvider = llm.NewDashScopeClient(llm.DashScopeConfig{
-			APIKey:         cfg.LLM.DashScopeKey,
-			ChatModel:      cfg.LLM.DashScopeModel,
-			EmbeddingModel: embModel,
-			CompatBaseURL:  cfg.LLM.DashScopeCompatURL,
-		})
-		log.Info("using DashScope provider", "chat_model", cfg.LLM.DashScopeModel, "embed_model", embModel)
 	default: // "ollama"
 		llmProvider = llm.NewOllamaClient(
 			cfg.LLM.OllamaHost,
