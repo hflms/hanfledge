@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
+
 import {
     getSession,
     type Interaction,
@@ -32,7 +32,7 @@ import ScaffoldPanel, {
 import SessionInput from './components/SessionInput';
 import styles from './page.module.css';
 
-const Avatar3D = dynamic(() => import('@/components/Avatar3D/Avatar3D'), { ssr: false });
+
 
 // -- Connection Status Label -------------------------------------
 
@@ -70,7 +70,7 @@ export default function SessionPage() {
     const [loading, setLoading] = useState(true);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
-    
+
     // Override state
     const [providerOverride, setProviderOverride] = useState('');
     const [modelOverride, setModelOverride] = useState('');
@@ -218,7 +218,7 @@ export default function SessionPage() {
                 break;
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [toast, matchedPlugin]);
 
     // -- WebSocket Hook ---------------------------------------------
@@ -316,7 +316,7 @@ export default function SessionPage() {
         setSending(true);
         setStreamingContent('');
 
-        
+
         const payload: Record<string, string> = { text };
         if (providerOverride) {
             payload.provider_override = providerOverride;
@@ -407,11 +407,10 @@ export default function SessionPage() {
                                     : WS_STATUS_LABELS[wsStatus]}
                             </div>
                         )}
-                        <div className={`${styles.scaffoldBadge} ${
-                            scaffoldLevel === 'high' ? styles.scaffoldHigh :
-                            scaffoldLevel === 'medium' ? styles.scaffoldMedium :
-                            styles.scaffoldLow
-                        }`}>
+                        <div className={`${styles.scaffoldBadge} ${scaffoldLevel === 'high' ? styles.scaffoldHigh :
+                                scaffoldLevel === 'medium' ? styles.scaffoldMedium :
+                                    styles.scaffoldLow
+                            }`}>
                             {SCAFFOLD_LABELS[scaffoldLevel]}
                             <span style={{ fontSize: '10px', opacity: 0.7 }}>
                                 &middot; {SCAFFOLD_DESCRIPTIONS[scaffoldLevel]}
@@ -448,10 +447,7 @@ export default function SessionPage() {
                     </>
                 )}
 
-                {/* 3D Avatar — visible alongside the default chat */}
-                {!activePlugin && (
-                    <Avatar3D agentChannel={agentChannel} active={wsStatus === 'connected'} />
-                )}
+
             </div>
         </div>
     );
