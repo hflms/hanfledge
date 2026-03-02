@@ -23,10 +23,15 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		// Extract token from Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "缺少认证令牌",
-			})
-			return
+			// WebSocket 连接无法设置 HTTP 头，回退到 query 参数 ?token=xxx
+			if tokenQuery := c.Query("token"); tokenQuery != "" {
+				authHeader = "Bearer " + tokenQuery
+			} else {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "缺少认证令牌",
+				})
+				return
+			}
 		}
 
 		// Expect "Bearer <token>"
