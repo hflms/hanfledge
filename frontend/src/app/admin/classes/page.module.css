@@ -1,0 +1,105 @@
+.pageHeader {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.pageTitle {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 6px;
+}
+
+.pageSubtitle {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.pageMeta {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.formCard {
+    margin-bottom: 24px;
+}
+
+.cardTitle {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.formRow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.listSection {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sectionTitle {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.emptyState {
+    padding: 32px;
+    border: 1px dashed var(--border-muted);
+    border-radius: 12px;
+    text-align: center;
+    color: var(--text-muted);
+    background: var(--surface-soft);
+}
+
+.tableWrapper {
+    border: 1px solid var(--border-muted);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface);
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.table thead {
+    background: var(--surface-soft);
+    text-align: left;
+}
+
+.table th,
+.table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.pageInfo {
+    font-size: 13px;
+    color: var(--text-muted);
+}

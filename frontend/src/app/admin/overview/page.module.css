@@ -1,0 +1,107 @@
+.pageHeader {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.pageTitle {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 6px;
+}
+
+.pageSubtitle {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.timeLabel {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.statCard {
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border-muted);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.statLabel {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.statValue {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.statHint {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.quickLinks {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sectionTitle {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.linkGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.linkCard {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border-muted);
+    background: var(--surface);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.15s ease;
+}
+
+.linkCard:hover {
+    border-color: var(--accent);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+
+.linkIcon {
+    font-size: 22px;
+}
+
+.linkTitle {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.linkHint {
+    font-size: 12px;
+    color: var(--text-muted);
+}

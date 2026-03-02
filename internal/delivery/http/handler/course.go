@@ -231,6 +231,12 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 			return
 		}
 
+		if err := h.Docs.UpdateFields(ctx, doc.ID, map[string]interface{}{
+			"status": model.DocStatusCompleted,
+		}); err != nil {
+			slogCourse.Warn("failed to update doc to completed", "doc_id", doc.ID, "err", err)
+		}
+
 		// Invalidate L2 semantic cache for this course (§8.1.3)
 		if h.Cache != nil {
 			if err := h.Cache.InvalidateSemanticCacheByCourse(ctx, doc.CourseID); err != nil {
@@ -516,6 +522,12 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 				"error_message": err.Error(),
 			})
 			return
+		}
+
+		if err := h.Docs.UpdateFields(bgCtx, doc.ID, map[string]interface{}{
+			"status": model.DocStatusCompleted,
+		}); err != nil {
+			slogCourse.Warn("failed to update doc to completed", "doc_id", doc.ID, "err", err)
 		}
 
 		// Invalidate L2 semantic cache

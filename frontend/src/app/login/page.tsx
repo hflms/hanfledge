@@ -27,7 +27,9 @@ export default function LoginPage() {
             const roles = res.user.school_roles || [];
             const roleNames = roles.map(r => r.role?.name || '');
 
-            if (roleNames.includes('SYS_ADMIN') || roleNames.includes('SCHOOL_ADMIN') || roleNames.includes('TEACHER')) {
+            if (roleNames.includes('SYS_ADMIN') || roleNames.includes('SCHOOL_ADMIN')) {
+                router.push('/admin/overview');
+            } else if (roleNames.includes('TEACHER')) {
                 router.push('/teacher/courses');
             } else {
                 router.push('/student/activities');

@@ -29,6 +29,13 @@ const STUDENT_NAV: NavItem[] = [
     { icon: '📝', label: '错题本', href: '/student/error-notebook' },
 ];
 
+const ADMIN_NAV: NavItem[] = [
+    { icon: '🧭', label: '管理总览', href: '/admin/overview' },
+    { icon: '🏫', label: '学校管理', href: '/admin/schools' },
+    { icon: '🏷️', label: '班级管理', href: '/admin/classes' },
+    { icon: '👥', label: '账号管理', href: '/admin/users' },
+];
+
 const ROLE_LABELS: Record<string, string> = {
     SYS_ADMIN: '系统管理员',
     SCHOOL_ADMIN: '学校管理员',
@@ -38,7 +45,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 interface DashboardLayoutProps {
     children: ReactNode;
-    variant?: 'teacher' | 'student';
+    variant?: 'teacher' | 'student' | 'admin';
 }
 
 export default function DashboardLayout({ children, variant }: DashboardLayoutProps) {
@@ -47,9 +54,26 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
     const { user, loading, fetchUser, logout } = useAuthStore();
 
     // Auto-detect variant from pathname if not provided
-    const layoutVariant = variant || (pathname.startsWith('/student') ? 'student' : 'teacher');
-    const navItems = layoutVariant === 'student' ? STUDENT_NAV : TEACHER_NAV;
-    const sectionLabel = layoutVariant === 'student' ? '学习中心' : '教学管理';
+    const layoutVariant = variant || (
+        pathname.startsWith('/admin')
+            ? 'admin'
+            : pathname.startsWith('/student')
+                ? 'student'
+                : 'teacher'
+    );
+    const roleNames = user?.school_roles?.map(r => r.role?.name).filter(Boolean) || [];
+    const isAdmin = roleNames.includes('SYS_ADMIN') || roleNames.includes('SCHOOL_ADMIN');
+    const isStudent = layoutVariant === 'student';
+    const navItems = isStudent
+        ? STUDENT_NAV
+        : isAdmin
+            ? [...ADMIN_NAV, ...TEACHER_NAV]
+            : TEACHER_NAV;
+    const sectionLabel = isStudent
+        ? '学习中心'
+        : isAdmin
+            ? '系统管理与教学'
+            : '教学管理';
 
     useEffect(() => {
         fetchUser().then(() => {

@@ -66,10 +66,10 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 			ChunkIndex: i,
 			Content:    content,
 			TokenCount: utf8.RuneCountInString(content),
-			// Initialize with an empty valid vector. Since pgvector requires valid format like "[0,0,0...]" 
+			// Initialize with an empty valid vector. Since pgvector requires valid format like "[0,0,0...]"
 			// if the field is omitted but gorm tries to insert "" for a string field.
-			// It is better to use `gorm:"default:NULL"` or let it be if GORM allows omit, 
-			// but we will pass a dummy zero array for now, or just let DB default handle it 
+			// It is better to use `gorm:"default:NULL"` or let it be if GORM allows omit,
+			// but we will pass a dummy zero array for now, or just let DB default handle it
 			// if we change the struct tag. Actually, it's safer to not insert it if we change gorm mapping.
 		}
 		if err := e.DB.Omit("Embedding").Create(&chunk).Error; err != nil {
@@ -92,18 +92,16 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 	e.generateEmbeddings(ctx, chunks, chunkIDs)
 
 	// Step 4: Use LLM to extract knowledge structure and build graph
-	if e.Neo4j != nil {
-		slogKARAG.Info("extracting knowledge structure via llm")
-		if err := e.buildKnowledgeGraph(ctx, doc.CourseID, chunks); err != nil {
-			slogKARAG.Warn("graph building partial failure", "err", err)
-		} else {
-			// Hook: after graph build (only on success)
-			e.publishEvent(ctx, plugin.HookAfterGraphBuild, map[string]interface{}{
-				"course_id":   doc.CourseID,
-				"document_id": doc.ID,
-			})
-		}
+	slogKARAG.Info("extracting knowledge structure via llm")
+	if err := e.buildKnowledgeGraph(ctx, doc.CourseID, chunks); err != nil {
+		return fmt.Errorf("build knowledge graph failed: %w", err)
 	}
+
+	// Hook: after graph build (only on success)
+	e.publishEvent(ctx, plugin.HookAfterGraphBuild, map[string]interface{}{
+		"course_id":   doc.CourseID,
+		"document_id": doc.ID,
+	})
 
 	// Mark as completed
 	e.DB.Model(doc).Update("status", model.DocStatusCompleted)
@@ -291,14 +289,19 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 
 	var outline OutlineJSON
 	if err := parseJSONSafe(jsonStr, &outline); err != nil {
-		slogKARAG.Warn("llm returned invalid json, skipping graph building", "err", err)
-		return nil // Don't fail — graph is optional for MVP
+		return fmt.Errorf("invalid outline json: %w", err)
+	}
+
+	if len(outline.Chapters) == 0 {
+		return fmt.Errorf("outline is empty")
 	}
 
 	// Create course node in Neo4j
 	var course model.Course
 	e.DB.First(&course, courseID)
-	e.Neo4j.CreateCourseGraph(ctx, courseID, course.Title, course.Subject)
+	if e.Neo4j != nil {
+		e.Neo4j.CreateCourseGraph(ctx, courseID, course.Title, course.Subject)
+	}
 
 	// Store chapters and KPs
 	kpTitleToID := make(map[string]uint) // for prerequisite linking
@@ -313,7 +316,9 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 		e.DB.Create(&chapter)
 
 		// Neo4j
-		e.Neo4j.CreateChapterNode(ctx, courseID, chapter.ID, ch.Title, i+1)
+		if e.Neo4j != nil {
+			e.Neo4j.CreateChapterNode(ctx, courseID, chapter.ID, ch.Title, i+1)
+		}
 
 		for _, kpData := range ch.KnowledgePoints {
 			kp := model.KnowledgePoint{
@@ -329,22 +334,26 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 			e.DB.Model(&kp).Update("neo4j_node_id", neo4jID)
 
 			// Neo4j
-			e.Neo4j.CreateKnowledgePointNode(ctx, chapter.ID, kp.ID, kpData.Title, kpData.Difficulty)
+			if e.Neo4j != nil {
+				e.Neo4j.CreateKnowledgePointNode(ctx, chapter.ID, kp.ID, kpData.Title, kpData.Difficulty)
+			}
 
 			kpTitleToID[kpData.Title] = kp.ID
 		}
 	}
 
 	// Create prerequisite relationships
-	for _, ch := range outline.Chapters {
-		for _, kpData := range ch.KnowledgePoints {
-			fromID, ok := kpTitleToID[kpData.Title]
-			if !ok {
-				continue
-			}
-			for _, prereqTitle := range kpData.Prerequisites {
-				if toID, ok := kpTitleToID[prereqTitle]; ok {
-					e.Neo4j.CreateRequiresRelation(ctx, fromID, toID)
+	if e.Neo4j != nil {
+		for _, ch := range outline.Chapters {
+			for _, kpData := range ch.KnowledgePoints {
+				fromID, ok := kpTitleToID[kpData.Title]
+				if !ok {
+					continue
+				}
+				for _, prereqTitle := range kpData.Prerequisites {
+					if toID, ok := kpTitleToID[prereqTitle]; ok {
+						e.Neo4j.CreateRequiresRelation(ctx, fromID, toID)
+					}
 				}
 			}
 		}
@@ -369,6 +378,15 @@ func extractJSON(s string) string {
 			s = s[:idx]
 		}
 	}
+
+	// Fallback to find the first { and last } if there is extra text
+	s = strings.TrimSpace(s)
+	startIdx := strings.Index(s, "{")
+	endIdx := strings.LastIndex(s, "}")
+	if startIdx != -1 && endIdx != -1 && endIdx > startIdx {
+		s = s[startIdx : endIdx+1]
+	}
+
 	return strings.TrimSpace(s)
 }
 
