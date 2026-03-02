@@ -118,6 +118,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	registerActivityRoutes(protected, deps.DB, activityHandler, sessionHandler, dashboardHandler)
 	registerStudentRoutes(protected, deps.DB, activityHandler, dashboardHandler, kgHandler, achievementHandler)
 	registerAnalyticsRoutes(protected, deps.DB, dashboardHandler, analyticsHandler, exportHandler)
+	registerSystemRoutes(protected, deps.DB, deps.LLMProvider)
 	registerMarketplaceRoutes(protected, deps.DB, marketplaceHandler)
 
 	return r

@@ -29,7 +29,7 @@ var _ LLMProvider = (*DashScopeClient)(nil)
 const (
 	dashScopeBaseURL       = "https://dashscope.aliyuncs.com/api/v1"
 	dashScopeChatEndpoint  = "/services/aigc/text-generation/generation"
-	dashScopeEmbedEndpoint = "/services/embeddings/text-embedding/text-embedding"
+	dashScopeEmbedEndpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
 )
 
 // DashScopeClient implements LLMProvider via Alibaba Cloud DashScope API.
@@ -243,23 +243,15 @@ func (c *DashScopeClient) StreamChat(ctx context.Context, messages []ChatMessage
 // -- Embedding API -----------------------------------------------
 
 type dsEmbedRequest struct {
-	Model string `json:"model"`
-	Input struct {
-		Texts []string `json:"texts"`
-	} `json:"input"`
-	Parameters struct {
-		TextType string `json:"text_type"`
-	} `json:"parameters"`
+	Model string   `json:"model"`
+	Input []string `json:"input"`
 }
 
 type dsEmbedResponse struct {
-	Output struct {
-		Embeddings []struct {
-			Embedding []float64 `json:"embedding"`
-			TextIndex int       `json:"text_index"`
-		} `json:"embeddings"`
-	} `json:"output"`
-	RequestID string `json:"request_id"`
+	Data []struct {
+		Embedding []float64 `json:"embedding"`
+		Index     int       `json:"index"`
+	} `json:"data"`
 }
 
 // Embed generates an embedding vector for a single text.
@@ -275,14 +267,13 @@ func (c *DashScopeClient) Embed(ctx context.Context, text string) ([]float64, er
 }
 
 // EmbedBatch generates embedding vectors for multiple texts.
-// DashScope supports batch embedding natively (up to 25 texts per call).
+// DashScope/Bailian compatible mode batch limit is typically 10 for v4 or larger for v3, using 10 to be safe.
 func (c *DashScopeClient) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
 
-	// DashScope batch limit is 25 texts
-	const batchSize = 25
+	const batchSize = 10
 	var allResults [][]float64
 
 	for i := 0; i < len(texts); i += batchSize {
@@ -294,9 +285,8 @@ func (c *DashScopeClient) EmbedBatch(ctx context.Context, texts []string) ([][]f
 
 		reqBody := dsEmbedRequest{
 			Model: c.EmbeddingModel,
+			Input: batch,
 		}
-		reqBody.Input.Texts = batch
-		reqBody.Parameters.TextType = "document"
 
 		body, err := c.doPost(ctx, dashScopeEmbedEndpoint, reqBody, false)
 		if err != nil {
@@ -308,15 +298,15 @@ func (c *DashScopeClient) EmbedBatch(ctx context.Context, texts []string) ([][]f
 			return nil, fmt.Errorf("dashscope embed parse failed: %w", err)
 		}
 
-		if len(resp.Output.Embeddings) == 0 {
-			return nil, fmt.Errorf("dashscope returned empty embeddings (request_id: %s)", resp.RequestID)
+		if len(resp.Data) == 0 {
+			return nil, fmt.Errorf("dashscope returned empty embeddings")
 		}
 
-		// Sort by text_index to maintain order
+		// Sort by index to maintain order
 		batchResults := make([][]float64, len(batch))
-		for _, emb := range resp.Output.Embeddings {
-			if emb.TextIndex < len(batchResults) {
-				batchResults[emb.TextIndex] = emb.Embedding
+		for _, emb := range resp.Data {
+			if emb.Index < len(batchResults) {
+				batchResults[emb.Index] = emb.Embedding
 			}
 		}
 		allResults = append(allResults, batchResults...)
@@ -353,6 +343,10 @@ func (c *DashScopeClient) doPost(ctx context.Context, endpoint string, payload i
 	}
 
 	url := dashScopeBaseURL + endpoint
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		url = endpoint
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, err
@@ -389,6 +383,10 @@ func (c *DashScopeClient) doPostStream(ctx context.Context, endpoint string, pay
 	}
 
 	url := dashScopeBaseURL + endpoint
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		url = endpoint
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, err

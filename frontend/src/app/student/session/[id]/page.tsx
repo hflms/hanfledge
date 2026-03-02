@@ -59,6 +59,10 @@ export default function SessionPage() {
     const [loading, setLoading] = useState(true);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
+    
+    // Override state
+    const [providerOverride, setProviderOverride] = useState('');
+    const [modelOverride, setModelOverride] = useState('');
 
     // Scaffold state
     const [scaffoldLevel, setScaffoldLevel] = useState<ScaffoldLevel>('high');
@@ -300,13 +304,23 @@ export default function SessionPage() {
         setSending(true);
         setStreamingContent('');
 
+        
+        const payload: Record<string, string> = { text };
+        if (providerOverride) {
+            payload.provider_override = providerOverride;
+        }
+        if (modelOverride) {
+            payload.model_override = modelOverride;
+        }
+
         const event: WSEvent = {
             event: 'user_message',
-            payload: { text },
+            payload,
             timestamp: Math.floor(Date.now() / 1000),
         };
+
         agentChannel.send(JSON.stringify(event));
-    }, [input, sending, sessionId, wsStatus, agentChannel]);
+    }, [input, sending, sessionId, wsStatus, agentChannel, providerOverride, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // -- Render Skill Renderer (plugin mode) ------------------------
 
@@ -409,6 +423,10 @@ export default function SessionPage() {
                         />
                         <SessionInput
                             input={input}
+                            providerOverride={providerOverride}
+                            setProviderOverride={setProviderOverride}
+                            modelOverride={modelOverride}
+                            setModelOverride={setModelOverride}
                             setInput={setInput}
                             sending={sending}
                             sessionActive={session.status === 'active'}

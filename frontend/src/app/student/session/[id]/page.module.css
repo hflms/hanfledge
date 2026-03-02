@@ -458,3 +458,40 @@
 .sandboxBannerIcon {
     font-size: 16px;
 }
+
+/* === Override Controls === */
+.inputAreaWrapper {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+}
+
+.inputAreaWrapper .inputArea {
+    padding-top: 0;
+    border-top: none;
+    margin-top: 0;
+}
+
+.overrideControls {
+    display: flex;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed var(--border);
+}
+
+.overrideSelect, .overrideInput {
+    padding: 4px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.overrideInput {
+    width: 150px;
+}

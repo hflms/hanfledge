@@ -181,6 +181,7 @@ export interface Document {
   file_name: string;
   status: string;
   page_count: number;
+  error_message?: string;
   created_at: string;
 }
 
@@ -215,6 +216,7 @@ export async function uploadMaterial(courseId: number, file: File): Promise<{
   message: string;
   document: Document;
   page_count: number;
+  error_message?: string;
 }> {
   const formData = new FormData();
   formData.append('file', file);
@@ -238,6 +240,7 @@ export async function retryDocument(courseId: number, docId: number): Promise<{
   message: string;
   document: Document;
   page_count: number;
+  error_message?: string;
 }> {
   return apiFetch(`/courses/${courseId}/documents/${docId}/retry`, {
     method: 'POST',

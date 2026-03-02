@@ -66,8 +66,13 @@ func (e *KARAGEngine) ProcessDocument(ctx context.Context, doc *model.Document, 
 			ChunkIndex: i,
 			Content:    content,
 			TokenCount: utf8.RuneCountInString(content),
+			// Initialize with an empty valid vector. Since pgvector requires valid format like "[0,0,0...]" 
+			// if the field is omitted but gorm tries to insert "" for a string field.
+			// It is better to use `gorm:"default:NULL"` or let it be if GORM allows omit, 
+			// but we will pass a dummy zero array for now, or just let DB default handle it 
+			// if we change the struct tag. Actually, it's safer to not insert it if we change gorm mapping.
 		}
-		if err := e.DB.Create(&chunk).Error; err != nil {
+		if err := e.DB.Omit("Embedding").Create(&chunk).Error; err != nil {
 			return fmt.Errorf("store chunk %d failed: %w", i, err)
 		}
 		chunkIDs = append(chunkIDs, chunk.ID)

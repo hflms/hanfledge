@@ -246,6 +246,8 @@ type ThinkingPayload struct {
 // TokenDeltaPayload token_delta 事件的载荷。
 type TokenDeltaPayload struct {
 	Text string `json:"text"`
+	ProviderOverride string `json:"provider_override,omitempty"`
+	ModelOverride    string `json:"model_override,omitempty"`
 }
 
 // ScaffoldChangePayload ui_scaffold_change 事件的载荷。
@@ -262,6 +264,8 @@ type TurnCompletePayload struct {
 // UserMessagePayload user_message 事件的载荷。
 type UserMessagePayload struct {
 	Text string `json:"text"`
+	ProviderOverride string `json:"provider_override,omitempty"`
+	ModelOverride    string `json:"model_override,omitempty"`
 }
 
 // VoiceStartPayload voice_start event payload.
@@ -302,6 +306,8 @@ type TurnContext struct {
 	TeacherWhisper string // 教师干预指令 (Whisper)
 	Scaffold       ScaffoldLevel
 	IsSandbox      bool // 沙盒预览模式 — 跳过 BKT 掌握度更新和错题本归档 (design.md §5.1 Step 3)
+	ProviderOverride string 
+	ModelOverride    string
 
 	// 管道中间产物
 	Prescription *LearningPrescription

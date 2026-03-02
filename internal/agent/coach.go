@@ -98,12 +98,18 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
+		
+			ProviderOverride: tc.ProviderOverride,
+			ModelOverride: tc.ModelOverride,
 		}, onToken)
 	} else {
 		response, err = a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
+		
+			ProviderOverride: tc.ProviderOverride,
+			ModelOverride: tc.ModelOverride,
 		}, onToken)
 	}
 	if err != nil {
@@ -171,12 +177,18 @@ func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMateri
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
+		
+			ProviderOverride: tc.ProviderOverride,
+			ModelOverride: tc.ModelOverride,
 		}, onToken)
 	} else {
 		response, err = a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
+		
+			ProviderOverride: tc.ProviderOverride,
+			ModelOverride: tc.ModelOverride,
 		}, onToken)
 	}
 	if err != nil {

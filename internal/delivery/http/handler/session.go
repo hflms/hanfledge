@@ -366,6 +366,8 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 		UserInput:  payload.Text,
 		Scaffold:   session.Scaffold,
 		IsSandbox:  session.IsSandbox,
+		ProviderOverride: payload.ProviderOverride,
+		ModelOverride:    payload.ModelOverride,
 
 		OnThinking: func(status string) {
 			h.sendEvent(ws, agent.EventAgentThinking, agent.ThinkingPayload{

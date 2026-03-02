@@ -5,6 +5,7 @@ import styles from '../page.module.css';
 
 const VoiceInput = dynamic(() => import('@/components/VoiceInput/VoiceInput'), { ssr: false });
 
+
 interface SessionInputProps {
     input: string;
     setInput: (value: string) => void;
@@ -12,7 +13,13 @@ interface SessionInputProps {
     sessionActive: boolean;
     onSend: () => void;
     agentChannel: AgentWebSocketChannel;
+    providerOverride?: string;
+    setProviderOverride?: (value: string) => void;
+    modelOverride?: string;
+    setModelOverride?: (value: string) => void;
 }
+
+
 
 export default function SessionInput({
     input,
@@ -21,7 +28,12 @@ export default function SessionInput({
     sessionActive,
     onSend,
     agentChannel,
+    providerOverride,
+    setProviderOverride,
+    modelOverride,
+    setModelOverride,
 }: SessionInputProps) {
+
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -44,8 +56,45 @@ export default function SessionInput({
         inputRef.current?.focus();
     }, [setInput]);
 
+    
     return (
-        <div className={styles.inputArea}>
+        <div className={styles.inputAreaWrapper}>
+            {setProviderOverride && (
+                <div className={styles.overrideControls}>
+                    <select 
+                        value={providerOverride || ''} 
+                        onChange={e => {
+                            setProviderOverride(e.target.value);
+                            if (setModelOverride) setModelOverride(''); // reset model when provider changes
+                        }}
+                        className={styles.overrideSelect}
+                    >
+                        <option value="">默认全局 AI</option>
+                        <option value="ollama">本地 Ollama</option>
+                        <option value="dashscope">通义千问 (DashScope)</option>
+                    </select>
+                    {providerOverride === 'ollama' && setModelOverride && (
+                        <input 
+                            type="text" 
+                            value={modelOverride || ''} 
+                            onChange={e => setModelOverride(e.target.value)}
+                            placeholder="模型 (如 qwen2.5:7b)"
+                            className={styles.overrideInput}
+                        />
+                    )}
+                    {providerOverride === 'dashscope' && setModelOverride && (
+                        <input 
+                            type="text" 
+                            value={modelOverride || ''} 
+                            onChange={e => setModelOverride(e.target.value)}
+                            placeholder="模型 (如 qwen-max)"
+                            className={styles.overrideInput}
+                        />
+                    )}
+                </div>
+            )}
+            <div className={styles.inputArea}>
+
             <VoiceInput
                 onTranscript={handleVoiceTranscript}
                 agentChannel={agentChannel}
@@ -74,6 +123,7 @@ export default function SessionInput({
             >
                 发送
             </button>
+        </div>
         </div>
     );
 }

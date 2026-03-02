@@ -387,7 +387,13 @@ export default function MaterialsPage() {
                                     </div>
                                 )}
 
-                                {/* Actions */}
+                                
+                                {/* Actions & Errors */}
+                                {doc.status === 'failed' && doc.error_message && (
+                                    <div className={styles.docErrorMsg}>
+                                        ⚠️ {doc.error_message}
+                                    </div>
+                                )}
                                 <div className={styles.docActions}>
                                     {doc.status === 'failed' && (
                                         <button
@@ -398,6 +404,7 @@ export default function MaterialsPage() {
                                             {retrying === doc.id ? '重试中...' : '🔄 重试'}
                                         </button>
                                     )}
+
                                     {doc.status !== 'processing' && (
                                         <>
                                             {deleteConfirm === doc.id ? (

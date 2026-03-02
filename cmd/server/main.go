@@ -137,8 +137,12 @@ func main() {
 		}
 
 		llmProvider = llm.NewModelRouter(tier1, tier2, tier3, llmProvider)
+
+		
 		log.Info("ModelRouter enabled", "tier1", cfg.LLM.Tier1Model, "tier2", cfg.LLM.Tier2Model, "tier3", cfg.LLM.Tier3Model)
 	}
+
+	llmProvider = llm.NewDynamicProvider(db, llmProvider)
 
 	// ── Use Cases ───────────────────────────────────────
 	eventBus := plugin.NewEventBus()

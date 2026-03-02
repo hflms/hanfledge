@@ -255,11 +255,23 @@ func parseJSON(t *testing.T, w *httptest.ResponseRecorder) map[string]interface{
 
 func parseJSONArray(t *testing.T, w *httptest.ResponseRecorder) []interface{} {
 	t.Helper()
-	var result []interface{}
+	var result interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-		t.Fatalf("Failed to parse JSON array response: %v\nBody: %s", err, w.Body.String())
+		t.Fatalf("Failed to parse JSON response: %v\nBody: %s", err, w.Body.String())
 	}
-	return result
+
+	if m, ok := result.(map[string]interface{}); ok {
+		if items, ok := m["items"].([]interface{}); ok {
+			return items
+		}
+		// If it's a map but has no "items" array, it's not a standard paginated response
+		t.Fatalf("Expected JSON array or paginated object with 'items', got: %s", w.Body.String())
+	} else if arr, ok := result.([]interface{}); ok {
+		return arr
+	}
+
+	t.Fatalf("Expected JSON array or paginated object, got: %s", w.Body.String())
+	return nil
 }
 
 func expectStatus(t *testing.T, w *httptest.ResponseRecorder, expected int) {

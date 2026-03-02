@@ -57,7 +57,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.School{},
 		&model.Class{},
 		&model.Role{},
-		&model.UserSchoolRole{},
+		&model.UserSchoolRole{},model.UserSchoolRole{},model.UserSchoolRole{},
+		&model.SystemConfig{},
 		&model.ClassStudent{},
 		// 课程与知识
 		&model.Course{},

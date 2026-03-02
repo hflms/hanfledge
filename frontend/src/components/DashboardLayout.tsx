@@ -18,6 +18,7 @@ const TEACHER_NAV: NavItem[] = [
     { icon: '📚', label: '课程管理', href: '/teacher/courses' },
     { icon: '🧩', label: '技能商店', href: '/teacher/skills' },
     { icon: '📊', label: '学情仪表盘', href: '/teacher/dashboard' },
+    { icon: '⚙️', label: '系统设置', href: '/teacher/settings' },
 ];
 
 const STUDENT_NAV: NavItem[] = [

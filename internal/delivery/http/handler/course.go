@@ -206,9 +206,10 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 	// Extract text from PDF
 	rawText, pageCount, err := extractPDFText(filePath)
 	if err != nil {
-		if updateErr := h.Docs.UpdateStatus(context.Background(), doc.ID, model.DocStatusFailed); updateErr != nil {
-			slogCourse.Warn("failed to update doc status to failed", "doc_id", doc.ID, "err", updateErr)
-		}
+		h.Docs.UpdateFields(context.Background(), doc.ID, map[string]interface{}{
+			"status":        model.DocStatusFailed,
+			"error_message": "PDF 解析失败: " + err.Error(),
+		})
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 解析失败: " + err.Error()})
 		return
 	}
@@ -223,9 +224,10 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 
 		if err := h.KARAG.ProcessDocument(ctx, &doc, rawText); err != nil {
 			slogCourse.Error("ka-rag pipeline failed", "doc_id", doc.ID, "err", err)
-			if updateErr := h.Docs.UpdateStatus(ctx, doc.ID, model.DocStatusFailed); updateErr != nil {
-				slogCourse.Warn("failed to update doc status", "doc_id", doc.ID, "err", updateErr)
-			}
+			h.Docs.UpdateFields(ctx, doc.ID, map[string]interface{}{
+				"status":        model.DocStatusFailed,
+				"error_message": err.Error(),
+			})
 			return
 		}
 
@@ -509,9 +511,10 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 
 		if err := h.KARAG.ProcessDocument(bgCtx, doc, rawText); err != nil {
 			slogCourse.Error("ka-rag retry failed", "doc_id", doc.ID, "err", err)
-			if updateErr := h.Docs.UpdateStatus(bgCtx, doc.ID, model.DocStatusFailed); updateErr != nil {
-				slogCourse.Warn("failed to update doc status", "doc_id", doc.ID, "err", updateErr)
-			}
+			h.Docs.UpdateFields(bgCtx, doc.ID, map[string]interface{}{
+				"status":        model.DocStatusFailed,
+				"error_message": err.Error(),
+			})
 			return
 		}
 

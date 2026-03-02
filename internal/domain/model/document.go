@@ -16,6 +16,7 @@ type Document struct {
 	MimeType  string    `gorm:"size:100" json:"mime_type"`
 	Status    DocStatus `gorm:"size:20;default:uploaded" json:"status"` // uploaded, processing, completed, failed
 	PageCount int       `json:"page_count"`
+	ErrorMessage string    `gorm:"type:text" json:"error_message,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -42,6 +43,6 @@ type DocumentChunk struct {
 	Content    string    `gorm:"type:text;not null" json:"content"`
 	TokenCount int       `json:"token_count"`
 	PageNumber int       `json:"page_number"`
-	Embedding  string    `gorm:"type:vector(1024)" json:"-"` // pgvector 1024-dim for bge-m3
+	Embedding  string    `gorm:"type:vector(1024);default:NULL" json:"-"` // pgvector 1024-dim for bge-m3
 	CreatedAt  time.Time `json:"created_at"`
 }
