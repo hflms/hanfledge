@@ -15,5 +15,7 @@ func registerSystemRoutes(rg *gin.RouterGroup, db *gorm.DB, llmProvider llm.LLMP
 	{
 		systemGroup.GET("/config", h.GetConfigs)
 		systemGroup.PUT("/config", h.UpdateConfigs)
+		systemGroup.POST("/config/test-chat-model", h.TestChatModel)
+		systemGroup.POST("/config/test-embedding-model", h.TestEmbeddingModel)
 	}
 }

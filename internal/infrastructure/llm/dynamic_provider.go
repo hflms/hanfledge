@@ -2,8 +2,8 @@ package llm
 
 import (
 	"context"
-	"sync"
 	"log/slog"
+	"sync"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"gorm.io/gorm"
@@ -20,7 +20,8 @@ type DynamicProvider struct {
 	DB               *gorm.DB
 	FallbackProvider LLMProvider // 初始启动时的后备配置
 	mu               sync.RWMutex
-	activeClients    map[string]LLMProvider
+	chatClients      map[string]LLMProvider
+	embedClients     map[string]LLMProvider
 }
 
 // NewDynamicProvider creates a new DynamicProvider.
@@ -28,7 +29,8 @@ func NewDynamicProvider(db *gorm.DB, fallback LLMProvider) *DynamicProvider {
 	return &DynamicProvider{
 		DB:               db,
 		FallbackProvider: fallback,
-		activeClients:    make(map[string]LLMProvider),
+		chatClients:      make(map[string]LLMProvider),
+		embedClients:     make(map[string]LLMProvider),
 	}
 }
 
@@ -46,8 +48,8 @@ func (p *DynamicProvider) loadConfigs() map[string]string {
 	return m
 }
 
-// getActiveProvider returns the currently selected LLM provider based on config.
-func (p *DynamicProvider) getActiveProvider() LLMProvider {
+// getChatProvider returns the currently selected chat provider based on config.
+func (p *DynamicProvider) getChatProvider() LLMProvider {
 	configs := p.loadConfigs()
 	if configs == nil {
 		return p.FallbackProvider
@@ -59,16 +61,16 @@ func (p *DynamicProvider) getActiveProvider() LLMProvider {
 	}
 
 	p.mu.RLock()
-	client, exists := p.activeClients[providerType]
+	client, exists := p.chatClients[providerType]
 	p.mu.RUnlock()
 
 	// 简单的配置检查，如果没有缓存则创建
 	if !exists {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		
+
 		// 双重检查
-		if client, exists = p.activeClients[providerType]; exists {
+		if client, exists = p.chatClients[providerType]; exists {
 			return client
 		}
 
@@ -76,13 +78,19 @@ func (p *DynamicProvider) getActiveProvider() LLMProvider {
 		case "dashscope":
 			apiKey := configs["DASHSCOPE_API_KEY"]
 			chatModel := configs["DASHSCOPE_MODEL"]
+			compatURL := configs["DASHSCOPE_COMPAT_BASE_URL"]
 			if chatModel == "" {
 				chatModel = "qwen-max"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			if embModel == "" {
+				embModel = "text-embedding-v3"
 			}
 			client = NewDashScopeClient(DashScopeConfig{
 				APIKey:         apiKey,
 				ChatModel:      chatModel,
-				EmbeddingModel: "text-embedding-v3", // 暂定写死或加配置
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
 			})
 			slogDynamic.Info("initialized dashscope client dynamically")
 		case "ollama":
@@ -103,7 +111,69 @@ func (p *DynamicProvider) getActiveProvider() LLMProvider {
 		default:
 			client = p.FallbackProvider
 		}
-		p.activeClients[providerType] = client
+		p.chatClients[providerType] = client
+	}
+
+	return client
+}
+
+// getEmbeddingProvider returns the embedding provider based on config.
+func (p *DynamicProvider) getEmbeddingProvider() LLMProvider {
+	configs := p.loadConfigs()
+	if configs == nil {
+		return p.FallbackProvider
+	}
+
+	providerType := configs["EMBEDDING_PROVIDER"]
+	if providerType == "" {
+		providerType = configs["LLM_PROVIDER"]
+	}
+	if providerType == "" {
+		return p.FallbackProvider
+	}
+
+	p.mu.RLock()
+	client, exists := p.embedClients[providerType]
+	p.mu.RUnlock()
+
+	if !exists {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+
+		if client, exists = p.embedClients[providerType]; exists {
+			return client
+		}
+
+		switch providerType {
+		case "dashscope":
+			apiKey := configs["DASHSCOPE_API_KEY"]
+			compatURL := configs["DASHSCOPE_COMPAT_BASE_URL"]
+			embModel := configs["EMBEDDING_MODEL"]
+			if embModel == "" {
+				embModel = "text-embedding-v3"
+			}
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      configs["DASHSCOPE_MODEL"],
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized dashscope embedding client dynamically", "model", embModel)
+		case "ollama":
+			host := configs["OLLAMA_BASE_URL"]
+			if host == "" {
+				host = "http://localhost:11434"
+			}
+			embedModel := configs["EMBEDDING_MODEL"]
+			if embedModel == "" {
+				embedModel = "bge-m3"
+			}
+			client = NewOllamaClient(host, configs["OLLAMA_MODEL"], embedModel)
+			slogDynamic.Info("initialized ollama embedding client dynamically", "model", embedModel)
+		default:
+			client = p.FallbackProvider
+		}
+		p.embedClients[providerType] = client
 	}
 
 	return client
@@ -133,22 +203,28 @@ func (p *DynamicProvider) getProviderForRequest(opts *ChatOptions) LLMProvider {
 		if configs == nil {
 			configs = make(map[string]string)
 		}
-		
+		embModel := configs["EMBEDDING_MODEL"]
+
 		switch opts.ProviderOverride {
 		case "dashscope":
 			apiKey := configs["DASHSCOPE_API_KEY"]
 			chatModel := opts.ModelOverride
+			compatURL := configs["DASHSCOPE_COMPAT_BASE_URL"]
 			if chatModel == "" {
 				chatModel = configs["DASHSCOPE_MODEL"]
 				if chatModel == "" {
 					chatModel = "qwen-max"
 				}
 			}
+			if embModel == "" {
+				embModel = "text-embedding-v3"
+			}
 			slogDynamic.Info("using overridden dashscope provider", "model", chatModel)
 			return NewDashScopeClient(DashScopeConfig{
 				APIKey:         apiKey,
 				ChatModel:      chatModel,
-				EmbeddingModel: "text-embedding-v3",
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
 			})
 		case "ollama":
 			host := configs["OLLAMA_BASE_URL"]
@@ -162,21 +238,23 @@ func (p *DynamicProvider) getProviderForRequest(opts *ChatOptions) LLMProvider {
 					chatModel = "qwen2.5:7b"
 				}
 			}
+			if embModel == "" {
+				embModel = "bge-m3"
+			}
 			slogDynamic.Info("using overridden ollama provider", "model", chatModel)
-			return NewOllamaClient(host, chatModel, "bge-m3")
+			return NewOllamaClient(host, chatModel, embModel)
 		}
 	}
-	return p.getActiveProvider()
+	return p.getChatProvider()
 }
 
-
 func (p *DynamicProvider) Embed(ctx context.Context, text string) ([]float64, error) {
-	provider := p.getActiveProvider()
+	provider := p.getEmbeddingProvider()
 	return provider.Embed(ctx, text)
 }
 
 func (p *DynamicProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
-	provider := p.getActiveProvider()
+	provider := p.getEmbeddingProvider()
 	return provider.EmbedBatch(ctx, texts)
 }
 
@@ -185,5 +263,6 @@ func (p *DynamicProvider) EmbedBatch(ctx context.Context, texts []string) ([][]f
 func (p *DynamicProvider) ClearCache() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.activeClients = make(map[string]LLMProvider)
+	p.chatClients = make(map[string]LLMProvider)
+	p.embedClients = make(map[string]LLMProvider)
 }

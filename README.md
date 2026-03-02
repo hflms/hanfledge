@@ -199,6 +199,10 @@ All endpoints use the `/api/v1/` prefix. Authentication uses Bearer JWT tokens.
 | GET    | `/api/v1/student/mastery`        | STUDENT                      | Self mastery data              |
 | GET    | `/api/v1/dashboard/knowledge-radar` | TEACHER+                  | Class knowledge radar          |
 | GET    | `/api/v1/students/:id/mastery`   | TEACHER+                     | Student mastery details        |
+| GET    | `/api/v1/system/config`          | Any                          | Get system configuration       |
+| PUT    | `/api/v1/system/config`          | Any                          | Update system configuration    |
+| POST   | `/api/v1/system/config/test-chat-model` | Any                    | Test chat model availability   |
+| POST   | `/api/v1/system/config/test-embedding-model` | Any              | Test embedding model availability |
 
 ### WebSocket protocol
 
@@ -269,8 +273,9 @@ rate.
 ## Key technical details
 
 - **Auth**: JWT (HS256) with Bearer tokens; RBAC via `UserSchoolRole` join table
-- **Embedding**: bge-m3 (1024-dim vectors) via Ollama
-- **Chat model**: qwen2.5:7b via Ollama (pluggable: DashScope also supported)
+- **Embedding**: bge-m3 (1024-dim vectors) via Ollama, configurable per provider
+- **Chat model**: qwen2.5:7b via Ollama, configurable per provider (DashScope supported)
+- **DashScope**: OpenAI-compatible chat base URL via `DASHSCOPE_COMPAT_BASE_URL` when needed
 - **Vector search**: pgvector cosine similarity in PostgreSQL
 - **Knowledge graph**: Neo4j for concept relationships and prerequisite chains
 - **Retrieval**: RRF hybrid (pgvector semantic Top-50 + Neo4j graph Top-50 -> Top-10)

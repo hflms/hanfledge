@@ -71,6 +71,64 @@
   margin-top: 6px;
 }
 
+.inlineRow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.inlineRow .input,
+.inlineRow .select {
+  flex: 1;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.tagRemove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.tagRemove:hover {
+  color: var(--text-main);
+}
+
+.secondaryButton {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  border-color: var(--primary-color);
+}
+
+.testResult {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-main);
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;

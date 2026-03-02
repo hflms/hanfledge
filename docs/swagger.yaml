@@ -199,6 +199,56 @@ definitions:
       total:
         type: integer
     type: object
+  handler.SystemConfigMap:
+    additionalProperties:
+      type: string
+    type: object
+  handler.TestChatModelRequest:
+    properties:
+      model:
+        type: string
+      provider:
+        type: string
+    required:
+    - provider
+    type: object
+  handler.TestChatModelResponse:
+    properties:
+      latency:
+        type: integer
+      message:
+        type: string
+      model:
+        type: string
+      provider:
+        type: string
+      reply:
+        type: string
+    type: object
+  handler.TestEmbeddingModelRequest:
+    properties:
+      model:
+        type: string
+      provider:
+        type: string
+      text:
+        type: string
+    required:
+    - provider
+    type: object
+  handler.TestEmbeddingModelResponse:
+    properties:
+      dimension:
+        type: integer
+      latency:
+        type: integer
+      message:
+        type: string
+      model:
+        type: string
+      provider:
+        type: string
+    type: object
   handler.SearchRequest:
     properties:
       query:
@@ -1829,6 +1879,113 @@ paths:
       summary: 学生掌握度详情
       tags:
       - Dashboard
+  /system/config:
+    get:
+      description: 返回系统级配置（AI 提供商与模型配置等）。可选包含 `DASHSCOPE_COMPAT_BASE_URL`。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.SystemConfigMap'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取系统配置
+      tags:
+      - System
+    put:
+      consumes:
+      - application/json
+      description: 更新系统级配置（支持批量更新）。可写入 `DASHSCOPE_COMPAT_BASE_URL`。
+      parameters:
+      - description: 系统配置键值对
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SystemConfigMap'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新系统配置
+      tags:
+      - System
+  /system/config/test-chat-model:
+    post:
+      consumes:
+      - application/json
+      description: 测试对话模型可用性
+      parameters:
+      - description: 对话模型测试参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.TestChatModelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TestChatModelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 测试对话模型
+      tags:
+      - System
+  /system/config/test-embedding-model:
+    post:
+      consumes:
+      - application/json
+      description: 测试向量模型可用性
+      parameters:
+      - description: 向量模型测试参数
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.TestEmbeddingModelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TestEmbeddingModelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 测试向量模型
+      tags:
+      - System
   /users:
     get:
       description: 返回用户的分页列表，可按学校筛选

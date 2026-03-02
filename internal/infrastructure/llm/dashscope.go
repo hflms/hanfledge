@@ -27,9 +27,9 @@ import (
 var _ LLMProvider = (*DashScopeClient)(nil)
 
 const (
-	dashScopeBaseURL       = "https://dashscope.aliyuncs.com/api/v1"
-	dashScopeChatEndpoint  = "/services/aigc/text-generation/generation"
-	dashScopeEmbedEndpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
+	dashScopeBaseURL        = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	dashScopeEmbedEndpoint  = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
+	dashScopeCompatChatPath = "/chat/completions"
 )
 
 // DashScopeClient implements LLMProvider via Alibaba Cloud DashScope API.
@@ -38,6 +38,7 @@ type DashScopeClient struct {
 	ChatModel      string
 	EmbeddingModel string
 	MaxTokens      int
+	CompatBaseURL  string
 	HTTPClient     *http.Client
 }
 
@@ -48,6 +49,7 @@ type DashScopeConfig struct {
 	EmbeddingModel string // e.g., "text-embedding-v3"
 	MaxTokens      int
 	TimeoutSeconds int
+	CompatBaseURL  string
 }
 
 // NewDashScopeClient creates a new DashScope API client.
@@ -65,6 +67,7 @@ func NewDashScopeClient(cfg DashScopeConfig) *DashScopeClient {
 		ChatModel:      cfg.ChatModel,
 		EmbeddingModel: cfg.EmbeddingModel,
 		MaxTokens:      cfg.MaxTokens,
+		CompatBaseURL:  cfg.CompatBaseURL,
 		HTTPClient:     &http.Client{Timeout: timeout},
 	}
 }
@@ -108,36 +111,41 @@ type dsChatResponse struct {
 	RequestID string `json:"request_id"`
 }
 
+type dsOpenAIChatRequest struct {
+	Model       string        `json:"model"`
+	Messages    []ChatMessage `json:"messages"`
+	Stream      bool          `json:"stream"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
+	Temperature float64       `json:"temperature,omitempty"`
+	TopP        float64       `json:"top_p,omitempty"`
+}
+
+type dsOpenAIChatResponse struct {
+	Choices []struct {
+		Message ChatMessage `json:"message"`
+		Delta   struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+}
+
 // Chat sends a non-streaming chat request via DashScope API.
 func (c *DashScopeClient) Chat(ctx context.Context, messages []ChatMessage, opts *ChatOptions) (string, error) {
-	params := c.buildParameters(opts)
-
-	reqBody := dsChatRequest{
-		Model:      c.ChatModel,
-		Input:      dsInput{Messages: messages},
-		Parameters: params,
-	}
-
-	body, err := c.doPost(ctx, dashScopeChatEndpoint, reqBody, false)
+	reqBody := c.buildOpenAIRequest(messages, opts, false)
+	body, err := c.doPost(ctx, c.compatChatURL(), reqBody, false)
 	if err != nil {
 		return "", fmt.Errorf("dashscope chat failed: %w", err)
 	}
 
-	var resp dsChatResponse
+	var resp dsOpenAIChatResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return "", fmt.Errorf("dashscope parse response failed: %w", err)
 	}
-
-	// Extract content from choices (message format)
-	if len(resp.Output.Choices) > 0 {
-		return resp.Output.Choices[0].Message.Content, nil
+	if len(resp.Choices) > 0 {
+		return resp.Choices[0].Message.Content, nil
 	}
-	// Fallback: text format
-	if resp.Output.Text != "" {
-		return resp.Output.Text, nil
-	}
-
-	return "", fmt.Errorf("dashscope returned empty response (request_id: %s)", resp.RequestID)
+	return "", fmt.Errorf("dashscope returned empty response")
 }
 
 // -- StreamChat API (SSE Streaming) ------------------------------
@@ -156,16 +164,8 @@ type dsSSEEvent struct {
 
 // StreamChat sends a streaming chat request via DashScope SSE API.
 func (c *DashScopeClient) StreamChat(ctx context.Context, messages []ChatMessage, opts *ChatOptions, onToken func(token string)) (string, error) {
-	params := c.buildParameters(opts)
-	params.ResultFormat = "message"
-
-	reqBody := dsChatRequest{
-		Model:      c.ChatModel,
-		Input:      dsInput{Messages: messages},
-		Parameters: params,
-	}
-
-	resp, err := c.doPostStream(ctx, dashScopeChatEndpoint, reqBody)
+	reqBody := c.buildOpenAIRequest(messages, opts, true)
+	resp, err := c.doPostStream(ctx, c.compatChatURL(), reqBody)
 	if err != nil {
 		return "", fmt.Errorf("dashscope stream chat failed: %w", err)
 	}
@@ -334,6 +334,26 @@ func (c *DashScopeClient) buildParameters(opts *ChatOptions) dsParameters {
 		}
 	}
 	return params
+}
+
+func (c *DashScopeClient) buildOpenAIRequest(messages []ChatMessage, opts *ChatOptions, stream bool) dsOpenAIChatRequest {
+	params := c.buildParameters(opts)
+	return dsOpenAIChatRequest{
+		Model:       c.ChatModel,
+		Messages:    messages,
+		Stream:      stream,
+		MaxTokens:   params.MaxTokens,
+		Temperature: params.Temperature,
+		TopP:        params.TopP,
+	}
+}
+
+func (c *DashScopeClient) compatChatURL() string {
+	base := c.CompatBaseURL
+	if base == "" {
+		base = dashScopeBaseURL
+	}
+	return strings.TrimRight(base, "/") + dashScopeCompatChatPath
 }
 
 func (c *DashScopeClient) doPost(ctx context.Context, endpoint string, payload interface{}, stream bool) ([]byte, error) {
