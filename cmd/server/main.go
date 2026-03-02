@@ -21,6 +21,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/infrastructure/search"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
+	"github.com/hflms/hanfledge/internal/infrastructure/weknora"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/repository/postgres"
@@ -94,6 +95,7 @@ func main() {
 			APIKey:         cfg.LLM.DashScopeKey,
 			ChatModel:      cfg.LLM.DashScopeModel,
 			EmbeddingModel: embModel,
+			CompatBaseURL:  cfg.LLM.DashScopeCompatURL,
 		})
 		log.Info("using DashScope provider", "chat_model", cfg.LLM.DashScopeModel, "embed_model", embModel)
 	default: // "ollama"
@@ -138,7 +140,6 @@ func main() {
 
 		llmProvider = llm.NewModelRouter(tier1, tier2, tier3, llmProvider)
 
-		
 		log.Info("ModelRouter enabled", "tier1", cfg.LLM.Tier1Model, "tier2", cfg.LLM.Tier2Model, "tier3", cfg.LLM.Tier3Model)
 	}
 
@@ -230,6 +231,18 @@ func main() {
 	defer evalCancel()
 	go evaluator.Start(evalCtx)
 
+	// ── WeKnora Knowledge Base Client ─────────────────
+	var wkClient *weknora.Client
+	if cfg.WeKnora.Enabled && cfg.WeKnora.BaseURL != "" {
+		wkClient = weknora.NewClient(cfg.WeKnora.BaseURL, cfg.WeKnora.APIKey)
+		if err := wkClient.Ping(context.Background()); err != nil {
+			log.Warn("WeKnora connection failed (non-fatal)", "err", err)
+			wkClient = nil
+		} else {
+			log.Info("WeKnora integration enabled", "url", cfg.WeKnora.BaseURL)
+		}
+	}
+
 	// ── Router Setup ────────────────────────────────────
 	router := delivery.NewRouter(delivery.RouterDeps{
 		DB:             db,
@@ -246,6 +259,7 @@ func main() {
 		EventBus:       eventBus,
 		ASRProvider:    asrProvider,
 		LLMProvider:    llmProvider,
+		WeKnoraClient:  wkClient,
 	})
 
 	// ── Start Server (Graceful Shutdown) ───────────────

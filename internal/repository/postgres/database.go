@@ -57,7 +57,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.School{},
 		&model.Class{},
 		&model.Role{},
-		&model.UserSchoolRole{},model.UserSchoolRole{},model.UserSchoolRole{},
+		&model.UserSchoolRole{}, model.UserSchoolRole{}, model.UserSchoolRole{},
 		&model.SystemConfig{},
 		&model.ClassStudent{},
 		// 课程与知识
@@ -90,6 +90,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.MarketplacePlugin{},
 		&model.MarketplaceReview{},
 		&model.InstalledPlugin{},
+		// WeKnora 知识库引用
+		&model.WeKnoraKBRef{},
+		// WeKnora 用户 Token 映射
+		&model.WeKnoraToken{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

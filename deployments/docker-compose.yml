@@ -72,7 +72,34 @@ services:
           memory: 256m
           cpus: "0.5"
 
+  # WeKnora Knowledge Base Service (optional)
+  # Enable by setting WEKNORA_ENABLED=true in .env
+  weknora:
+    image: tencent/weknora:latest  # TODO: confirm official image name
+    container_name: hanfledge-weknora
+    restart: unless-stopped
+    ports:
+      - "${WEKNORA_PORT:-9380}:9380"
+    environment:
+      - WEKNORA_DB_HOST=postgres
+      - WEKNORA_DB_PORT=5432
+      - WEKNORA_DB_USER=${POSTGRES_USER:-hanfledge}
+      - WEKNORA_DB_PASSWORD=${POSTGRES_PASSWORD:-hanfledge_secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - weknora_data:/data
+    profiles:
+      - weknora  # Only start when explicitly requested: docker-compose --profile weknora up
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+
 volumes:
   pgdata:
   neo4jdata:
   redisdata:
+  weknora_data:

@@ -73,6 +73,23 @@ func (rc *RedisCache) Ping(ctx context.Context) error {
 	return rc.client.Ping(ctx).Err()
 }
 
+// ── Generic String Cache ────────────────────────────────────
+
+// GetString retrieves a plain string value by key.
+// Returns ("", nil) if the key does not exist.
+func (rc *RedisCache) GetString(ctx context.Context, key string) (string, error) {
+	val, err := rc.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return "", nil
+	}
+	return val, err
+}
+
+// SetString stores a plain string value with TTL.
+func (rc *RedisCache) SetString(ctx context.Context, key, value string, ttl time.Duration) error {
+	return rc.client.Set(ctx, key, value, ttl).Err()
+}
+
 // ── Session History Cache ───────────────────────────────────
 
 // CachedMessage represents a single conversation message in the cache.

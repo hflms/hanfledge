@@ -14,6 +14,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
+	"github.com/hflms/hanfledge/internal/infrastructure/weknora"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	pgRepo "github.com/hflms/hanfledge/internal/repository/postgres"
@@ -52,6 +53,7 @@ type RouterDeps struct {
 	EventBus       *plugin.EventBus
 	ASRProvider    asr.ASRProvider // 语音识别 (nil-safe)
 	LLMProvider    llm.LLMProvider // AI Recommendations
+	WeKnoraClient  *weknora.Client // WeKnora knowledge base client (nil when disabled)
 }
 
 // NewRouter creates and configures the Gin router with all routes.
@@ -120,6 +122,14 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	registerAnalyticsRoutes(protected, deps.DB, dashboardHandler, analyticsHandler, exportHandler)
 	registerSystemRoutes(protected, deps.DB, deps.LLMProvider)
 	registerMarketplaceRoutes(protected, deps.DB, marketplaceHandler)
+
+	// WeKnora integration (conditional — only when client is available)
+	if deps.WeKnoraClient != nil {
+		tokenMgr := weknora.NewTokenManager(deps.WeKnoraClient, deps.DB, deps.RedisCache, deps.Cfg.WeKnora.APIKey)
+		wkHandler := handler.NewWeKnoraHandler(deps.WeKnoraClient, tokenMgr, deps.DB)
+		registerWeKnoraRoutes(protected, deps.DB, wkHandler)
+		registerWeKnoraCourseRoutes(protected, deps.DB, wkHandler)
+	}
 
 	return r
 }

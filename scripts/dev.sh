@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 # Hanfledge 开发环境一键启动脚本
-# Usage: bash scripts/dev.sh [--seed] [--backend-only] [--frontend-only]
+# Usage: bash scripts/dev.sh [--seed] [--backend-only] [--frontend-only] [--weknora]
 # ============================================================
 set -euo pipefail
 
@@ -22,12 +22,14 @@ fail()  { echo -e "${RED}[FAIL]${NC}  $*"; exit 1; }
 SEED=false
 BACKEND_ONLY=false
 FRONTEND_ONLY=false
+WEKNORA=false
 
 for arg in "$@"; do
     case $arg in
         --seed)           SEED=true ;;
         --backend-only)   BACKEND_ONLY=true ;;
         --frontend-only)  FRONTEND_ONLY=true ;;
+        --weknora)        WEKNORA=true ;;
         -h|--help)
             echo "Usage: bash scripts/dev.sh [OPTIONS]"
             echo ""
@@ -35,6 +37,7 @@ for arg in "$@"; do
             echo "  --seed            运行种子数据脚本 (创建测试账号)"
             echo "  --backend-only    仅启动后端 (跳过前端)"
             echo "  --frontend-only   仅启动前端 (跳过后端和基础设施)"
+            echo "  --weknora         同时启动 WeKnora 知识库服务"
             echo "  -h, --help        显示帮助信息"
             exit 0
             ;;
@@ -76,7 +79,12 @@ fi
 # ── 1. Start Infrastructure ─────────────────────────────────
 if [ "$FRONTEND_ONLY" = false ]; then
     info "启动基础设施 (PostgreSQL + Neo4j + Redis)..."
-    docker compose -f deployments/docker-compose.yml up -d
+    COMPOSE_PROFILES=""
+    if [ "$WEKNORA" = true ]; then
+        COMPOSE_PROFILES="--profile weknora"
+        info "WeKnora 知识库服务已启用"
+    fi
+    docker compose -f deployments/docker-compose.yml $COMPOSE_PROFILES up -d
 
     # Wait for PostgreSQL to be ready
     info "等待 PostgreSQL 就绪..."
@@ -99,6 +107,15 @@ if [ "$FRONTEND_ONLY" = false ]; then
     # Check Redis
     if docker ps --format '{{.Names}}' | grep -q hanfledge-redis; then
         ok "Redis 就绪 (端口 6381)"
+    fi
+
+    # Check WeKnora
+    if [ "$WEKNORA" = true ]; then
+        if docker ps --format '{{.Names}}' | grep -q hanfledge-weknora; then
+            ok "WeKnora 启动中 (API: http://localhost:9380)"
+        else
+            warn "WeKnora 容器未启动, 请检查镜像是否可用"
+        fi
     fi
 fi
 
@@ -170,6 +187,9 @@ if [ "$FRONTEND_ONLY" = false ]; then
     echo -e "  🐘 PostgreSQL:     ${CYAN}localhost:5433${NC}"
     echo -e "  🔵 Neo4j Web UI:   ${CYAN}http://localhost:7475${NC}"
     echo -e "  🔴 Redis:          ${CYAN}localhost:6381${NC}"
+    if [ "$WEKNORA" = true ]; then
+        echo -e "  📚 WeKnora API:    ${CYAN}http://localhost:9380${NC}"
+    fi
 fi
 echo ""
 echo -e "  📋 测试账号:  ${YELLOW}13800000001 / admin123${NC} (管理员)"

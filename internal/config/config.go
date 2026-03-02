@@ -23,6 +23,7 @@ type Config struct {
 	I18n     I18nConfig
 	Search   SearchConfig
 	ASR      ASRConfig
+	WeKnora  WeKnoraConfig
 }
 
 // ASRConfig holds speech-to-text service configuration.
@@ -78,13 +79,14 @@ type JWTConfig struct {
 
 // LLMConfig holds LLM provider settings.
 type LLMConfig struct {
-	Provider          string // ollama | dashscope | gemini
-	OllamaHost        string
-	OllamaModel       string
-	DashScopeKey      string
-	DashScopeModel    string
-	EmbeddingProvider string
-	EmbeddingModel    string
+	Provider           string // ollama | dashscope | gemini
+	OllamaHost         string
+	OllamaModel        string
+	DashScopeKey       string
+	DashScopeModel     string
+	DashScopeCompatURL string
+	EmbeddingProvider  string
+	EmbeddingModel     string
 
 	// Multi-tier routing (§8.3.3)
 	RouterEnabled bool   // Enable ModelRouter multi-tier routing
@@ -115,6 +117,13 @@ type SearchConfig struct {
 	Provider string // "searxng" | "google" | "bing"
 	BaseURL  string // SearXNG instance URL or API endpoint
 	APIKey   string // API key (for Google/Bing)
+}
+
+// WeKnoraConfig holds WeKnora knowledge base service settings.
+type WeKnoraConfig struct {
+	Enabled bool   // Whether WeKnora integration is enabled
+	BaseURL string // WeKnora API base URL (e.g., "http://localhost:9380/api/v1")
+	APIKey  string // API Key for authentication
 }
 
 // Load reads configuration from .env file and environment variables.
@@ -152,13 +161,14 @@ func Load() *Config {
 			ExpiryHours: getEnvInt("JWT_EXPIRY_HOURS", 24),
 		},
 		LLM: LLMConfig{
-			Provider:          getEnv("LLM_PROVIDER", "ollama"),
-			OllamaHost:        getEnv("OLLAMA_HOST", "http://localhost:11434"),
-			OllamaModel:       getEnv("OLLAMA_MODEL", "qwen2.5:7b"),
-			DashScopeKey:      getEnv("DASHSCOPE_API_KEY", ""),
-			DashScopeModel:    getEnv("DASHSCOPE_MODEL", "qwen-max"),
-			EmbeddingProvider: getEnv("EMBEDDING_PROVIDER", "ollama"),
-			EmbeddingModel:    getEnv("EMBEDDING_MODEL", "bge-m3"),
+			Provider:           getEnv("LLM_PROVIDER", "ollama"),
+			OllamaHost:         getEnv("OLLAMA_HOST", "http://localhost:11434"),
+			OllamaModel:        getEnv("OLLAMA_MODEL", "qwen2.5:7b"),
+			DashScopeKey:       getEnv("DASHSCOPE_API_KEY", ""),
+			DashScopeModel:     getEnv("DASHSCOPE_MODEL", "qwen-max"),
+			DashScopeCompatURL: getEnv("DASHSCOPE_COMPAT_BASE_URL", ""),
+			EmbeddingProvider:  getEnv("EMBEDDING_PROVIDER", "ollama"),
+			EmbeddingModel:     getEnv("EMBEDDING_MODEL", "bge-m3"),
 
 			// Multi-tier routing
 			RouterEnabled: getEnv("LLM_ROUTER_ENABLED", "false") == "true",
@@ -188,6 +198,11 @@ func Load() *Config {
 			WhisperURL: getEnv("ASR_WHISPER_URL", "http://localhost:9000"),
 			APIKey:     getEnv("ASR_API_KEY", ""),
 			ModelSize:  getEnv("ASR_MODEL_SIZE", "large-v3"),
+		},
+		WeKnora: WeKnoraConfig{
+			Enabled: getEnv("WEKNORA_ENABLED", "false") == "true",
+			BaseURL: getEnv("WEKNORA_BASE_URL", "http://localhost:9380/api/v1"),
+			APIKey:  getEnv("WEKNORA_API_KEY", ""),
 		},
 	}
 }
