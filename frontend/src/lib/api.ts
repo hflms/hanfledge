@@ -832,7 +832,15 @@ export interface WSEvent {
 }
 
 export function createWSUrl(sessionId: number): string {
-  const base = API_BASE.replace(/^http/, 'ws');
+  let base = API_BASE;
+  if (base.startsWith('/')) {
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      base = `${protocol}//${window.location.host}${base}`;
+    }
+  } else {
+    base = base.replace(/^http/, 'ws');
+  }
   const token = getToken();
   return `${base}/sessions/${sessionId}/stream${token ? '?token=' + token : ''}`;
 }

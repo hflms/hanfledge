@@ -146,7 +146,7 @@ export function useSessionWebSocket({
         };
 
         ws.onerror = (err) => {
-            console.error('[WS] Error:', err);
+            console.warn('[WS] Connection error:', err);
         };
     }, [sessionId, sessionStatus]);
 
