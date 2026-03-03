@@ -38,3 +38,6 @@ Thumbs.db
 pgdata/
 neo4jdata/
 redisdata/
+
+# Uploads
+uploads/
