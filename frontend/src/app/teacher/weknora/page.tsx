@@ -11,14 +11,18 @@ import styles from './page.module.css';
 export default function WeKnoraPage() {
     const [loading, setLoading] = useState(true);
     const [knowledgeBases, setKnowledgeBases] = useState<WeKnoraKB[]>([]);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
                 const data = await listWeKnoraKnowledgeBases();
                 setKnowledgeBases(data || []);
+                setLoadError(null);
             } catch (err) {
-                console.error('Failed to fetch WeKnora knowledge bases', err);
+                setKnowledgeBases([]);
+                setLoadError('WeKnora 服务未启用或不可用，请确认后端配置与服务状态。');
+                console.warn('Failed to fetch WeKnora knowledge bases', err);
             } finally {
                 setLoading(false);
             }
@@ -68,6 +72,9 @@ export default function WeKnoraPage() {
             )}
 
             <div className={styles.noticeCard}>
+                {loadError && (
+                    <div className={styles.noticeError}>{loadError}</div>
+                )}
                 <div className={styles.noticeTitle}>如何在课程中使用</div>
                 <ol className={styles.noticeList}>
                     <li>进入「课程管理」并打开对应课程。</li>

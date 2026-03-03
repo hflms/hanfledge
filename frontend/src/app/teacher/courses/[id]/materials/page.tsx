@@ -91,7 +91,7 @@ export default function MaterialsPage() {
             setWeknoraKBs(kbs);
             setCourseRefs(refs);
         } catch (err) {
-            console.error('Failed to fetch WeKnora data', err);
+            console.warn('Failed to fetch WeKnora data', err);
         } finally {
             setLoadingWeKnora(false);
         }
