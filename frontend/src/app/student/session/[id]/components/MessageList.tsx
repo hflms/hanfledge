@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import styles from '../page.module.css';
 
-const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
+const StructuredMessage = dynamic(() => import('@/components/StructuredMessage'));
 
 // -- Types -------------------------------------------------------
 
@@ -45,7 +45,7 @@ const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => (
         )}
         <div className={styles.messageContent}>
             {msg.role === 'coach' ? (
-                <MarkdownRenderer content={msg.content} />
+                <StructuredMessage content={msg.content} />
             ) : (
                 msg.content
             )}
@@ -93,7 +93,7 @@ export default function MessageList({ messages, streamingContent, thinkingStatus
                         <span className={styles.roleLabel}>AI 导师</span>
                     </div>
                     <div className={styles.messageContent}>
-                        <MarkdownRenderer content={streamingContent} isStreaming />
+                        <StructuredMessage content={streamingContent} isStreaming />
                     </div>
                 </div>
             )}

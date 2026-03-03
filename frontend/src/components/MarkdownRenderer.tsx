@@ -3,6 +3,8 @@
 import React from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import styles from './MarkdownRenderer.module.css';
 
 // -- Types -------------------------------------------------------
@@ -14,7 +16,8 @@ interface MarkdownRendererProps {
 
 // -- Hoisted Constants -------------------------------------------
 
-const remarkPluginsList = [remarkGfm];
+const remarkPluginsList = [remarkGfm, remarkMath];
+const rehypePluginsList = [rehypeKatex];
 
 const markdownComponents: Components = {
     // Code blocks and inline code
@@ -121,6 +124,7 @@ const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStrea
         <div className={styles.markdown}>
             <ReactMarkdown
                 remarkPlugins={remarkPluginsList}
+                rehypePlugins={rehypePluginsList}
                 components={markdownComponents}
             >
                 {content}

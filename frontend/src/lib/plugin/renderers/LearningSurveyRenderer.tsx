@@ -15,7 +15,7 @@ import dynamic from 'next/dynamic';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './LearningSurveyRenderer.module.css';
 
-const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
+const StructuredMessage = dynamic(() => import('@/components/StructuredMessage'));
 
 // -- Types -------------------------------------------------------
 
@@ -534,7 +534,7 @@ export default function LearningSurveyRenderer({
                         )}
                         <div className={styles.messageContent}>
                             {msg.role === 'coach' ? (
-                                <MarkdownRenderer content={stripStructuredTags(msg.content)} />
+                                <StructuredMessage content={stripStructuredTags(msg.content)} />
                             ) : msg.content}
                         </div>
                     </div>
@@ -548,7 +548,7 @@ export default function LearningSurveyRenderer({
                             <span className={styles.roleLabel}>诊断助手</span>
                         </div>
                         <div className={styles.messageContent}>
-                            <MarkdownRenderer content={stripStructuredTags(streamingContent)} isStreaming />
+                            <StructuredMessage content={stripStructuredTags(streamingContent)} isStreaming />
                         </div>
                     </div>
                 )}
