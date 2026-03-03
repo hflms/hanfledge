@@ -5,7 +5,8 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
     getDocuments, uploadMaterial, deleteDocument, retryDocument,
-    type Document,
+    listWeKnoraKnowledgeBases, getCourseWeKnoraRefs, bindWeKnoraKnowledgeBase, unbindWeKnoraKnowledgeBase,
+    type Document, type WeKnoraKB, type WeKnoraKBRef
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { DOCUMENT_STATUS_LABEL, DOCUMENT_STATUS_ICON } from '@/lib/constants';
@@ -60,6 +61,13 @@ export default function MaterialsPage() {
     const [retrying, setRetrying] = useState<number | null>(null);
     const processingRef = useRef(false);
 
+    // -- WeKnora State --
+    const [weknoraKBs, setWeknoraKBs] = useState<WeKnoraKB[]>([]);
+    const [courseRefs, setCourseRefs] = useState<WeKnoraKBRef[]>([]);
+    const [loadingWeKnora, setLoadingWeKnora] = useState(false);
+    const [bindingKbId, setBindingKbId] = useState<string | null>(null);
+    const [unbindingRefId, setUnbindingRefId] = useState<number | null>(null);
+
     // -- Fetch documents -----------------------------------------
 
     const fetchDocs = useCallback(async () => {
@@ -73,9 +81,26 @@ export default function MaterialsPage() {
         }
     }, [courseId]);
 
+    const fetchWeKnora = useCallback(async () => {
+        setLoadingWeKnora(true);
+        try {
+            const [kbs, refs] = await Promise.all([
+                listWeKnoraKnowledgeBases().catch(() => [] as WeKnoraKB[]),
+                getCourseWeKnoraRefs(courseId).catch(() => [] as WeKnoraKBRef[])
+            ]);
+            setWeknoraKBs(kbs);
+            setCourseRefs(refs);
+        } catch (err) {
+            console.error('Failed to fetch WeKnora data', err);
+        } finally {
+            setLoadingWeKnora(false);
+        }
+    }, [courseId]);
+
     useEffect(() => {
         fetchDocs();
-    }, [fetchDocs]);
+        fetchWeKnora();
+    }, [fetchDocs, fetchWeKnora]);
 
     // Poll while any doc is processing
     useEffect(() => {
@@ -231,6 +256,35 @@ export default function MaterialsPage() {
     const clearCompletedUploads = () => {
         setUploadQueue(prev => prev.filter(t => t.status !== 'done' && t.status !== 'error'));
     };
+
+    // -- WeKnora Handlers --
+    const handleBindKb = async (kbId: string) => {
+        setBindingKbId(kbId);
+        try {
+            await bindWeKnoraKnowledgeBase(courseId, kbId);
+            toast('知识库绑定成功', 'success');
+            await fetchWeKnora();
+        } catch {
+            toast('绑定失败', 'error');
+        } finally {
+            setBindingKbId(null);
+        }
+    };
+
+    const handleUnbindKb = async (refId: number) => {
+        if (!confirm('确定要解绑该知识库吗？')) return;
+        setUnbindingRefId(refId);
+        try {
+            await unbindWeKnoraKnowledgeBase(courseId, refId);
+            toast('已解绑', 'success');
+            await fetchWeKnora();
+        } catch {
+            toast('解绑失败', 'error');
+        } finally {
+            setUnbindingRefId(null);
+        }
+    };
+
 
     // -- Render --------------------------------------------------
 
@@ -439,6 +493,64 @@ export default function MaterialsPage() {
                     </div>
                 )}
             </div>
+
+            {/* WeKnora Integration Section */}
+            {(!loadingWeKnora && (weknoraKBs.length > 0 || courseRefs.length > 0)) && (
+                <div className={styles.docSection} style={{ marginTop: '32px' }}>
+                    <h3 className={styles.docSectionTitle}>WeKnora 外部知识库</h3>
+                    <p style={{ color: 'var(--color-text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
+                        绑定 WeKnora 知识库后，课程内的 AI 助手将能检索其中的内容来回答学生问题。
+                    </p>
+
+                    <div className={styles.docGrid}>
+                        {weknoraKBs.map(kb => {
+                            const ref = courseRefs.find(r => r.kb_id === kb.id);
+                            const isBound = !!ref;
+
+                            return (
+                                <div key={kb.id} className={styles.docCard} style={{ borderColor: isBound ? 'var(--color-primary)' : undefined }}>
+                                    <div className={styles.docCardHeader}>
+                                        <span className={styles.docIcon}>📚</span>
+                                        <div className={styles.docInfo}>
+                                            <span className={styles.docName}>{kb.name}</span>
+                                            <span className={styles.docMeta}>
+                                                {kb.file_count} 个文件 · {kb.chunk_count} 个知识块
+                                            </span>
+                                        </div>
+                                        {isBound ? (
+                                            <span className={styles.statusBadge} style={{ background: '#e0f2fe', color: '#0284c7' }}>已绑定</span>
+                                        ) : (
+                                            <span className={styles.statusBadge} style={{ background: '#f1f5f9', color: '#64748b' }}>未绑定</span>
+                                        )}
+                                    </div>
+                                    <div className={styles.docActions} style={{ marginTop: '12px', justifyContent: 'flex-end' }}>
+                                        {isBound ? (
+                                            <button
+                                                className={styles.deleteBtn}
+                                                onClick={() => handleUnbindKb(ref.id)}
+                                                disabled={unbindingRefId === ref.id}
+                                            >
+                                                {unbindingRefId === ref.id ? '解绑中...' : '取消绑定'}
+                                            </button>
+                                        ) : (
+                                            <button
+                                                className={styles.retryBtn}
+                                                style={{ background: 'var(--color-primary)', color: 'white', border: 'none' }}
+                                                onClick={() => handleBindKb(kb.id)}
+                                                disabled={bindingKbId === kb.id}
+                                            >
+                                                {bindingKbId === kb.id ? '绑定中...' : '绑定到课程'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+
         </div>
     );
 }
