@@ -93,7 +93,7 @@ export default function RolePlayRenderer({
     // -- WebSocket message handling ------------------------------
 
     useEffect(() => {
-        agentChannel.onMessage((data: string) => {
+        const unsubscribeMessage = agentChannel.onMessage((data: string) => {
             try {
                 const event = JSON.parse(data);
                 switch (event.event) {
@@ -178,7 +178,7 @@ export default function RolePlayRenderer({
             }
         });
 
-        agentChannel.onClose(() => {
+        const unsubscribeClose = agentChannel.onClose(() => {
             setMessages(prev => [...prev, {
                 id: `sys-close-${Date.now()}`,
                 role: 'system',
@@ -186,6 +186,10 @@ export default function RolePlayRenderer({
                 timestamp: Date.now(),
             }]);
         });
+        return () => {
+            unsubscribeMessage();
+            unsubscribeClose();
+        };
     }, [agentChannel, selectedCharacter]);
 
     // -- Character selection -------------------------------------

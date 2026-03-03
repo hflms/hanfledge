@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -103,6 +104,11 @@ func (h *SystemConfigHandler) buildProviderForTest(providerType string, modelOve
 		if mode == "embed" && modelOverride != "" {
 			embModel = modelOverride
 		}
+		actualURL := compatURL
+		if actualURL == "" {
+			actualURL = "(default) https://dashscope.aliyuncs.com/compatible-mode/v1"
+		}
+		slog.Info("[DEBUG] buildProviderForTest dashscope", "chat_model", chatModel, "compat_url", actualURL)
 		return llm.NewDashScopeClient(llm.DashScopeConfig{
 			APIKey:         apiKey,
 			ChatModel:      chatModel,

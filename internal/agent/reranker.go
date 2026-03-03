@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
@@ -283,8 +284,11 @@ func (r *CrossEncoderReranker) scoreBatch(ctx context.Context, query string, bat
 	}
 
 	// Allow more tokens for JSON array output
+	// 使用独立的短超时，防止阻塞整个管道
+	rankCtx, rankCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer rankCancel()
 	maxTokens := len(batch)*8 + 16
-	response, err := r.llm.Chat(ctx, messages, &llm.ChatOptions{
+	response, err := r.llm.Chat(rankCtx, messages, &llm.ChatOptions{
 		Temperature: 0.0,
 		MaxTokens:   maxTokens,
 	})
@@ -313,7 +317,10 @@ func (r *CrossEncoderReranker) scoreChunk(ctx context.Context, query, chunkConte
 		{Role: "user", Content: prompt},
 	}
 
-	response, err := r.llm.Chat(ctx, messages, &llm.ChatOptions{
+	// 使用独立的短超时，防止阻塞整个管道
+	rankCtx, rankCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer rankCancel()
+	response, err := r.llm.Chat(rankCtx, messages, &llm.ChatOptions{
 		Temperature: 0.0, // deterministic scoring
 		MaxTokens:   8,   // only need a single number
 	})

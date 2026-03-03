@@ -92,7 +92,11 @@ func (p *DynamicProvider) getChatProvider() LLMProvider {
 				EmbeddingModel: embModel,
 				CompatBaseURL:  compatURL,
 			})
-			slogDynamic.Info("initialized dashscope client dynamically")
+			actualURL := compatURL
+			if actualURL == "" {
+				actualURL = "(default) https://dashscope.aliyuncs.com/compatible-mode/v1"
+			}
+			slogDynamic.Info("initialized dashscope client dynamically", "chat_model", chatModel, "compat_url", actualURL)
 		case "ollama":
 			host := configs["OLLAMA_BASE_URL"]
 			if host == "" {

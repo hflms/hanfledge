@@ -118,6 +118,9 @@ type dsOpenAIChatRequest struct {
 	MaxTokens   int           `json:"max_tokens,omitempty"`
 	Temperature float64       `json:"temperature,omitempty"`
 	TopP        float64       `json:"top_p,omitempty"`
+	// DashScope 推理模型 (qwen3.5-plus 等) 的思考开关。
+	// 默认 true，设为 false 可关闭推理以加快响应。
+	EnableThinking *bool `json:"enable_thinking,omitempty"`
 }
 
 type dsOpenAIChatResponse struct {
@@ -150,8 +153,23 @@ func (c *DashScopeClient) Chat(ctx context.Context, messages []ChatMessage, opts
 
 // -- StreamChat API (SSE Streaming) ------------------------------
 
-// dsSSEEvent represents a single SSE event from DashScope streaming.
+// dsSSEEvent supports both DashScope native and OpenAI-compatible SSE formats.
+// DashScope native: {"output":{"choices":[{"message":{"content":"cumulative"},"finish_reason":"stop"}]}}
+// OpenAI compat:    {"choices":[{"delta":{"content":"delta","reasoning_content":"thinking"},"finish_reason":"stop"}]}
 type dsSSEEvent struct {
+	// OpenAI-compatible format (used by /compatible-mode/v1/chat/completions)
+	Choices []struct {
+		Delta struct {
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+		} `json:"delta"`
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+
+	// DashScope native format (legacy)
 	Output struct {
 		Choices []struct {
 			Message struct {
@@ -177,18 +195,18 @@ func (c *DashScopeClient) StreamChat(ctx context.Context, messages []ChatMessage
 	}
 
 	// DashScope uses SSE format: "data: {...}\n\n"
-	var fullResponse string
+	var fullResponse strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	// Track previous content length for incremental output
-	// DashScope returns cumulative content in each SSE event
+	// Track previous content length for cumulative mode (DashScope native)
 	prevContentLen := 0
+	isOpenAIFormat := false // auto-detected on first event
 
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
-			return fullResponse, ctx.Err()
+			return fullResponse.String(), ctx.Err()
 		default:
 		}
 
@@ -210,34 +228,67 @@ func (c *DashScopeClient) StreamChat(ctx context.Context, messages []ChatMessage
 			continue
 		}
 
-		if len(event.Output.Choices) == 0 {
+		// Try OpenAI-compatible format first (choices[].delta.content)
+		if len(event.Choices) > 0 {
+			isOpenAIFormat = true
+			choice := event.Choices[0]
+
+			// Delta content (incremental tokens)
+			if choice.Delta.Content != "" {
+				fullResponse.WriteString(choice.Delta.Content)
+				if onToken != nil {
+					onToken(choice.Delta.Content)
+				}
+			}
+			// Message content (some responses use message instead of delta)
+			if choice.Message.Content != "" && choice.Delta.Content == "" {
+				// Cumulative mode fallback within OpenAI format
+				content := choice.Message.Content
+				if len(content) > prevContentLen {
+					delta := content[prevContentLen:]
+					prevContentLen = len(content)
+					fullResponse.Reset()
+					fullResponse.WriteString(content)
+					if delta != "" && onToken != nil {
+						onToken(delta)
+					}
+				}
+			}
+
+			if choice.FinishReason == "stop" {
+				break
+			}
 			continue
 		}
 
-		choice := event.Output.Choices[0]
-		content := choice.Message.Content
+		// Fallback: DashScope native format (output.choices[].message.content)
+		if !isOpenAIFormat && len(event.Output.Choices) > 0 {
+			choice := event.Output.Choices[0]
+			content := choice.Message.Content
 
-		// DashScope returns cumulative content — extract only the new delta
-		if len(content) > prevContentLen {
-			delta := content[prevContentLen:]
-			prevContentLen = len(content)
-			fullResponse = content
+			// DashScope native returns cumulative content
+			if len(content) > prevContentLen {
+				delta := content[prevContentLen:]
+				prevContentLen = len(content)
+				fullResponse.Reset()
+				fullResponse.WriteString(content)
 
-			if delta != "" && onToken != nil {
-				onToken(delta)
+				if delta != "" && onToken != nil {
+					onToken(delta)
+				}
 			}
-		}
 
-		if choice.FinishReason == "stop" {
-			break
+			if choice.FinishReason == "stop" {
+				break
+			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fullResponse, fmt.Errorf("dashscope stream read error: %w", err)
+		return fullResponse.String(), fmt.Errorf("dashscope stream read error: %w", err)
 	}
 
-	return fullResponse, nil
+	return fullResponse.String(), nil
 }
 
 // -- Embedding API -----------------------------------------------
@@ -338,7 +389,7 @@ func (c *DashScopeClient) buildParameters(opts *ChatOptions) dsParameters {
 
 func (c *DashScopeClient) buildOpenAIRequest(messages []ChatMessage, opts *ChatOptions, stream bool) dsOpenAIChatRequest {
 	params := c.buildParameters(opts)
-	return dsOpenAIChatRequest{
+	req := dsOpenAIChatRequest{
 		Model:       c.ChatModel,
 		Messages:    messages,
 		Stream:      stream,
@@ -346,6 +397,13 @@ func (c *DashScopeClient) buildOpenAIRequest(messages []ChatMessage, opts *ChatO
 		Temperature: params.Temperature,
 		TopP:        params.TopP,
 	}
+	// 对于非流式调用，禁用推理模式 (qwen3.5-plus 等模型默认开启 thinking，
+	// 会导致响应时间极长。非流式场景如 QueryExpander、Reranker 不需要推理。)
+	if !stream {
+		noThink := false
+		req.EnableThinking = &noThink
+	}
+	return req
 }
 
 func (c *DashScopeClient) compatChatURL() string {

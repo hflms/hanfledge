@@ -22,6 +22,7 @@ export default function SystemSettingsPage() {
     OLLAMA_MODEL: 'qwen2.5:7b',
     DASHSCOPE_API_KEY: '',
     DASHSCOPE_MODEL: 'qwen-max',
+    DASHSCOPE_COMPAT_BASE_URL: '',
     EMBEDDING_PROVIDER: 'ollama',
     EMBEDDING_MODEL: 'bge-m3'
   });
@@ -155,9 +156,9 @@ export default function SystemSettingsPage() {
         <h2>基础设置</h2>
         <div className={styles.formGroup} style={{ marginTop: '20px' }}>
           <label>默认 AI 提供商</label>
-          <select 
-            name="LLM_PROVIDER" 
-            value={configs.LLM_PROVIDER} 
+          <select
+            name="LLM_PROVIDER"
+            value={configs.LLM_PROVIDER}
             onChange={handleChange}
             className={styles.select}
           >
@@ -166,7 +167,7 @@ export default function SystemSettingsPage() {
           </select>
           <span className={styles.helpText}>系统所有 AI 功能将默认使用此提供商（如需针对不同场景自定义，可在具体功能页面中指定）。</span>
         </div>
-        
+
         <div className={styles.formGroup}>
           <label>Embedding 提供商</label>
           <select
@@ -183,10 +184,10 @@ export default function SystemSettingsPage() {
 
         <div className={styles.formGroup}>
           <label>Embedding 向量模型</label>
-          <input 
-            type="text" 
-            name="EMBEDDING_MODEL" 
-            value={configs.EMBEDDING_MODEL} 
+          <input
+            type="text"
+            name="EMBEDDING_MODEL"
+            value={configs.EMBEDDING_MODEL}
             onChange={handleChange}
             className={styles.input}
             placeholder="例如：bge-m3 或 text-embedding-v3"
@@ -273,10 +274,10 @@ export default function SystemSettingsPage() {
           <h2>Ollama 配置</h2>
           <div className={styles.formGroup} style={{ marginTop: '20px' }}>
             <label>Ollama 服务地址 (Base URL)</label>
-            <input 
-              type="text" 
-              name="OLLAMA_BASE_URL" 
-              value={configs.OLLAMA_BASE_URL} 
+            <input
+              type="text"
+              name="OLLAMA_BASE_URL"
+              value={configs.OLLAMA_BASE_URL}
               onChange={handleChange}
               className={styles.input}
               placeholder="http://localhost:11434"
@@ -284,10 +285,10 @@ export default function SystemSettingsPage() {
           </div>
           <div className={styles.formGroup}>
             <label>Ollama 对话模型</label>
-            <input 
-              type="text" 
-              name="OLLAMA_MODEL" 
-              value={configs.OLLAMA_MODEL} 
+            <input
+              type="text"
+              name="OLLAMA_MODEL"
+              value={configs.OLLAMA_MODEL}
               onChange={handleChange}
               className={styles.input}
               placeholder="例如：qwen2.5:7b"
@@ -301,10 +302,10 @@ export default function SystemSettingsPage() {
           <h2>DashScope (通义千问) 配置</h2>
           <div className={styles.formGroup} style={{ marginTop: '20px' }}>
             <label>API Key</label>
-            <input 
-              type="password" 
-              name="DASHSCOPE_API_KEY" 
-              value={configs.DASHSCOPE_API_KEY} 
+            <input
+              type="password"
+              name="DASHSCOPE_API_KEY"
+              value={configs.DASHSCOPE_API_KEY}
               onChange={handleChange}
               className={styles.input}
               placeholder="sk-..."
@@ -312,20 +313,32 @@ export default function SystemSettingsPage() {
           </div>
           <div className={styles.formGroup}>
             <label>对话模型 (Chat Model)</label>
-            <input 
-              type="text" 
-              name="DASHSCOPE_MODEL" 
-              value={configs.DASHSCOPE_MODEL} 
+            <input
+              type="text"
+              name="DASHSCOPE_MODEL"
+              value={configs.DASHSCOPE_MODEL}
               onChange={handleChange}
               className={styles.input}
               placeholder="例如：qwen-max"
             />
           </div>
+          <div className={styles.formGroup}>
+            <label>API 地址 (可选)</label>
+            <input
+              type="text"
+              name="DASHSCOPE_COMPAT_BASE_URL"
+              value={configs.DASHSCOPE_COMPAT_BASE_URL || ''}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="留空使用默认: https://dashscope.aliyuncs.com/compatible-mode/v1"
+            />
+            <span className={styles.helpText}>自定义 OpenAI 兼容接口地址。如使用代理或自建网关请在此填写，留空则使用 DashScope 官方地址。</span>
+          </div>
         </div>
       )}
 
       <div className={styles.actions}>
-        <button 
+        <button
           className={`${styles.button} ${styles.primaryButton}`}
           onClick={handleSave}
           disabled={saving}

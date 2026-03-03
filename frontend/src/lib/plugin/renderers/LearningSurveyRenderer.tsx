@@ -99,7 +99,7 @@ export default function LearningSurveyRenderer({
     // -- WebSocket message handling ------------------------------
 
     useEffect(() => {
-        agentChannel.onMessage((data: string) => {
+        const unsubscribeMessage = agentChannel.onMessage((data: string) => {
             try {
                 const event = JSON.parse(data);
                 switch (event.event) {
@@ -191,7 +191,7 @@ export default function LearningSurveyRenderer({
             }
         });
 
-        agentChannel.onClose(() => {
+        const unsubscribeClose = agentChannel.onClose(() => {
             setMessages(prev => [...prev, {
                 id: `sys-close-${Date.now()}`,
                 role: 'system',
@@ -199,6 +199,10 @@ export default function LearningSurveyRenderer({
                 timestamp: Date.now(),
             }]);
         });
+        return () => {
+            unsubscribeMessage();
+            unsubscribeClose();
+        };
     }, [agentChannel, parseSurveyFromContent]);
 
     // -- Handle survey answer changes ----------------------------

@@ -144,6 +144,10 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 	tc.Prescription = &prescription
 
+	slogOrch.Info("[DEBUG] strategist done", "session_id", tc.SessionID,
+		"skill", prescription.RecommendedSkill, "scaffold", prescription.InitialScaffold,
+		"elapsed", time.Since(start))
+
 	slogOrch.Debug("strategist results",
 		"kp_targets", len(prescription.TargetKPSequence), "scaffold", prescription.InitialScaffold, "skill", prescription.RecommendedSkill)
 
@@ -165,6 +169,10 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 	tc.Material = &material
 
+	slogOrch.Info("[DEBUG] designer done", "session_id", tc.SessionID,
+		"chunks", len(material.RetrievedChunks), "graph_nodes", len(material.GraphContext),
+		"elapsed", time.Since(start))
+
 	slogOrch.Debug("designer results",
 		"chunks", len(material.RetrievedChunks), "graph_nodes", len(material.GraphContext))
 
@@ -184,10 +192,17 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		return fmt.Errorf("aborted by HookBeforeLLMCall: %w", err)
 	}
 
+	slogOrch.Info("[DEBUG] starting coach LLM call", "session_id", tc.SessionID,
+		"provider_override", tc.ProviderOverride, "model_override", tc.ModelOverride,
+		"llm_type", fmt.Sprintf("%T", o.llm), "llm_name", o.llm.Name())
+
 	finalResponse, err := o.actorCriticLoop(tc, material)
 	if err != nil {
 		return fmt.Errorf("actor-critic loop failed: %w", err)
 	}
+
+	slogOrch.Info("[DEBUG] coach done", "session_id", tc.SessionID,
+		"response_len", len(finalResponse.Content), "elapsed", time.Since(start))
 
 	// Hook: after LLM response
 	o.publishEvent(ctx, plugin.HookAfterLLMResponse, map[string]interface{}{

@@ -192,6 +192,9 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		h.sessionsMu.Unlock()
 	}()
 
+	// Per-session turn lock — prevents concurrent HandleTurn calls
+	var turnMu sync.Mutex
+
 	slogSession.Info("websocket connected", "session", sessionID, "student", studentID)
 
 	// ── Welcome Message (first connection only) ──────────────
@@ -209,16 +212,46 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			}
 		}
 
-		// Build welcome content
-		welcome := fmt.Sprintf("👋 欢迎开始学习活动「%s」！", activity.Title)
-		if kpTitle != "" {
-			welcome += fmt.Sprintf("\n\n📚 当前知识点：**%s**", kpTitle)
+		// 检查是否为学情问卷技能（如果是，应主动触发第一轮对话而不是干等）
+		prescription, err := h.Orchestrator.GetInitialPrescription(context.Background(), session.ID, studentID, session.ActivityID)
+		isSurvey := false
+		if err == nil && prescription != nil {
+			if prescription.RecommendedSkill == "general_diagnosis_survey" || prescription.RecommendedSkill == "learning-survey" {
+				isSurvey = true
+			}
 		}
-		welcome += "\n\n请在下方输入框中回答或提问，AI 导师会引导你逐步思考。准备好了就开始吧！"
 
-		h.sendEvent(ws, "system_message", map[string]string{
-			"content": welcome,
-		})
+		if isSurvey {
+			slogSession.Info("proactively starting survey session", "session_id", sessionID)
+			// 发送一个系统提示开始
+			h.sendEvent(ws, "system_message", map[string]string{
+				"content": "👋 欢迎开始学情问卷！\n\n正在为您生成定制化学习问卷，请稍候...",
+			})
+			// 异步触发第一轮
+			go func() {
+				turnMu.Lock()
+				defer turnMu.Unlock()
+				// 手动构造一个 agent.WSEvent 发给 handleUserMessage
+				startEvent := agent.WSEvent{
+					Event: agent.EventUserMessage,
+					Payload: agent.UserMessagePayload{
+						Text: "你好，我准备好开始学情问卷了。",
+					},
+				}
+				h.handleUserMessage(ws, &session, studentID, startEvent)
+			}()
+		} else {
+			// Build welcome content
+			welcome := fmt.Sprintf("👋 欢迎开始学习活动「%s」！", activity.Title)
+			if kpTitle != "" {
+				welcome += fmt.Sprintf("\n\n📚 当前知识点：**%s**", kpTitle)
+			}
+			welcome += "\n\n请在下方输入框中回答或提问，AI 导师会引导你逐步思考。准备好了就开始吧！"
+
+			h.sendEvent(ws, "system_message", map[string]string{
+				"content": welcome,
+			})
+		}
 	}
 
 	// ── Heartbeat: pong detection ────────────────────────────
@@ -231,9 +264,6 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 	// ── Heartbeat: ping ticker ───────────────────────────────
 	ticker := time.NewTicker(wsPingInterval)
 	defer ticker.Stop()
-
-	// Per-session turn lock — prevents concurrent HandleTurn calls
-	var turnMu sync.Mutex
 
 	// Ping goroutine: sends periodic pings until connection closes
 	done := make(chan struct{})
@@ -385,9 +415,10 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 	}
 
 	slogSession.Info("user message", "session", session.ID, "text", safety.RedactForLog(payload.Text, 50))
+	slogSession.Info("[DEBUG] provider_override", "session", session.ID, "provider", payload.ProviderOverride, "model", payload.ModelOverride)
 
 	// Build TurnContext with WebSocket callbacks
-	agentCtx, agentCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	agentCtx, agentCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer agentCancel()
 
 	tc := &agent.TurnContext{
@@ -440,9 +471,12 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 	}
 
 	// Execute the Agent pipeline
+	slogSession.Info("[DEBUG] starting pipeline", "session", session.ID)
 	if err := h.Orchestrator.HandleTurn(tc); err != nil {
-		slogSession.Error("agent pipeline failed", "err", err)
-		h.sendWSError(ws, "AI 处理失败，请重试")
+		slogSession.Error("agent pipeline failed", "session", session.ID, "err", err)
+		h.sendWSError(ws, "AI 处理失败: "+err.Error())
+	} else {
+		slogSession.Info("[DEBUG] pipeline completed successfully", "session", session.ID)
 	}
 }
 

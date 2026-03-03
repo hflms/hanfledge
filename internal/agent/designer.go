@@ -77,8 +77,9 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 
 	// Step 2: RAG-Fusion 查询扩展 (§8.1.2)
 	// 将原始查询扩展为多个学术化变体，提升召回覆盖面
+	slogDesigner.Info("[DEBUG] starting query expansion", "session_id", prescription.SessionID)
 	expandedQueries := a.expander.ExpandQuery(ctx, userInput)
-	slogDesigner.Debug("rag-fusion query expansion", "variants", len(expandedQueries))
+	slogDesigner.Info("[DEBUG] query expansion done", "session_id", prescription.SessionID, "variants", len(expandedQueries))
 
 	// Step 3: 多路语义检索
 	// 3a. 对每个变体独立执行 pgvector 语义检索 Top-50
@@ -93,10 +94,13 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	}
 
 	// 3b. 图谱引导检索 — Neo4j → KP titles → pgvector Top-50
+	slogDesigner.Info("[DEBUG] starting graph content search", "session_id", prescription.SessionID)
 	graphChunks, err := a.graphContentSearch(ctx, courseID, prescription.TargetKPSequence)
 	if err != nil {
 		slogDesigner.Warn("graph content search failed", "err", err)
 	}
+	slogDesigner.Info("[DEBUG] semantic+graph search done", "session_id", prescription.SessionID,
+		"semantic_chunks", len(allSemanticChunks), "graph_chunks", len(graphChunks))
 
 	// Step 4: RRF 多路融合排序 → Top-20 (粗排候选池)
 	// 合并所有语义检索变体结果 + 图谱检索结果
@@ -108,7 +112,9 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 
 	// Step 4.5: Cross-Encoder 精重排 (§8.1.1 Stage 2)
 	// 对 RRF 粗排候选池中的每个 chunk 与原始查询做深度语义评分，精选 Top-5
+	slogDesigner.Info("[DEBUG] starting reranker", "session_id", prescription.SessionID, "candidates", len(mergedChunks))
 	mergedChunks = a.reranker.Rerank(ctx, userInput, mergedChunks)
+	slogDesigner.Info("[DEBUG] reranker done", "session_id", prescription.SessionID, "result", len(mergedChunks))
 
 	// Step 5: CRAG 质量网关 (§8.1.2)
 	// 评估检索结果与查询的相关性，低质量时触发回退

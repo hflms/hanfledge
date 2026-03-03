@@ -817,6 +817,12 @@ export async function getAchievementDefinitions(): Promise<AchievementDefinition
   return apiFetch<AchievementDefinition[]>('/student/achievements/definitions');
 }
 
+// ── System Config API ───────────────────────────────────────
+
+export async function getSystemConfig(): Promise<Record<string, string>> {
+  return apiFetch<Record<string, string>>('/system/config');
+}
+
 // ── WebSocket Helpers ───────────────────────────────────────
 
 export interface WSEvent {

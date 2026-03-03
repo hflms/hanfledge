@@ -6,6 +6,7 @@ import Link from 'next/link';
 
 import {
     getSession,
+    getSystemConfig,
     type Interaction,
     type StudentSession,
     type WSEvent,
@@ -85,6 +86,7 @@ export default function SessionPage() {
 
     // Streaming token buffer
     const [streamingContent, setStreamingContent] = useState('');
+    const lastResponseRef = useRef('');
 
     // L1 cache: track pending question for caching the response
     const pendingQuestionRef = useRef<string | null>(null);
@@ -113,9 +115,15 @@ export default function SessionPage() {
             }
 
             case 'token_delta': {
-                const payload = event.payload as { text: string };
+                const payload = event.payload as { text?: string; content?: string; delta?: string };
+                const delta = payload.text ?? payload.content ?? payload.delta ?? '';
+                if (!delta) break;
                 setThinkingStatus(null);
-                setStreamingContent(prev => prev + payload.text);
+                setStreamingContent(prev => {
+                    const next = prev + delta;
+                    lastResponseRef.current = next;
+                    return next;
+                });
                 break;
             }
 
@@ -183,28 +191,30 @@ export default function SessionPage() {
             }
 
             case 'turn_complete': {
-
+                console.log('[SESSION DEBUG] ✅ turn_complete 收到, 流式内容长度:', streamingContent.length);
                 setThinkingStatus(null);
                 setSending(false);
 
                 setStreamingContent(prev => {
-                    if (prev) {
+                    const content = prev || lastResponseRef.current;
+                    if (content) {
                         setMessages(msgs => [
                             ...msgs,
                             {
                                 id: `coach-${Date.now()}`,
                                 role: 'coach',
-                                content: prev,
+                                content,
                                 timestamp: Date.now(),
                             },
                         ]);
 
                         const pendingQ = pendingQuestionRef.current;
                         if (pendingQ) {
-                            setCachedResponse(sessionId, pendingQ, prev);
+                            setCachedResponse(sessionId, pendingQ, content);
                             pendingQuestionRef.current = null;
                         }
                     }
+                    lastResponseRef.current = '';
                     return '';
                 });
                 break;
@@ -212,8 +222,10 @@ export default function SessionPage() {
 
             case 'error': {
                 const payload = event.payload as { message: string };
+                console.error('[SESSION DEBUG] ❌ 收到服务端错误:', payload.message);
                 setThinkingStatus(null);
                 setSending(false);
+                lastResponseRef.current = '';
                 toast(payload.message, 'error');
                 break;
             }
@@ -243,6 +255,40 @@ export default function SessionPage() {
                 console.log(`[L1 Cache] Purged ${purged} expired entries`);
             }
         });
+    }, []);
+
+    // -- Load system AI config for debugging -------------------------
+
+    useEffect(() => {
+        getSystemConfig()
+            .then((config) => {
+                const provider = config['LLM_PROVIDER'] || '(未配置)';
+                const dashscopeModel = config['DASHSCOPE_MODEL'] || '(默认 qwen-max)';
+                const dashscopeBaseUrl = config['DASHSCOPE_COMPAT_BASE_URL'] || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+                const ollamaModel = config['OLLAMA_MODEL'] || '(默认 qwen2.5:7b)';
+                const ollamaBaseUrl = config['OLLAMA_BASE_URL'] || 'http://localhost:11434';
+                const embeddingModel = config['EMBEDDING_MODEL'] || '(默认)';
+                const embeddingProvider = config['EMBEDDING_PROVIDER'] || provider;
+
+                console.log(
+                    '%c[AI CONFIG DEBUG] 系统默认 AI 配置信息',
+                    'background: #1a73e8; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;'
+                );
+                console.table({
+                    '当前 Provider': { value: provider },
+                    'DashScope Model': { value: dashscopeModel },
+                    'DashScope Base URL': { value: dashscopeBaseUrl },
+                    'DashScope Chat URL': { value: dashscopeBaseUrl.replace(/\/$/, '') + '/chat/completions' },
+                    'Ollama Model': { value: ollamaModel },
+                    'Ollama Base URL': { value: ollamaBaseUrl },
+                    'Embedding Provider': { value: embeddingProvider },
+                    'Embedding Model': { value: embeddingModel },
+                });
+                console.log('[AI CONFIG DEBUG] 完整配置:', config);
+            })
+            .catch((err) => {
+                console.warn('[AI CONFIG DEBUG] 获取系统配置失败:', err);
+            });
     }, []);
 
     // -- Load session data ------------------------------------------
@@ -281,7 +327,11 @@ export default function SessionPage() {
 
     const handleSend = useCallback(async () => {
         const text = input.trim();
-        if (!text || sending || wsStatus !== 'connected') return;
+        if (!text || sending) return;
+        if (wsStatus !== 'connected') {
+            toast('连接未就绪，请稍后重试', 'warning');
+            return;
+        }
 
         setMessages(prev => [
             ...prev,
@@ -315,6 +365,7 @@ export default function SessionPage() {
         pendingQuestionRef.current = text;
         setSending(true);
         setStreamingContent('');
+        lastResponseRef.current = '';
 
 
         const payload: Record<string, string> = { text };
@@ -331,8 +382,16 @@ export default function SessionPage() {
             timestamp: Math.floor(Date.now() / 1000),
         };
 
+        console.log('[SESSION DEBUG] 发送消息详情:', {
+            text: text.substring(0, 100),
+            providerOverride: providerOverride || '(未设置, 使用系统默认)',
+            modelOverride: modelOverride || '(未设置, 使用系统默认)',
+            wsStatus,
+            fullPayload: JSON.stringify(event),
+        });
+
         agentChannel.send(JSON.stringify(event));
-    }, [input, sending, sessionId, wsStatus, agentChannel, providerOverride, modelOverride]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [input, sending, sessionId, wsStatus, agentChannel, providerOverride, modelOverride, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // -- Render Skill Renderer (plugin mode) ------------------------
 
@@ -408,8 +467,8 @@ export default function SessionPage() {
                             </div>
                         )}
                         <div className={`${styles.scaffoldBadge} ${scaffoldLevel === 'high' ? styles.scaffoldHigh :
-                                scaffoldLevel === 'medium' ? styles.scaffoldMedium :
-                                    styles.scaffoldLow
+                            scaffoldLevel === 'medium' ? styles.scaffoldMedium :
+                                styles.scaffoldLow
                             }`}>
                             {SCAFFOLD_LABELS[scaffoldLevel]}
                             <span style={{ fontSize: '10px', opacity: 0.7 }}>

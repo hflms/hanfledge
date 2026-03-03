@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
@@ -74,14 +75,20 @@ func (e *QueryExpander) ExpandQuery(ctx context.Context, originalQuery string) [
 		{Role: "user", Content: prompt},
 	}
 
-	response, err := e.llm.Chat(ctx, messages, &llm.ChatOptions{
+	slogFusion.Info("[DEBUG] calling LLM for query expansion", "provider", e.llm.Name(), "query", originalQuery)
+	// 使用独立的短超时，防止阻塞整个管道 (main context 只有 3 分钟)
+	// qwen3.5-plus 等推理模型的 thinking 阶段需要更多时间
+	expCtx, expCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer expCancel()
+	response, err := e.llm.Chat(expCtx, messages, &llm.ChatOptions{
 		Temperature: 0.7,
 		MaxTokens:   512,
 	})
 	if err != nil {
-		slogFusion.Warn("query expansion LLM call failed", "err", err)
+		slogFusion.Warn("query expansion LLM call failed (15s timeout), using original query only", "err", err, "provider", e.llm.Name())
 		return queries
 	}
+	slogFusion.Info("[DEBUG] query expansion LLM call succeeded", "response_len", len(response))
 
 	// Parse numbered lines from response
 	variants := parseNumberedLines(response)
