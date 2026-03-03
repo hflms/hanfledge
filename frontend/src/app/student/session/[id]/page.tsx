@@ -147,7 +147,7 @@ export default function SessionPage() {
                 setMessages(prev => [
                     ...prev,
                     {
-                        id: `sys-${Date.now()}`,
+                        id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                         role: 'system',
                         content: `支架已${direction}至 ${newLabel} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
                         timestamp: Date.now(),
@@ -164,7 +164,7 @@ export default function SessionPage() {
                 setMessages(prev => [
                     ...prev,
                     {
-                        id: `sys-${Date.now()}`,
+                        id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                         role: 'system',
                         content: payload.content,
                         timestamp: Date.now(),
@@ -178,7 +178,7 @@ export default function SessionPage() {
                 setMessages(prev => [
                     ...prev,
                     {
-                        id: `t-${payload.id || Date.now()}`,
+                        id: `t-${payload.id || Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                         role: 'teacher',
                         content: payload.content,
                         timestamp: payload.created_at ? new Date(payload.created_at).getTime() : Date.now(),
@@ -201,7 +201,7 @@ export default function SessionPage() {
                         setMessages(msgs => [
                             ...msgs,
                             {
-                                id: `coach-${Date.now()}`,
+                                id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                                 role: 'coach',
                                 content,
                                 timestamp: Date.now(),
@@ -336,7 +336,7 @@ export default function SessionPage() {
         setMessages(prev => [
             ...prev,
             {
-                id: `student-${Date.now()}`,
+                id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                 role: 'student',
                 content: text,
                 timestamp: Date.now(),
@@ -352,7 +352,7 @@ export default function SessionPage() {
             setMessages(prev => [
                 ...prev,
                 {
-                    id: `coach-cache-${Date.now()}`,
+                    id: `coach-cache-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                     role: 'coach',
                     content: cached,
                     timestamp: Date.now(),

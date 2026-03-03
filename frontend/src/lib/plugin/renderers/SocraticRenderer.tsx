@@ -90,7 +90,7 @@ export default function SocraticRenderer({
                         const direction = payload.data.direction === 'fade' ? '降低' : '增强';
                         const labels = { high: '高支架', medium: '中支架', low: '低支架' };
                         setMessages(prev => [...prev, {
-                            id: `sys-${Date.now()}`,
+                            id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                             role: 'system',
                             content: `支架已${direction}至 ${labels[payload.data.new_level]} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
                             timestamp: Date.now(),
@@ -105,7 +105,7 @@ export default function SocraticRenderer({
                         setStreamingContent(prev => {
                             if (prev) {
                                 setMessages(msgs => [...msgs, {
-                                    id: `coach-${Date.now()}`,
+                                    id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                                     role: 'coach',
                                     content: prev,
                                     timestamp: Date.now(),
@@ -124,7 +124,7 @@ export default function SocraticRenderer({
                         setThinkingStatus(null);
                         setSending(false);
                         setMessages(prev => [...prev, {
-                            id: `err-${Date.now()}`,
+                            id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                             role: 'system',
                             content: event.payload?.message || '发生错误',
                             timestamp: Date.now(),
@@ -139,7 +139,7 @@ export default function SocraticRenderer({
 
         const unsubscribeClose = agentChannel.onClose(() => {
             setMessages(prev => [...prev, {
-                id: `sys-close-${Date.now()}`,
+                id: `sys-close-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                 role: 'system',
                 content: '连接已断开',
                 timestamp: Date.now(),
@@ -158,7 +158,7 @@ export default function SocraticRenderer({
         if (!text || sending) return;
 
         setMessages(prev => [...prev, {
-            id: `student-${Date.now()}`,
+            id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             role: 'student',
             content: text,
             timestamp: Date.now(),
