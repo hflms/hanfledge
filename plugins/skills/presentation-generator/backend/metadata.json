@@ -1,0 +1,38 @@
+{
+  "id": "presentation_generator",
+  "name": "演示文稿生成",
+  "description": "根据课程知识点内容生成结构化演示文稿，输出 Reveal.js Markdown 或 HTML 版本，支持教学演示与课堂复盘。",
+  "version": "1.0.0",
+  "author": "system",
+  "category": "content-creation",
+  "subjects": ["math", "physics", "chemistry", "biology", "chinese", "english", "history", "geography"],
+  "tags": ["演示文稿", "课程大纲", "revealjs", "markdown", "课堂讲解"],
+  "scaffolding_levels": ["high", "medium", "low"],
+  "constraints": {
+    "must_match_knowledge_point": true,
+    "must_include_outline": true,
+    "max_slides": 20,
+    "use_student_friendly_language": true,
+    "avoid_external_dependencies": true
+  },
+  "tools": {
+    "summarizer": {
+      "enabled": true,
+      "description": "将课程材料和知识点摘要为演示文稿要点"
+    },
+    "structure_builder": {
+      "enabled": true,
+      "description": "根据知识点组织演示文稿结构"
+    }
+  },
+  "progressive_triggers": {
+    "activate_when": "mastery_score >= 0.2",
+    "deactivate_when": "mastery_score >= 0.95"
+  },
+  "evaluation_dimensions": [
+    "outline_quality",
+    "content_relevance",
+    "slide_clarity",
+    "instructional_flow"
+  ]
+}
