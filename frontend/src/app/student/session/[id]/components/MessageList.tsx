@@ -17,11 +17,12 @@ interface MessageListProps {
     messages: ChatMessage[];
     streamingContent: string;
     thinkingStatus: string | null;
+    onSurveySelect?: (text: string) => void;
 }
 
 // -- Sub-components ----------------------------------------------
 
-const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => (
+const MessageBubble = React.memo(({ msg, onSurveySelect }: { msg: ChatMessage; onSurveySelect?: (text: string) => void }) => (
     <div
         className={`${styles.messageBubble} ${
             msg.role === 'student' ? styles.messageStudent :
@@ -45,7 +46,7 @@ const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => (
         )}
         <div className={styles.messageContent}>
             {msg.role === 'coach' ? (
-                <StructuredMessage content={msg.content} />
+                <StructuredMessage content={msg.content} onSurveySelect={onSurveySelect} />
             ) : (
                 msg.content
             )}
@@ -55,11 +56,11 @@ const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => (
 MessageBubble.displayName = 'MessageBubble';
 
 // Extract the mapping into a memoized component so it skips re-rendering during streaming
-const StableMessageList = React.memo(({ messages }: { messages: ChatMessage[] }) => {
+const StableMessageList = React.memo(({ messages, onSurveySelect }: { messages: ChatMessage[]; onSurveySelect?: (text: string) => void }) => {
     return (
         <>
             {messages.map(msg => (
-                <MessageBubble key={msg.id} msg={msg} />
+                <MessageBubble key={msg.id} msg={msg} onSurveySelect={onSurveySelect} />
             ))}
         </>
     );
@@ -68,7 +69,7 @@ StableMessageList.displayName = 'StableMessageList';
 
 // -- Component ---------------------------------------------------
 
-export default function MessageList({ messages, streamingContent, thinkingStatus }: MessageListProps) {
+export default function MessageList({ messages, streamingContent, thinkingStatus, onSurveySelect }: MessageListProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -83,7 +84,7 @@ export default function MessageList({ messages, streamingContent, thinkingStatus
                 </div>
             )}
 
-            <StableMessageList messages={messages} />
+            <StableMessageList messages={messages} onSurveySelect={onSurveySelect} />
 
             {/* Streaming content (partial coach response) */}
             {streamingContent && (
@@ -93,7 +94,7 @@ export default function MessageList({ messages, streamingContent, thinkingStatus
                         <span className={styles.roleLabel}>AI 导师</span>
                     </div>
                     <div className={styles.messageContent}>
-                        <StructuredMessage content={streamingContent} isStreaming />
+                        <StructuredMessage content={streamingContent} isStreaming onSurveySelect={onSurveySelect} />
                     </div>
                 </div>
             )}

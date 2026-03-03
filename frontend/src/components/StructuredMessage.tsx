@@ -25,6 +25,7 @@ interface SurveyPayload {
 interface StructuredMessageProps {
     content: string;
     isStreaming?: boolean;
+    onSurveySelect?: (text: string) => void;
 }
 
 interface MessagePartText {
@@ -67,14 +68,14 @@ function parseSurveyParts(content: string): MessagePart[] {
     return parts;
 }
 
-export default function StructuredMessage({ content, isStreaming = false }: StructuredMessageProps) {
+export default function StructuredMessage({ content, isStreaming = false, onSurveySelect }: StructuredMessageProps) {
     const parts = parseSurveyParts(content);
 
     return (
         <>
             {parts.map((part, index) => {
                 if (part.type === 'survey') {
-                    return <SurveyBlock key={`survey-${index}`} survey={part.payload} />;
+                    return <SurveyBlock key={`survey-${index}`} survey={part.payload} onSelect={onSurveySelect} />;
                 }
                 if (!part.content.trim()) {
                     return null;

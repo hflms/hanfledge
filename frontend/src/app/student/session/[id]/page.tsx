@@ -485,6 +485,27 @@ export default function SessionPage() {
                             messages={messages}
                             streamingContent={streamingContent}
                             thinkingStatus={thinkingStatus}
+                            onSurveySelect={(text) => {
+                                setInput(prev => {
+                                    const next = prev.trim();
+                                    const match = text.match(/^Q(\d+):\s*/);
+                                    if (!next) return text;
+                                    if (match) {
+                                        const questionKey = `Q${match[1]}:`;
+                                        const parts = next
+                                            .split(';')
+                                            .map(part => part.trim())
+                                            .filter(Boolean);
+                                        const existingIndex = parts.findIndex(part => part.startsWith(questionKey));
+                                        if (existingIndex >= 0) {
+                                            parts[existingIndex] = text;
+                                            return parts.join('; ');
+                                        }
+                                        return `${next}; ${text}`;
+                                    }
+                                    return `${next}; ${text}`;
+                                });
+                            }}
                         />
                         <ScaffoldPanel
                             level={scaffoldLevel}
