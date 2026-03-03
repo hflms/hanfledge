@@ -82,6 +82,16 @@ export function useSessionWebSocket({
 
     const connectWebSocket = useCallback(() => {
         if (sessionStatus !== 'active') return;
+        if (wsRef.current) {
+            const state = wsRef.current.readyState;
+            if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
+                console.warn('[WS DEBUG] WebSocket 已存在，跳过重复连接');
+                return;
+            }
+            if (state === WebSocket.CLOSING) {
+                wsRef.current.close();
+            }
+        }
 
         const wsUrl = createWSUrl(sessionId);
         console.log('[WS DEBUG] 连接 URL:', wsUrl);
