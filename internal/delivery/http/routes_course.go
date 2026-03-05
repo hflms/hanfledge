@@ -80,6 +80,11 @@ func registerCourseRoutes(
 		kps.GET("/:id/misconceptions", kgHandler.ListMisconceptions)
 		kps.DELETE("/:id/misconceptions/:misconception_id", kgHandler.DeleteMisconception)
 
+		// Skill Mounting at KP level
+		kps.POST("/:id/skills", skillHandler.MountSkillToKP)
+		kps.PATCH("/:id/skills/:mount_id", skillHandler.UpdateKPSkillConfig)
+		kps.DELETE("/:id/skills/:mount_id", skillHandler.UnmountSkillFromKP)
+
 		// Cross-Disciplinary Links
 		kps.POST("/:id/cross-links", kgHandler.CreateCrossLink)
 		kps.GET("/:id/cross-links", kgHandler.ListCrossLinks)

@@ -428,6 +428,34 @@ export async function updateSkillConfig(chapterId: number, mountId: number, data
   });
 }
 
+export async function mountSkillToKP(kpId: number, data: {
+  skill_id: string;
+  scaffold_level?: string;
+  constraints_json?: Record<string, unknown>;
+  priority?: number;
+}): Promise<MountSkillResponse> {
+  return apiFetch<MountSkillResponse>(`/knowledge-points/${kpId}/skills`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function unmountSkillFromKP(kpId: number, mountId: number): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/knowledge-points/${kpId}/skills/${mountId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function updateKPSkillConfig(kpId: number, mountId: number, data: {
+  scaffold_level?: string;
+  progressive_rule?: Record<string, unknown>;
+}): Promise<{ message: string; mount: MountedSkill }> {
+  return apiFetch<{ message: string; mount: MountedSkill }>(`/knowledge-points/${kpId}/skills/${mountId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
 // ── AI Auto-Mount API ───────────────────────────────────────
 
 export interface RecommendMount {

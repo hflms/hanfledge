@@ -62,6 +62,7 @@ export const CATEGORY_MAP: Record<string, string> = {
     'critical-thinking': '批判性思维',
     'collaborative': '协作学习',
     'role-play': '角色扮演',
+    'content-creation': '内容创作',
 };
 
 /** Category emoji icons */
@@ -70,6 +71,7 @@ export const CATEGORY_ICONS: Record<string, string> = {
     'critical-thinking': '🧐',
     'collaborative': '🤝',
     'role-play': '🎭',
+    'content-creation': '🎨',
 };
 
 /** Academic subject names */

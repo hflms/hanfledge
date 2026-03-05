@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
     getCourseOutline, uploadMaterial, getDocuments,
     listSkills, mountSkill, unmountSkill, updateSkillConfig,
+    mountSkillToKP, unmountSkillFromKP, updateKPSkillConfig,
     recommendSkills, batchMountSkills,
     listClasses, listTeacherActivities, createActivity, publishActivity,
     type Course, type Document, type SkillMetadata, type MountedSkill, type RecommendMount, type ClassItem, type LearningActivity
@@ -30,6 +31,7 @@ export default function OutlinePage() {
 
     // -- Skill mounting state ----------------------------------------
     const [pickerChapterId, setPickerChapterId] = useState<number | null>(null);
+    const [pickerKpId, setPickerKpId] = useState<number | null>(null);
     const [availableSkills, setAvailableSkills] = useState<SkillMetadata[]>([]);
     const [skillsLoading, setSkillsLoading] = useState(false);
     const [mounting, setMounting] = useState(false);
@@ -37,7 +39,7 @@ export default function OutlinePage() {
     const pickerRef = useRef<HTMLDivElement>(null);
 
     // -- Skill config panel state ------------------------------------
-    const [configMount, setConfigMount] = useState<{ mount: MountedSkill; chapterId: number } | null>(null);
+    const [configMount, setConfigMount] = useState<{ mount: MountedSkill; chapterId: number; kpId: number } | null>(null);
     const closeConfigModal = useCallback(() => setConfigMount(null), []);
     const configModalRef = useModalA11y(!!configMount, closeConfigModal);
     const [configLevel, setConfigLevel] = useState<string>('high');
@@ -145,6 +147,7 @@ export default function OutlinePage() {
             return;
         }
         setPickerChapterId(chapterId);
+        setPickerKpId(null);
         setSkillsLoading(true);
         try {
             const skills = await listSkills();
@@ -172,11 +175,45 @@ export default function OutlinePage() {
         }
     };
 
-    const handleUnmountSkill = async (chapterId: number, mountId: number) => {
+    const openKpSkillPicker = async (kpId: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (pickerKpId === kpId) {
+            setPickerKpId(null);
+            return;
+        }
+        setPickerKpId(kpId);
+        setPickerChapterId(null);
+        setSkillsLoading(true);
+        try {
+            const skills = await listSkills();
+            setAvailableSkills(skills || []);
+        } catch (err) {
+            console.error('Failed to load skills', err);
+        } finally {
+            setSkillsLoading(false);
+        }
+    };
+
+    const handleMountSkillToKP = async (kpId: number, skillId: string) => {
+        setMounting(true);
+        try {
+            await mountSkillToKP(kpId, { skill_id: skillId });
+            const data = await getCourseOutline(courseId);
+            setCourse(data.course);
+            setPickerKpId(null);
+        } catch (err) {
+            console.error('Failed to mount skill to KP', err);
+            toast('挂载技能失败', 'error');
+        } finally {
+            setMounting(false);
+        }
+    };
+
+    const handleUnmountSkill = async (kpId: number, mountId: number) => {
         if (!confirm('确认卸载该技能？')) return;
         setUnmounting(mountId);
         try {
-            await unmountSkill(chapterId, mountId);
+            await unmountSkillFromKP(kpId, mountId);
             const data = await getCourseOutline(courseId);
             setCourse(data.course);
             setConfigMount(null);
@@ -190,9 +227,9 @@ export default function OutlinePage() {
 
     // -- Skill config panel handlers ----------------------------------
 
-    const openConfigPanel = (mount: MountedSkill, chapterId: number, e: React.MouseEvent) => {
+    const openConfigPanel = (mount: MountedSkill, chapterId: number, kpId: number, e: React.MouseEvent) => {
         e.stopPropagation();
-        setConfigMount({ mount, chapterId });
+        setConfigMount({ mount, chapterId, kpId });
         setConfigLevel(mount.scaffold_level || 'high');
         setConfigThreshold(mount.progressive_rule?.mastery_threshold?.toString() || '');
         setConfigDegradeTo(mount.progressive_rule?.degrade_to || '');
@@ -211,7 +248,7 @@ export default function OutlinePage() {
                 progressiveRule.degrade_to = configDegradeTo;
             }
 
-            await updateSkillConfig(configMount.chapterId, configMount.mount.id, {
+            await updateKPSkillConfig(configMount.kpId, configMount.mount.id, {
                 scaffold_level: configLevel,
                 progressive_rule: Object.keys(progressiveRule).length > 0 ? progressiveRule : undefined,
             });
@@ -250,7 +287,7 @@ export default function OutlinePage() {
         const mountsToApply = recommendations
             .filter((_, i) => selectedMounts.has(i.toString()))
             .map(r => ({ kp_id: r.kp_id, skill_id: r.skill_id, scaffold_level: r.scaffold_level }));
-        
+
         if (mountsToApply.length === 0) {
             toast('请选择至少一项挂载', 'warning');
             return;
@@ -375,15 +412,16 @@ export default function OutlinePage() {
 
     // Close skill picker on outside click
     useEffect(() => {
-        if (!pickerChapterId) return;
+        if (!pickerChapterId && !pickerKpId) return;
         const handleClickOutside = (e: MouseEvent) => {
             if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
                 setPickerChapterId(null);
+                setPickerKpId(null);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [pickerChapterId]);
+    }, [pickerChapterId, pickerKpId]);
 
     if (loading) {
         return (
@@ -414,8 +452,8 @@ export default function OutlinePage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                         <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>📋 课程大纲</h3>
                         {chapters.length > 0 && (
-                            <button 
-                                className={`btn btn-secondary ${styles.autoMountBtn}`} 
+                            <button
+                                className={`btn btn-secondary ${styles.autoMountBtn}`}
                                 onClick={handleRecommend}
                                 disabled={recommending}
                                 style={{ padding: '4px 12px', fontSize: 13 }}
@@ -494,34 +532,88 @@ export default function OutlinePage() {
 
                                     {ch.knowledge_points && ch.knowledge_points.length > 0 && (
                                         <div className={styles.kpList}>
-                                            {ch.knowledge_points.map(kp => (
-                                                <div key={kp.id} className={styles.kpItem}>
-                                                    <div className={`${styles.kpDot} ${kp.is_key_point ? styles.kpDotKey : ''}`} aria-hidden="true" />
-                                                    <span className={styles.kpTitle}>
-                                                        {kp.title}
-                                                        {kp.is_key_point && ' ⭐'}
-                                                    </span>
-                                                    <span className={styles.kpDifficulty}>
-                                                        难度 {(kp.difficulty * 100).toFixed(0)}%
-                                                    </span>
-                                                    <div className={styles.kpSkills}>
-                                                        {kp.mounted_skills?.map(s => (
-                                                            <span
-                                                                key={s.id}
-                                                                className={`${styles.skillTag} ${styles.skillTagInteractive}`}
-                                                                title={`点击配置 ${s.skill_id}`}
-                                                                role="button"
-                                                                tabIndex={0}
-                                                                onClick={(e) => openConfigPanel(s, ch.id, e)}
-                                                                onKeyDown={handleCardKeyDown}
-                                                            >
-                                                                {s.skill_id}
-                                                                <span className={styles.scaffoldBadge}>{s.scaffold_level === 'high' ? '高' : s.scaffold_level === 'medium' ? '中' : '低'}</span>
+                                            {ch.knowledge_points.map(kp => {
+                                                const kpMountedIds = new Set(kp.mounted_skills?.map(s => s.skill_id) || []);
+
+                                                return (
+                                                    <div key={kp.id} className={styles.kpItem}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', width: '100%', gap: '8px' }}>
+                                                            <div className={`${styles.kpDot} ${kp.is_key_point ? styles.kpDotKey : ''}`} aria-hidden="true" />
+                                                            <span className={styles.kpTitle}>
+                                                                {kp.title}
+                                                                {kp.is_key_point && ' ⭐'}
                                                             </span>
-                                                        ))}
+                                                            <span className={styles.kpDifficulty}>
+                                                                难度 {(kp.difficulty * 100).toFixed(0)}%
+                                                            </span>
+                                                            <button
+                                                                className={styles.mountBtn}
+                                                                title="挂载技能到此知识点"
+                                                                onClick={(e) => openKpSkillPicker(kp.id, e)}
+                                                                style={{ marginLeft: 'auto', padding: '0 6px', fontSize: 13, height: 22 }}
+                                                            >
+                                                                {pickerKpId === kp.id ? '✕' : '+'}
+                                                            </button>
+                                                        </div>
+
+                                                        {/* KP Skill Picker Dropdown */}
+                                                        {pickerKpId === kp.id && (
+                                                            <div className={styles.skillPicker} ref={pickerRef} style={{ marginTop: 8, alignSelf: 'flex-start', marginLeft: 24 }}>
+                                                                <div className={styles.pickerHeader}>选择要挂载的技能到知识点</div>
+                                                                {skillsLoading ? (
+                                                                    <div className={styles.pickerLoading}>
+                                                                        <div className="spinner" />
+                                                                    </div>
+                                                                ) : availableSkills.length === 0 ? (
+                                                                    <div className={styles.pickerEmpty}>暂无可用技能</div>
+                                                                ) : (
+                                                                    <div className={styles.pickerList}>
+                                                                        {availableSkills.map(skill => {
+                                                                            const alreadyMounted = kpMountedIds.has(skill.id);
+                                                                            return (
+                                                                                <button
+                                                                                    key={skill.id}
+                                                                                    className={`${styles.pickerItem} ${alreadyMounted ? styles.pickerItemMounted : ''}`}
+                                                                                    disabled={alreadyMounted || mounting}
+                                                                                    onClick={() => handleMountSkillToKP(kp.id, skill.id)}
+                                                                                >
+                                                                                    <span className={styles.pickerIcon}>
+                                                                                        {CATEGORY_ICONS[skill.category] || '🧩'}
+                                                                                    </span>
+                                                                                    <span className={styles.pickerName}>{skill.name}</span>
+                                                                                    {alreadyMounted && (
+                                                                                        <span className={styles.pickerMountedLabel}>已挂载</span>
+                                                                                    )}
+                                                                                    {!alreadyMounted && mounting && (
+                                                                                        <span className={styles.pickerMountedLabel}>挂载中...</span>
+                                                                                    )}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        <div className={styles.kpSkills} style={{ marginLeft: 24, marginTop: 4 }}>
+                                                            {kp.mounted_skills?.map(s => (
+                                                                <span
+                                                                    key={s.id}
+                                                                    className={`${styles.skillTag} ${styles.skillTagInteractive}`}
+                                                                    title={`点击配置 ${s.skill_id}`}
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    onClick={(e) => openConfigPanel(s, ch.id, kp.id, e)}
+                                                                    onKeyDown={handleCardKeyDown}
+                                                                >
+                                                                    {s.skill_id}
+                                                                    <span className={styles.scaffoldBadge}>{s.scaffold_level === 'high' ? '高' : s.scaffold_level === 'medium' ? '中' : '低'}</span>
+                                                                </span>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
@@ -801,7 +893,7 @@ export default function OutlinePage() {
                         <div className={styles.configFooter}>
                             <button
                                 className={styles.unmountBtn}
-                                onClick={() => handleUnmountSkill(configMount.chapterId, configMount.mount.id)}
+                                onClick={() => handleUnmountSkill(configMount.kpId, configMount.mount.id)}
                                 disabled={unmounting === configMount.mount.id}
                             >
                                 {unmounting === configMount.mount.id ? '卸载中...' : '卸载技能'}
@@ -829,7 +921,7 @@ export default function OutlinePage() {
                             <h3 className={styles.configTitle}>🤖 AI 技能挂载建议</h3>
                             <button className={styles.configCloseBtn} onClick={() => setRecommendations(null)}>✕</button>
                         </div>
-                        
+
                         <div className={styles.configBody} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                             <p className={styles.configHint} style={{ marginBottom: 16 }}>
                                 AI 根据知识点特性和难度，推荐了以下技能挂载方案。您可以取消勾选不需要的挂载。
@@ -842,15 +934,15 @@ export default function OutlinePage() {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                     {recommendations.map((rec, idx) => (
-                                        <div key={idx} style={{ 
-                                            display: 'flex', gap: 12, padding: 12, 
-                                            border: '1px solid var(--color-border)', 
-                                            borderRadius: 8, 
+                                        <div key={idx} style={{
+                                            display: 'flex', gap: 12, padding: 12,
+                                            border: '1px solid var(--color-border)',
+                                            borderRadius: 8,
                                             background: selectedMounts.has(idx.toString()) ? 'var(--color-bg-primary)' : 'var(--color-bg-secondary)',
                                             opacity: selectedMounts.has(idx.toString()) ? 1 : 0.6
                                         }}>
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 checked={selectedMounts.has(idx.toString())}
                                                 onChange={() => toggleMountSelection(idx.toString())}
                                                 style={{ marginTop: 4 }}

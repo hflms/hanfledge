@@ -104,7 +104,7 @@ const presentationManifest: PluginManifest = {
   name: '演示文稿生成渲染器',
   version: '1.0.0',
   type: 'skill_renderer',
-  skillId: 'presentation_generator',
+  skillId: 'general_creation_presentation',
   trust_level: 'domain',
   author: 'hanfledge-team',
   description: '演示文稿生成 — 根据章节知识点自动生成 Markdown 格式的课堂演示文稿',
@@ -143,7 +143,7 @@ const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_diagnosis_error: ErrorDiagnosisRenderer as unknown as FC<SkillRendererProps>,
   general_synthesis_crosslink: CrossDisciplinaryRenderer as unknown as FC<SkillRendererProps>,
   general_diagnosis_survey: LearningSurveyRenderer,
-  presentation_generator: PresentationRenderer,
+  general_creation_presentation: PresentationRenderer,
 };
 
 const MISSING_RENDERER_SKILLS: string[] = [];

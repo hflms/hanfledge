@@ -32,6 +32,7 @@ const TEACHING_STAGES: { key: string; label: string; icon: string; categories: s
     { key: 'concept', label: '概念引入', icon: '💡', categories: ['inquiry-based'] },
     { key: 'practice', label: '练习巩固', icon: '📝', categories: ['critical-thinking'] },
     { key: 'review', label: '复习评估', icon: '🎯', categories: ['role-play', 'collaborative'] },
+    { key: 'creation', label: '内容创造', icon: '🎨', categories: ['content-creation'] },
 ];
 
 const TOOL_LABELS: Record<string, string> = {
