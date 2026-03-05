@@ -99,6 +99,21 @@ const practiceQuizManifest: PluginManifest = {
   permissions: ['getStudentContext', 'getKnowledgePoint', 'sendMessageToAgent', 'reportInteractionEvent'],
 };
 
+const presentationManifest: PluginManifest = {
+  id: 'presentation-renderer',
+  name: '演示文稿生成渲染器',
+  version: '1.0.0',
+  type: 'skill_renderer',
+  skillId: 'presentation_generator',
+  trust_level: 'domain',
+  author: 'hanfledge-team',
+  description: '演示文稿生成 — 根据章节知识点自动生成 Markdown 格式的课堂演示文稿',
+  entry: '@/lib/plugin/renderers/PresentationRenderer',
+  slots: ['student.interaction.main'],
+  supported_interaction_modes: ['text'],
+  permissions: ['getStudentContext', 'getKnowledgePoint', 'sendMessageToAgent', 'reportInteractionEvent'],
+};
+
 // -- Component Registry (maps skillId -> React component) --------
 //
 // Each manifest above has an "entry" field pointing to the renderer
@@ -117,6 +132,7 @@ import QuizRenderer from './renderers/QuizRenderer';
 import ErrorDiagnosisRenderer from './renderers/ErrorDiagnosisRenderer';
 import CrossDisciplinaryRenderer from './renderers/CrossDisciplinaryRenderer';
 import LearningSurveyRenderer from './renderers/LearningSurveyRenderer';
+import PresentationRenderer from './renderers/PresentationRenderer';
 
 const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_concept_socratic: SocraticRenderer,
@@ -127,6 +143,7 @@ const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_diagnosis_error: ErrorDiagnosisRenderer as unknown as FC<SkillRendererProps>,
   general_synthesis_crosslink: CrossDisciplinaryRenderer as unknown as FC<SkillRendererProps>,
   general_diagnosis_survey: LearningSurveyRenderer,
+  presentation_generator: PresentationRenderer,
 };
 
 const MISSING_RENDERER_SKILLS: string[] = [];
@@ -189,6 +206,7 @@ export const SKILL_MANIFESTS: PluginManifest[] = [
   errorDiagnosisManifest,
   crossDisciplinaryManifest,
   learningSurveyManifest,
+  presentationManifest,
 ];
 
 // -- Manifest -> SkillUIRenderer Conversion --------------------------

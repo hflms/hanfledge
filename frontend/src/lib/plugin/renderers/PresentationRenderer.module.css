@@ -1,0 +1,382 @@
+/* PresentationRenderer.module.css — Presentation Generator Skill Renderer */
+
+/* -- Container ------------------------------------------------- */
+
+.presentationContainer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 500px;
+}
+
+/* -- Messages Area --------------------------------------------- */
+
+.messagesArea {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* -- Message Bubbles ------------------------------------------- */
+
+.messageBubble {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.messageStudent {
+    align-self: flex-end;
+    background: var(--primary, #4a7dff);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+
+.messageCoach {
+    align-self: flex-start;
+    background: var(--surface-secondary, #f5f5f5);
+    color: var(--text, #333);
+    border-bottom-left-radius: 4px;
+}
+
+.messageSystem {
+    align-self: center;
+    background: transparent;
+    color: var(--text-muted, #999);
+    font-size: 12px;
+    padding: 4px 12px;
+    max-width: 100%;
+}
+
+.messageHeader {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.roleIcon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.roleStudent {
+    background: rgba(255, 255, 255, 0.3);
+    color: #fff;
+}
+
+.roleCoach {
+    background: var(--primary, #4a7dff);
+    color: #fff;
+}
+
+.roleLabel {
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+.messageContent {
+    word-break: break-word;
+}
+
+/* -- Slide Viewer --------------------------------------------- */
+
+.slideViewer {
+    width: 100%;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+}
+
+.slideViewerFullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    border-radius: 0;
+    border: none;
+}
+
+/* -- Slide Toolbar -------------------------------------------- */
+
+.slideToolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--surface-secondary, #f8f9fa);
+    border-bottom: 1px solid var(--border, #e0e0e0);
+}
+
+.slideCounter {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.slideCounterCurrent {
+    color: var(--primary, #4a7dff);
+    font-size: 18px;
+}
+
+.slideCounterSep {
+    color: var(--text-muted, #999);
+    margin: 0 2px;
+}
+
+.slideCounterTotal {
+    color: var(--text-muted, #999);
+}
+
+.toolbarActions {
+    display: flex;
+    gap: 4px;
+}
+
+.toolbarBtn {
+    padding: 4px 8px;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.toolbarBtn:hover:not(:disabled) {
+    background: var(--surface-secondary, #f5f5f5);
+    border-color: var(--primary, #4a7dff);
+}
+
+.toolbarBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.toolbarBtnActive {
+    background: rgba(74, 125, 255, 0.1);
+    border-color: var(--primary, #4a7dff);
+    color: var(--primary, #4a7dff);
+}
+
+/* -- Slide Content -------------------------------------------- */
+
+.slideContent {
+    flex: 1;
+    padding: 32px 40px;
+    min-height: 320px;
+    max-height: 60vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.slideViewerFullscreen .slideContent {
+    min-height: unset;
+    max-height: unset;
+    padding: 48px 64px;
+    font-size: 1.2em;
+}
+
+/* -- Speaker Notes -------------------------------------------- */
+
+.speakerNotes {
+    padding: 12px 16px;
+    background: #fffbe6;
+    border-top: 1px solid #f0e6b0;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.speakerNotesLabel {
+    font-weight: 600;
+    font-size: 12px;
+    color: #b8860b;
+    margin-bottom: 4px;
+}
+
+.speakerNotesContent {
+    color: #6b5900;
+}
+
+/* -- Slide Navigation ----------------------------------------- */
+
+.slideNavigation {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--surface-secondary, #f8f9fa);
+    border-top: 1px solid var(--border, #e0e0e0);
+    gap: 12px;
+}
+
+.navBtn {
+    padding: 6px 16px;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    background: var(--surface, #fff);
+    color: var(--text, #333);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.navBtn:hover:not(:disabled) {
+    background: var(--primary, #4a7dff);
+    color: #fff;
+    border-color: var(--primary, #4a7dff);
+}
+
+.navBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* -- Slide Indicators ----------------------------------------- */
+
+.slideIndicators {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
+    max-width: 400px;
+}
+
+.slideIndicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: none;
+    background: var(--border, #d0d0d0);
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.2s ease;
+}
+
+.slideIndicator:hover {
+    background: var(--primary, #4a7dff);
+    transform: scale(1.3);
+}
+
+.slideIndicatorActive {
+    background: var(--primary, #4a7dff);
+    transform: scale(1.3);
+}
+
+/* -- Thinking Indicator --------------------------------------- */
+
+.thinkingIndicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    color: var(--text-muted, #999);
+    font-size: 13px;
+}
+
+.thinkingDots {
+    display: flex;
+    gap: 4px;
+}
+
+.thinkingDot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary, #4a7dff);
+    animation: thinkingPulse 1.4s ease-in-out infinite;
+}
+
+.thinkingDot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.thinkingDot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes thinkingPulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+}
+
+/* -- Input Area ----------------------------------------------- */
+
+.inputArea {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border, #e0e0e0);
+    background: var(--surface, #fff);
+}
+
+.chatInput {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s ease;
+    min-height: 38px;
+    max-height: 120px;
+}
+
+.chatInput:focus {
+    border-color: var(--primary, #4a7dff);
+}
+
+.chatInput:disabled {
+    background: var(--surface-secondary, #f5f5f5);
+}
+
+.sendBtn {
+    padding: 10px 20px;
+    background: var(--primary, #4a7dff);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    align-self: flex-end;
+}
+
+.sendBtn:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.sendBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
