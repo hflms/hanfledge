@@ -437,6 +437,9 @@ export default function OutlinePage() {
             <div className={styles.pageHeader}>
                 <h1 className={styles.pageTitle}>{course?.title || '课程详情'}</h1>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Link href={`/teacher/courses/${courseId}/graph`} className="btn btn-secondary">
+                        🗺️ 知识图谱
+                    </Link>
                     <Link href={`/teacher/courses/${courseId}/materials`} className={styles.materialsLink}>
                         📤 教材管理
                     </Link>

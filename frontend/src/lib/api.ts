@@ -773,6 +773,10 @@ export async function getStudentKnowledgeMap(courseId: number): Promise<Knowledg
   return apiFetch<KnowledgeMapData>(`/student/knowledge-map?course_id=${courseId}`);
 }
 
+export async function getCourseKnowledgeGraph(courseId: number): Promise<KnowledgeMapData> {
+  return apiFetch<KnowledgeMapData>(`/courses/${courseId}/graph`);
+}
+
 // ── Error Notebook API ─────────────────────────────────────
 
 export interface ErrorNotebookItem {

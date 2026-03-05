@@ -29,6 +29,7 @@ func registerCourseRoutes(
 		courses.POST("", courseHandler.CreateCourse)
 		courses.POST("/:id/materials", courseHandler.UploadMaterial)
 		courses.GET("/:id/outline", courseHandler.GetOutline)
+		courses.GET("/:id/graph", kgHandler.GetCourseKnowledgeGraph)
 		courses.GET("/:id/documents", courseHandler.GetDocumentStatus)
 		courses.POST("/:id/search", courseHandler.SearchCourse)
 		courses.DELETE("/:id/documents/:doc_id", courseHandler.DeleteDocument)

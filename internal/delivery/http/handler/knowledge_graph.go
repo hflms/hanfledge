@@ -593,3 +593,95 @@ func parseKPNumericID(neo4jID string) (uint, bool) {
 	}
 	return uint(id), true
 }
+
+// GetCourseKnowledgeGraph returns the course knowledge graph without student mastery data.
+// GET /api/v1/courses/:id/graph
+func (h *KnowledgeGraphHandler) GetCourseKnowledgeGraph(c *gin.Context) {
+	courseID, err := parseCourseID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 course_id"})
+		return
+	}
+
+	// 1. Load course with chapters and knowledge points
+	var course model.Course
+	if err := h.DB.Preload("Chapters", func(db *gorm.DB) *gorm.DB {
+		return db.Order("sort_order ASC")
+	}).Preload("Chapters.KnowledgePoints").
+		First(&course, courseID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
+		return
+	}
+
+	// 2. Build nodes
+	var allKPIDs []uint
+	for _, ch := range course.Chapters {
+		for _, kp := range ch.KnowledgePoints {
+			allKPIDs = append(allKPIDs, kp.ID)
+		}
+	}
+
+	if len(allKPIDs) == 0 {
+		c.JSON(http.StatusOK, KnowledgeMapResponse{
+			CourseID:    courseID,
+			CourseTitle: course.Title,
+			Nodes:       []KnowledgeMapNode{},
+			Edges:       []KnowledgeMapEdge{},
+		})
+		return
+	}
+
+	nodes := make([]KnowledgeMapNode, 0, len(allKPIDs))
+	for _, ch := range course.Chapters {
+		for _, kp := range ch.KnowledgePoints {
+			node := KnowledgeMapNode{
+				ID:           kp.ID,
+				Neo4jID:      kp.Neo4jNodeID,
+				Title:        kp.Title,
+				ChapterID:    ch.ID,
+				ChapterTitle: ch.Title,
+				Difficulty:   kp.Difficulty,
+				IsKeyPoint:   kp.IsKeyPoint,
+				Mastery:      -1, // no data for teacher view
+				AttemptCount: 0,
+			}
+			if node.Neo4jID == "" {
+				node.Neo4jID = fmt.Sprintf("kp_%d", kp.ID)
+			}
+			nodes = append(nodes, node)
+		}
+	}
+
+	// 3. Get graph edges from Neo4j
+	var edges []KnowledgeMapEdge
+	if h.Neo4j != nil {
+		graphEdges, err := h.Neo4j.GetCourseGraphEdges(c.Request.Context(), courseID)
+		if err == nil {
+			validIDs := make(map[string]bool)
+			for _, n := range nodes {
+				validIDs[n.Neo4jID] = true
+			}
+			for _, ge := range graphEdges {
+				if validIDs[ge.FromID] && validIDs[ge.ToID] {
+					edges = append(edges, KnowledgeMapEdge{
+						Source: ge.FromID,
+						Target: ge.ToID,
+						Type:   ge.Type,
+					})
+				}
+			}
+		}
+	}
+
+	if edges == nil {
+		edges = []KnowledgeMapEdge{}
+	}
+
+	c.JSON(http.StatusOK, KnowledgeMapResponse{
+		CourseID:    courseID,
+		CourseTitle: course.Title,
+		Nodes:       nodes,
+		Edges:       edges,
+		AvgMastery:  -1,
+	})
+}
