@@ -32,6 +32,7 @@ type AgentOrchestrator struct {
 	coach      *CoachAgent
 	critic     *CriticAgent
 	bkt        *BKTService
+	profile    *ProfileService
 
 	// 依赖
 	db          *gorm.DB
@@ -86,8 +87,9 @@ func NewAgentOrchestrator(
 	o.coach = NewCoachAgent(db, llmClient, registry, piiRedactor, redisCache)
 	o.critic = NewCriticAgent(llmClient)
 	o.bkt = NewBKTService(db)
+	o.profile = NewProfileService(db)
 
-	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT")
+	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT, Profile")
 	return o
 }
 
@@ -255,6 +257,11 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		o.archiveErrorIfIncorrect(tc, finalResponse)
 	} else {
 		slogOrch.Debug("skipping error notebook for sandbox", "session_id", tc.SessionID)
+	}
+
+	// ── Stage 8: 跨会话学习分析 (StudentProfile + LearningPathLog) ──
+	if !tc.IsSandbox {
+		o.updateStudentProfile(tc)
 	}
 
 	elapsed := time.Since(start)
@@ -470,6 +477,13 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 			slogOrch.Warn("update session scaffold failed", "err", err)
 			return
 		}
+
+		// 记录支架变化到学习路径日志
+		courseID, _ := o.getCourseIDFromSession(tc.Ctx, tc.SessionID)
+		o.profile.LogScaffoldChange(
+			tc.StudentID, tc.SessionID, courseID, kpID,
+			string(oldScaffold), string(newScaffold), update.NewMastery,
+		)
 
 		// 发送 ui_scaffold_change 事件到前端
 		if tc.OnScaffold != nil {
@@ -1063,4 +1077,31 @@ func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *D
 				"entries", result.RowsAffected, "student_id", tc.StudentID, "kp_id", kpID, "mastery", currentMastery)
 		}
 	}
+}
+
+// ── Cross-Session Analytics (StudentProfile + LearningPathLog) ──
+
+// updateStudentProfile 每轮交互后更新学生跨会话画像。
+// 执行以下操作：
+//  1. 增量更新 TotalInteractions
+//  2. 刷新全局掌握度统计
+//  3. 更新优势/薄弱领域（每 5 轮更新一次以减少开销）
+func (o *AgentOrchestrator) updateStudentProfile(tc *TurnContext) {
+	// 1. 增量更新交互计数
+	o.profile.IncrementInteraction(tc.StudentID)
+
+	// 2. 刷新全局掌握度统计
+	o.profile.RefreshMasteryStats(tc.StudentID)
+
+	// 3. 每 5 轮交互更新一次优势/薄弱领域（开销较大）
+	var interactionCount int64
+	o.db.WithContext(tc.Ctx).Model(&model.Interaction{}).
+		Where("session_id = ? AND role = ?", tc.SessionID, "student").
+		Count(&interactionCount)
+	if interactionCount%5 == 0 {
+		o.profile.RefreshStrengthWeakness(tc.StudentID)
+	}
+
+	slogOrch.Debug("student profile updated",
+		"student_id", tc.StudentID, "session_id", tc.SessionID)
 }
