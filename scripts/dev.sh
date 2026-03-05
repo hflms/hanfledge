@@ -60,6 +60,9 @@ if [ ! -f .env ]; then
     ok ".env 已创建, 请根据需要修改配置"
 fi
 
+# ── Go Proxy ─────────────────────────────────────────────────
+export GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+
 # ── Prerequisite Check ───────────────────────────────────────
 check_cmd() {
     if ! command -v "$1" &>/dev/null; then
