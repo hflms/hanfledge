@@ -1,5 +1,7 @@
 # Hanfledge
 
+*[Read in Chinese (中文版) 🇨🇳](README_zh-CN.md)*
+
 AI-Native EdTech platform with multi-agent orchestration, knowledge graphs,
 and Socratic learning. Built for K-12 classrooms in China.
 
@@ -72,7 +74,21 @@ ollama pull bge-m3
 
 ## Quick start
 
-### 1. Start infrastructure
+### Automated Setup (Recommended)
+
+The easiest way to start the entire development stack (infrastructure, backend, and frontend) is to run the provided development script:
+
+```sh
+bash scripts/dev.sh
+```
+
+This script will automatically start tracking and proxying connections to Postgres, Neo4j, Redis, run backend migrations, populate test data, and start the NextJS frontend.
+
+---
+
+### Manual Setup
+
+#### 1. Start infrastructure
 
 ```sh
 docker compose -f deployments/docker-compose.yml up -d

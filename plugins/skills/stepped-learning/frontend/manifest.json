@@ -1,0 +1,23 @@
+{
+    "id": "stepped-learning-renderer",
+    "name": "步进式学习/闯关页",
+    "version": "1.0.0",
+    "type": "skill_renderer",
+    "skillId": "general_interaction_stepped",
+    "trust_level": "domain",
+    "author": "hanfledge-team",
+    "description": "页面切换 — 以类PPT分布引导的方式带学生一步步闯关学习",
+    "entry": "@/lib/plugin/renderers/SteppedLearningRenderer",
+    "slots": [
+        "student.interaction.main"
+    ],
+    "supported_interaction_modes": [
+        "page"
+    ],
+    "permissions": [
+        "getStudentContext",
+        "getKnowledgePoint",
+        "sendMessageToAgent",
+        "reportInteractionEvent"
+    ]
+}

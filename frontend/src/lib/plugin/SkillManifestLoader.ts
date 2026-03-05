@@ -114,6 +114,21 @@ const presentationManifest: PluginManifest = {
   permissions: ['getStudentContext', 'getKnowledgePoint', 'sendMessageToAgent', 'reportInteractionEvent'],
 };
 
+const steppedLearningManifest: PluginManifest = {
+  id: 'stepped-learning-renderer',
+  name: '闯关/步进式学习渲染器',
+  version: '1.0.0',
+  type: 'skill_renderer',
+  skillId: 'general_interaction_stepped',
+  trust_level: 'domain',
+  author: 'hanfledge-team',
+  description: '页面切换 — 以类PPT分布引导的方式带学生一步步闯关学习',
+  entry: '@/lib/plugin/renderers/SteppedLearningRenderer',
+  slots: ['student.interaction.main'],
+  supported_interaction_modes: ['page'],
+  permissions: ['getStudentContext', 'getKnowledgePoint', 'sendMessageToAgent', 'reportInteractionEvent'],
+};
+
 // -- Component Registry (maps skillId -> React component) --------
 //
 // Each manifest above has an "entry" field pointing to the renderer
@@ -133,6 +148,7 @@ import ErrorDiagnosisRenderer from './renderers/ErrorDiagnosisRenderer';
 import CrossDisciplinaryRenderer from './renderers/CrossDisciplinaryRenderer';
 import LearningSurveyRenderer from './renderers/LearningSurveyRenderer';
 import PresentationRenderer from './renderers/PresentationRenderer';
+import SteppedLearningRenderer from './renderers/SteppedLearningRenderer';
 
 const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_concept_socratic: SocraticRenderer,
@@ -144,6 +160,7 @@ const COMPONENT_REGISTRY: Record<string, FC<SkillRendererProps>> = {
   general_synthesis_crosslink: CrossDisciplinaryRenderer as unknown as FC<SkillRendererProps>,
   general_diagnosis_survey: LearningSurveyRenderer,
   general_creation_presentation: PresentationRenderer,
+  general_interaction_stepped: SteppedLearningRenderer as unknown as FC<SkillRendererProps>,
 };
 
 const MISSING_RENDERER_SKILLS: string[] = [];
@@ -203,10 +220,11 @@ export const SKILL_MANIFESTS: PluginManifest[] = [
   rolePlayManifest,
   quizManifest,
   practiceQuizManifest,
+  presentationManifest,
+  steppedLearningManifest,
   errorDiagnosisManifest,
   crossDisciplinaryManifest,
   learningSurveyManifest,
-  presentationManifest,
 ];
 
 // -- Manifest -> SkillUIRenderer Conversion --------------------------

@@ -47,7 +47,7 @@ export type PluginType =
 export type TrustLevel = 'core' | 'domain' | 'community';
 
 /** Supported interaction modes for Skill UI Renderers. */
-export type InteractionMode = 'text' | 'voice' | 'canvas' | 'formula' | 'code';
+export type InteractionMode = 'text' | 'voice' | 'canvas' | 'formula' | 'code' | 'page';
 
 // -- Skill UI Renderer ----------------------------------------
 

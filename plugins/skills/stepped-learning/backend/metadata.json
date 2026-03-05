@@ -1,0 +1,26 @@
+{
+    "id": "general_interaction_stepped",
+    "name": "步进式学习",
+    "description": "以分页的形式进行知识的讲解与考察，每次输出一页完整知识并通过问题推进下一页。",
+    "version": "1.0.0",
+    "author": "hanfledge-team",
+    "category": "teaching-method",
+    "subjects": [
+        "*"
+    ],
+    "tags": [
+        "步进",
+        "页面导航",
+        "互动关卡"
+    ],
+    "scaffolding_levels": [
+        "high",
+        "medium",
+        "low"
+    ],
+    "constraints": {
+        "supported_languages": [
+            "zh-CN"
+        ]
+    }
+}
