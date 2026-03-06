@@ -526,6 +526,7 @@ export interface Interaction {
 export interface SessionDetail {
   session: StudentSession;
   interactions: Interaction[];
+  activity: LearningActivity;
 }
 
 export async function listStudentActivities(): Promise<LearningActivity[]> {
@@ -546,6 +547,13 @@ export async function previewActivity(activityId: number): Promise<{ message: st
 
 export async function getSession(sessionId: number): Promise<SessionDetail> {
   return apiFetch<SessionDetail>(`/sessions/${sessionId}`);
+}
+
+export async function updateSessionStep(sessionId: number, kpId: number, activeSkill: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/sessions/${sessionId}/step`, {
+    method: 'PUT',
+    body: JSON.stringify({ kp_id: kpId, active_skill: activeSkill }),
+  });
 }
 
 // ── Dashboard Analytics API — Phase 5 ───────────────────────

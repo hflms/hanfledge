@@ -6,7 +6,9 @@ import Link from 'next/link';
 
 import {
     getSession,
+    updateSessionStep,
     getSystemConfig,
+    type LearningActivity,
     type Interaction,
     type StudentSession,
     type WSEvent,
@@ -67,6 +69,7 @@ export default function SessionPage() {
 
     // Core state
     const [session, setSession] = useState<StudentSession | null>(null);
+    const [activity, setActivity] = useState<LearningActivity | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [loading, setLoading] = useState(true);
     const [input, setInput] = useState('');
@@ -257,6 +260,62 @@ export default function SessionPage() {
         });
     }, []);
 
+    // -- Pipeline Steps Computation ---------------------------------
+
+    const steps = useMemo(() => {
+        if (!activity) return [];
+        try {
+            const kpIds: number[] = JSON.parse(activity.kp_ids || '[]');
+            const config = JSON.parse(activity.skill_config || '{}');
+            const defaultSkill = config.default_skill || 'concept-explain';
+            
+            return kpIds.map((kpId, index) => {
+                const stepSkill = config[kpId] || defaultSkill;
+                return {
+                    index,
+                    kpId,
+                    skill: stepSkill,
+                    label: `步骤 ${index + 1}`
+                };
+            });
+        } catch (e) {
+            console.error('Failed to parse activity config', e);
+            return [];
+        }
+    }, [activity]);
+
+    const currentStepIndex = useMemo(() => {
+        if (!session || steps.length === 0) return 0;
+        const idx = steps.findIndex(s => s.kpId === session.current_kp_id);
+        return idx >= 0 ? idx : 0;
+    }, [session, steps]);
+
+    const handleNextStep = async () => {
+        if (currentStepIndex < steps.length - 1) {
+            const nextStep = steps[currentStepIndex + 1];
+            try {
+                await updateSessionStep(sessionId, nextStep.kpId, nextStep.skill);
+                setSession(prev => prev ? { ...prev, current_kp_id: nextStep.kpId, active_skill: nextStep.skill } : null);
+                toast('已进入下一步', 'success');
+            } catch (err) {
+                toast('切换步骤失败', 'error');
+            }
+        }
+    };
+
+    const handlePrevStep = async () => {
+        if (currentStepIndex > 0) {
+            const prevStep = steps[currentStepIndex - 1];
+            try {
+                await updateSessionStep(sessionId, prevStep.kpId, prevStep.skill);
+                setSession(prev => prev ? { ...prev, current_kp_id: prevStep.kpId, active_skill: prevStep.skill } : null);
+                toast('已返回上一步', 'success');
+            } catch (err) {
+                toast('切换步骤失败', 'error');
+            }
+        }
+    };
+
     // -- Load system AI config for debugging -------------------------
 
     useEffect(() => {
@@ -300,6 +359,7 @@ export default function SessionPage() {
             try {
                 const data = await getSession(sessionId);
                 setSession(data.session);
+                setActivity(data.activity);
                 setScaffoldLevel(data.session.scaffold_level || 'high');
 
                 const existingMessages: ChatMessage[] = data.interactions.map(
@@ -414,6 +474,7 @@ export default function SessionPage() {
             scaffoldingLevel: scaffoldLevel,
             agentChannel,
             onInteractionEvent: handleInteractionEvent,
+            initialMessages: messages,
         };
         return <RendererComponent {...rendererProps} />;
     };
@@ -477,6 +538,38 @@ export default function SessionPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Steps Navigation */}
+                {steps.length > 1 && (
+                    <div className={styles.stepsNav}>
+                        <button 
+                            disabled={currentStepIndex === 0} 
+                            onClick={handlePrevStep}
+                            className={styles.stepBtn}
+                        >
+                            上一步
+                        </button>
+                        <div className={styles.stepIndicator}>
+                            {steps.map((step, idx) => (
+                                <span 
+                                    key={idx} 
+                                    className={`${styles.stepDot} ${idx === currentStepIndex ? styles.stepDotActive : ''} ${idx < currentStepIndex ? styles.stepDotCompleted : ''}`}
+                                    title={step.skill}
+                                />
+                            ))}
+                        </div>
+                        <span className={styles.stepLabel}>
+                            {steps[currentStepIndex]?.label || ''}
+                        </span>
+                        <button 
+                            disabled={currentStepIndex === steps.length - 1} 
+                            onClick={handleNextStep}
+                            className={styles.stepBtn}
+                        >
+                            下一步
+                        </button>
+                    </div>
+                )}
 
                 {/* Skill Renderer or Default Chat */}
                 {activePlugin ? renderSkillRenderer() : (

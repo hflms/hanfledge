@@ -27,7 +27,7 @@ interface ChatMessage {
     timestamp: number;
 }
 
-type PresentationPhase = 'generating' | 'viewing';
+type PresentationPhase = 'generating' | 'viewing' | 'idle';
 
 // -- Slides Parser -----------------------------------------------
 
@@ -92,6 +92,7 @@ function extractSpeakerNotes(slideMarkdown: string): { content: string; notes: s
 export default function PresentationRenderer({
     agentChannel,
     onInteractionEvent,
+    initialMessages = [],
 }: SkillRendererProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -109,6 +110,78 @@ export default function PresentationRenderer({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const slideContainerRef = useRef<HTMLDivElement>(null);
+    const hasTriggeredRef = useRef(false);
+
+    // -- Load initial messages -----------------------------------
+
+    useEffect(() => {
+        if (!initialMessages || initialMessages.length === 0) return;
+        
+        const parsedMessages: ChatMessage[] = [];
+        let foundSlides: string[] | null = null;
+        
+        for (const msg of initialMessages) {
+            if (msg.role === 'coach' && msg.content) {
+                const s = parseSlidesFromContent(msg.content);
+                if (s) {
+                    foundSlides = s;
+                    const intro = stripSlidesTag(msg.content);
+                    if (intro) {
+                        parsedMessages.push({
+                            id: msg.id || `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                            role: 'coach',
+                            content: intro,
+                            timestamp: msg.timestamp || Date.now(),
+                        });
+                    }
+                } else {
+                    parsedMessages.push({
+                        id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                        role: msg.role as any,
+                        content: msg.content,
+                        timestamp: msg.timestamp || Date.now(),
+                    });
+                }
+            } else {
+                parsedMessages.push({
+                    id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                    role: msg.role as any,
+                    content: msg.content,
+                    timestamp: msg.timestamp || Date.now(),
+                });
+            }
+        }
+        
+        setMessages(parsedMessages);
+        if (foundSlides && foundSlides.length > 0) {
+            setSlides(foundSlides);
+            setPhase('idle');
+            hasTriggeredRef.current = true;
+        }
+    }, [initialMessages]);
+
+    // -- Auto-generate if no initial messages --------------------
+
+    useEffect(() => {
+        if (
+            !hasTriggeredRef.current &&
+            initialMessages.length === 0 &&
+            messages.length === 0 &&
+            !sending &&
+            !streamingContent
+        ) {
+            hasTriggeredRef.current = true;
+            setSending(true);
+            setPhase('generating');
+            
+            // Auto-trigger the backend to start generating the presentation
+            agentChannel.send(JSON.stringify({
+                event: 'user_message',
+                payload: { text: '你好，请根据当前知识点生成一份详细的演示文稿。' },
+                timestamp: Math.floor(Date.now() / 1000),
+            }));
+        }
+    }, [initialMessages.length, messages.length, sending, streamingContent, agentChannel]);
 
     // -- Parse current slide content & notes ---------------------
 
@@ -185,7 +258,7 @@ export default function PresentationRenderer({
                                 if (parsed && parsed.length > 0) {
                                     setSlides(parsed);
                                     setCurrentSlide(0);
-                                    setPhase('viewing');
+                                    setPhase('idle');
 
                                     const intro = stripSlidesTag(prev);
                                     if (intro) {
@@ -388,6 +461,13 @@ export default function PresentationRenderer({
                         </button>
                         <button
                             className={styles.toolbarBtn}
+                            onClick={() => setPhase('idle')}
+                            title="收起演示文稿"
+                        >
+                            收起
+                        </button>
+                        <button
+                            className={styles.toolbarBtn}
                             onClick={handleRegenerate}
                             disabled={sending}
                             title="重新生成"
@@ -494,6 +574,44 @@ export default function PresentationRenderer({
                 )}
 
                 {renderThinking()}
+
+                {/* Show Presentation Button */}
+                {slides.length > 0 && phase === 'idle' && (
+                    <div style={{
+                        margin: '24px 0',
+                        padding: '24px',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
+                        textAlign: 'center',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+                    }}>
+                        <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎉</div>
+                        <h3 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)' }}>演示文稿已生成</h3>
+                        <p style={{ margin: '0 0 20px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>
+                            已为你准备好包含 {slides.length} 页幻灯片的课堂演示材料
+                        </p>
+                        <button 
+                            style={{ 
+                                padding: '10px 28px', 
+                                fontSize: '16px', 
+                                fontWeight: 500,
+                                borderRadius: '8px', 
+                                cursor: 'pointer', 
+                                background: 'var(--primary, #4a7dff)', 
+                                color: '#fff', 
+                                border: 'none',
+                                transition: 'all 0.2s ease',
+                                boxShadow: '0 2px 6px rgba(74, 125, 255, 0.3)'
+                            }}
+                            onClick={() => setPhase('viewing')}
+                            onMouseOver={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                            onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
+                        >
+                            📊 立即查看演示文稿
+                        </button>
+                    </div>
+                )}
 
                 {/* Slide viewer */}
                 {phase === 'viewing' && renderSlideViewer()}

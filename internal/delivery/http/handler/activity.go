@@ -485,6 +485,13 @@ func (h *ActivityHandler) GetSession(c *gin.Context) {
 		return
 	}
 
+	// Load activity details
+	var activity model.LearningActivity
+	if err := h.DB.First(&activity, session.ActivityID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法加载关联的活动信息"})
+		return
+	}
+
 	// Load recent interactions
 	var interactions []model.Interaction
 	h.DB.Where("session_id = ?", sessionID).
@@ -494,6 +501,39 @@ func (h *ActivityHandler) GetSession(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"session":      session,
+		"activity":     activity,
 		"interactions": interactions,
 	})
+}
+
+// UpdateSessionStep updates the active skill and current KP for a session
+func (h *ActivityHandler) UpdateSessionStep(c *gin.Context) {
+	sessionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的会话 ID"})
+		return
+	}
+
+	var req struct {
+		KPID        uint   `json:"kp_id"`
+		ActiveSkill string `json:"active_skill"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求格式"})
+		return
+	}
+
+	studentID := middleware.GetUserID(c)
+
+	query := h.DB.Model(&model.StudentSession{}).Where("id = ? AND student_id = ?", sessionID, studentID)
+
+	if err := query.Updates(map[string]interface{}{
+		"current_kp_id": req.KPID,
+		"active_skill":  req.ActiveSkill,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新会话步骤失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "会话步骤更新成功"})
 }

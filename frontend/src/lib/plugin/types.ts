@@ -97,6 +97,8 @@ export interface SkillRendererProps {
   agentChannel: AgentWebSocketChannel;
   /** Report interaction events for learning analytics. */
   onInteractionEvent: (event: InteractionEvent) => void;
+  /** Initial messages loaded from session history */
+  initialMessages?: Array<{ role: 'student' | 'coach' | 'system' | 'teacher'; content: string; id?: string; timestamp?: number }>;
 }
 
 /**
