@@ -12,6 +12,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './QuizRenderer.module.css';
 
@@ -95,7 +96,6 @@ export default function QuizRenderer({
     const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     // -- Scroll to bottom ----------------------------------------
 
@@ -164,7 +164,6 @@ export default function QuizRenderer({
                             }
                             return '';
                         });
-                        inputRef.current?.focus();
                         break;
                     }
                     case 'ui_scaffold_change': {
@@ -344,25 +343,9 @@ export default function QuizRenderer({
         setInput('');
         setSending(true);
         setStreamingContent('');
-
-        if (inputRef.current) {
-            inputRef.current.style.height = 'auto';
-        }
     }, [input, sending, agentChannel]);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
-
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(e.target.value);
-        const textarea = e.target;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    }, []);
+    
 
     // -- Render question card -----------------------------------
 
@@ -592,32 +575,14 @@ export default function QuizRenderer({
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input area (for asking questions about quiz) */}
-            <div className={styles.inputArea}>
-                <textarea
-                    ref={inputRef}
-                    className={styles.chatInput}
-                    value={input}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                        sending
-                            ? 'AI 正在处理...'
-                            : phase === 'answering'
-                            ? '有疑问可以在这里提问 (Enter 发送)'
-                            : '输入你的想法或问题... (Enter 发送)'
-                    }
-                    disabled={sending}
-                    rows={1}
-                />
-                <button
-                    className={styles.sendBtn}
-                    onClick={handleSend}
-                    disabled={!input.trim() || sending}
-                >
-                    发送
-                </button>
-            </div>
+            {/* Input */}
+            <ChatInputArea
+                input={input}
+                setInput={setInput}
+                sending={sending}
+                onSend={() => handleSend()}
+                placeholder={sending ? '批改中...' : '输入你的回答...'}
+            />
         </div>
     );
 }

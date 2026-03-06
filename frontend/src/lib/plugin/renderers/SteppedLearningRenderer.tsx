@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -157,26 +158,14 @@ export default function SteppedLearningRenderer({
                     </button>
                 </div>
 
-                {/* Input area on the latest page */}
-                {currentPageIndex >= pages.length - 1 && !isStreamingOnPage && (
-                    <form className={styles.inputForm} onSubmit={handleSend}>
-                        <input
-                            type="text"
-                            className={styles.inputField}
-                            placeholder="在这里输入您的答案或者想法，然后按回车进入下一页..."
-                            value={input}
-                            onChange={e => setInput(e.target.value)}
-                            disabled={waitingForAI}
-                        />
-                        <button
-                            type="submit"
-                            className="btn btn-primary"
-                            disabled={waitingForAI || !input.trim()}
-                        >
-                            发送
-                        </button>
-                    </form>
-                )}
+                {/* Input */}
+            <ChatInputArea
+                input={input}
+                setInput={setInput}
+                sending={waitingForAI}
+                onSend={() => handleSend({ preventDefault: () => {} } as React.FormEvent)}
+                placeholder={waitingForAI ? '处理中...' : '输入消息...'}
+            />
             </div>
         </div>
     );

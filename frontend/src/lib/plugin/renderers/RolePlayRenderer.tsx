@@ -12,11 +12,13 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import { useModalA11y, cardA11yProps } from '@/lib/a11y';
 import styles from './RolePlayRenderer.module.css';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
+const StructuredMessage = dynamic(() => import('@/components/StructuredMessage'));
 
 // -- Types -------------------------------------------------------
 
@@ -74,7 +76,6 @@ export default function RolePlayRenderer({
     const [isActive, setIsActive] = useState(true);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     // -- Modal a11y for summary overlay --------------------------
     const closeSummary = useCallback(() => setShowSummary(false), []);
@@ -126,7 +127,6 @@ export default function RolePlayRenderer({
                         if (event.payload?.scenario) {
                             setScenario(event.payload.scenario);
                         }
-                        inputRef.current?.focus();
                         break;
                     }
                     case 'roleplay_character': {
@@ -258,25 +258,9 @@ export default function RolePlayRenderer({
         setInput('');
         setSending(true);
         setStreamingContent('');
-
-        if (inputRef.current) {
-            inputRef.current.style.height = 'auto';
-        }
     }, [input, sending, isActive, agentChannel, onInteractionEvent]);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
-
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(e.target.value);
-        const textarea = e.target;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    }, []);
+    
 
     // -- Render --------------------------------------------------
 
@@ -423,41 +407,21 @@ export default function RolePlayRenderer({
             </div>
 
             {/* Input */}
-            <div className={styles.inputArea}>
-                <textarea
-                    ref={inputRef}
-                    className={styles.chatInput}
-                    value={input}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                        !isActive ? '角色扮演已结束' :
-                        sending ? `${selectedCharacter.name}正在思考...` :
-                        `与${selectedCharacter.name}对话... (Enter 发送)`
-                    }
-                    disabled={sending || !isActive}
-                    rows={1}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 16px 16px' }}>
+                <ChatInputArea
+                    input={input}
+                    setInput={setInput}
+                    sending={sending}
+                    onSend={() => handleSend()}
+                    placeholder={!isActive ? '角色扮演已结束' : sending ? `${selectedCharacter.name}正在思考...` : `与${selectedCharacter.name}对话...`}
                 />
-                <div className={styles.inputActions}>
-                    <button
-                        className={`btn btn-primary ${styles.sendBtn}`}
-                        onClick={handleSend}
-                        disabled={!input.trim() || sending || !isActive}
-                    >
-                        发送
-                    </button>
-                    {isActive && (
-                        <button
-                            className={styles.exitBtn}
-                            onClick={handleExit}
-                            disabled={sending}
-                        >
-                            退出
-                        </button>
-                    )}
-                </div>
+                {isActive && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button className={styles.exitBtn} onClick={handleExit} disabled={sending}>退出</button>
+                    </div>
+                )}
             </div>
-
+            
             {/* Learning summary overlay */}
             {showSummary && (
                 <div className={styles.summaryOverlay} onClick={closeSummary}>
@@ -465,7 +429,7 @@ export default function RolePlayRenderer({
                         <div className={styles.summaryIcon}>&#x1F4DA;</div>
                         <div id="roleplay-summary-title" className={styles.summaryTitle}>角色扮演学习总结</div>
                         <div className={styles.summaryContent}>
-                            <MarkdownRenderer content={summaryContent} />
+                            <StructuredMessage onQuickReply={handleSend} content={summaryContent} />
                         </div>
                         <button className={styles.summaryCloseBtn} onClick={closeSummary}>
                             关闭

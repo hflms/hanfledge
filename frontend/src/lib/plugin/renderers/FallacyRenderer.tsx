@@ -12,6 +12,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import { useModalA11y } from '@/lib/a11y';
 import styles from './FallacyRenderer.module.css';
@@ -65,7 +66,6 @@ export default function FallacyRenderer({
     const [revealData, setRevealData] = useState<RevealData | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
     const statementRef = useRef<HTMLDivElement>(null);
 
     // -- Modal a11y for reveal overlay ----------------------------
@@ -121,7 +121,6 @@ export default function FallacyRenderer({
                             setMisconceptionText(event.payload.misconception_text);
                             setHighlightedRanges([]);
                         }
-                        inputRef.current?.focus();
                         break;
                     }
                     case 'fallacy_identified': {
@@ -286,25 +285,9 @@ export default function FallacyRenderer({
         setInput('');
         setSending(true);
         setStreamingContent('');
-
-        if (inputRef.current) {
-            inputRef.current.style.height = 'auto';
-        }
     }, [input, sending, agentChannel, onInteractionEvent, currentPhase, highlightedRanges, misconceptionText]);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
-
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(e.target.value);
-        const textarea = e.target;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    }, []);
+    
 
     // -- Phase indicator -----------------------------------------
 
@@ -449,26 +432,13 @@ export default function FallacyRenderer({
                      currentPhase === 'correct' ? '正确表述' :
                      '你的回答'}
                 </div>
-                <div className={styles.inputArea}>
-                    <textarea
-                        ref={inputRef}
-                        className={styles.chatInput}
-                        value={input}
-                        onChange={handleInputChange}
-                        onKeyDown={handleKeyDown}
-                        placeholder={getInputPlaceholder()}
-                        disabled={sending}
-                        rows={1}
-                    />
-                    <button
-                        className={`btn btn-primary ${styles.sendBtn}`}
-                        onClick={handleSend}
-                        disabled={!input.trim() || sending}
-                    >
-                        提交
-                    </button>
-                </div>
-            </div>
+                <ChatInputArea
+                    input={input}
+                    setInput={setInput}
+                    sending={sending}
+                    onSend={handleSend}
+                    placeholder={getInputPlaceholder()}
+                />            </div>
 
             {/* Reveal overlay */}
             {revealData && (

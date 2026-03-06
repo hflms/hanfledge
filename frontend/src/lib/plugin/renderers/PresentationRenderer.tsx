@@ -13,6 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './PresentationRenderer.module.css';
 
@@ -108,7 +109,6 @@ export default function PresentationRenderer({
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
     const slideContainerRef = useRef<HTMLDivElement>(null);
     const hasTriggeredRef = useRef(false);
 
@@ -289,7 +289,6 @@ export default function PresentationRenderer({
                             }
                             return '';
                         });
-                        inputRef.current?.focus();
                         break;
                     }
                     case 'ui_scaffold_change': {
@@ -391,25 +390,9 @@ export default function PresentationRenderer({
         setInput('');
         setSending(true);
         setStreamingContent('');
-
-        if (inputRef.current) {
-            inputRef.current.style.height = 'auto';
-        }
     }, [input, sending, agentChannel]);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
-
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(e.target.value);
-        const textarea = e.target;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    }, []);
+    
 
     // -- Render thinking indicator --------------------------------
 
@@ -619,32 +602,14 @@ export default function PresentationRenderer({
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input area */}
-            <div className={styles.inputArea}>
-                <textarea
-                    ref={inputRef}
-                    className={styles.chatInput}
-                    value={input}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                        sending
-                            ? 'AI 正在处理...'
-                            : phase === 'generating'
-                                ? '等待演示文稿生成...'
-                                : '输入修改建议或其他问题... (Enter 发送)'
-                    }
-                    disabled={sending}
-                    rows={1}
-                />
-                <button
-                    className={styles.sendBtn}
-                    onClick={handleSend}
-                    disabled={!input.trim() || sending}
-                >
-                    发送
-                </button>
-            </div>
+            {/* Input */}
+            <ChatInputArea
+                input={input}
+                setInput={setInput}
+                sending={sending}
+                onSend={() => handleSend()}
+                placeholder={sending ? '处理中...' : '输入消息...'}
+            />
         </div>
     );
 }

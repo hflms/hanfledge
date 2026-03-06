@@ -12,6 +12,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './LearningSurveyRenderer.module.css';
 
@@ -72,7 +73,6 @@ export default function LearningSurveyRenderer({
     const [planReady, setPlanReady] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     // -- Scroll to bottom ----------------------------------------
 
@@ -171,7 +171,6 @@ export default function LearningSurveyRenderer({
                             }
                             return '';
                         });
-                        inputRef.current?.focus();
                         break;
                     }
                     case 'error': {
@@ -313,25 +312,9 @@ export default function LearningSurveyRenderer({
         setInput('');
         setSending(true);
         setStreamingContent('');
-
-        if (inputRef.current) {
-            inputRef.current.style.height = 'auto';
-        }
     }, [input, sending, agentChannel, onInteractionEvent]);
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-    };
-
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setInput(e.target.value);
-        const textarea = e.target;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    }, []);
+    
 
     // -- Strip <survey> / <survey_profile> / <learning_plan> tags from display content --
 
@@ -595,29 +578,13 @@ export default function LearningSurveyRenderer({
             )}
 
             {/* Input */}
-            <div className={styles.inputArea}>
-                <textarea
-                    ref={inputRef}
-                    className={styles.chatInput}
-                    value={input}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                        sending ? '诊断助手正在思考...' :
-                        currentSurvey ? '也可以直接输入文字回答...' :
-                        '输入消息开始诊断... (Enter 发送, Shift+Enter 换行)'
-                    }
-                    disabled={sending}
-                    rows={1}
-                />
-                <button
-                    className={`btn btn-primary ${styles.sendBtn}`}
-                    onClick={handleSend}
-                    disabled={!input.trim() || sending}
-                >
-                    发送
-                </button>
-            </div>
+            <ChatInputArea
+                input={input}
+                setInput={setInput}
+                sending={sending}
+                onSend={() => handleSend()}
+                placeholder={sending ? '诊断助手正在思考...' : currentSurvey ? '也可以直接输入文字回答...' : '输入消息开始诊断...'}
+            />
         </div>
     );
 }

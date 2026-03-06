@@ -385,8 +385,9 @@ export default function SessionPage() {
 
     // -- Send Message -----------------------------------------------
 
-    const handleSend = useCallback(async () => {
-        const text = input.trim();
+    const handleSend = useCallback(async (textOverride?: string | React.MouseEvent) => {
+        const overrideStr = typeof textOverride === 'string' ? textOverride : undefined;
+        const text = (overrideStr || input).trim();
         if (!text || sending) return;
         if (wsStatus !== 'connected') {
             toast('连接未就绪，请稍后重试', 'warning');
@@ -403,7 +404,9 @@ export default function SessionPage() {
             },
         ]);
 
-        setInput('');
+        if (!textOverride) {
+            setInput('');
+        }
 
         // L1 Cache: check for cached response before sending
         const cached = await getCachedResponse(sessionId, text);
@@ -598,6 +601,9 @@ export default function SessionPage() {
                                     }
                                     return `${next}; ${text}`;
                                 });
+                            }}
+                            onQuickReply={(text) => {
+                                handleSend(text);
                             }}
                         />
                         <ScaffoldPanel

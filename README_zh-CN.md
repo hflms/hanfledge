@@ -69,7 +69,31 @@ ollama pull bge-m3
 
 ## 快速开始
 
-### 1. 启动基础设施
+### 自动化启动（推荐）
+
+启动整个开发栈（基础设施、后端和前端）的最简方式是运行提供的开发脚本：
+
+```sh
+bash scripts/dev.sh
+```
+
+此脚本会自动处理以下任务：
+- 启动 Docker 容器（Postgres、Neo4j、Redis）
+- 若不存在则自动将 `.env.example` 复制为 `.env`
+- 安装前端依赖
+- 并行启动 Go 后端和 Next.js 前端
+
+**支持的参数：**
+- `--seed`：在基础设施启动后自动运行种子数据脚本创建测试账号。
+- `--backend-only`：仅启动基础设施和 Go 后端（跳过前端）。
+- `--frontend-only`：仅启动 Next.js 前端（跳过基础设施和后端）。
+- `--weknora`：同时启动可选的 WeKnora 知识库服务。
+
+---
+
+### 手动启动
+
+#### 1. 启动基础设施
 
 ```sh
 docker compose -f deployments/docker-compose.yml up -d

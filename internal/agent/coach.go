@@ -49,6 +49,16 @@ const cotReasoningDirective = `
 然后是面向学生的正式回复。
 `
 
+// quickRepliesDirective 是减少学生输入负担的指令。
+const quickRepliesDirective = `
+【交互体验要求 (Quick Replies)】
+为了减少学生的输入负担，如果你在当前回复的结尾提出了问题、给出了选项或期待学生的特定回复，
+你 **必须** 在回复的最末尾提供 2-3 个可选的简短回复建议（每条建议不超过 15 个字）。
+这些建议必须包裹在 <suggestions> 和 </suggestions> 标签之间，格式必须是合法的 JSON 字符串数组。
+例如：
+<suggestions>["选A，我觉得是光合作用", "还是不太懂，能再讲讲吗？", "我想跳过这部分"]</suggestions>
+`
+
 // CoachAgent 教练 Agent。
 type CoachAgent struct {
 	db          *gorm.DB
@@ -98,18 +108,18 @@ func (a *CoachAgent) GenerateResponse(tc *TurnContext, material PersonalizedMate
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
-		
+
 			ProviderOverride: tc.ProviderOverride,
-			ModelOverride: tc.ModelOverride,
+			ModelOverride:    tc.ModelOverride,
 		}, onToken)
 	} else {
 		response, err = a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
-		
+
 			ProviderOverride: tc.ProviderOverride,
-			ModelOverride: tc.ModelOverride,
+			ModelOverride:    tc.ModelOverride,
 		}, onToken)
 	}
 	if err != nil {
@@ -177,18 +187,18 @@ func (a *CoachAgent) ReviseResponse(tc *TurnContext, material PersonalizedMateri
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
-		
+
 			ProviderOverride: tc.ProviderOverride,
-			ModelOverride: tc.ModelOverride,
+			ModelOverride:    tc.ModelOverride,
 		}, onToken)
 	} else {
 		response, err = a.llm.StreamChat(ctx, messages, &llm.ChatOptions{
 			Temperature: 0.7,
 			TopP:        0.9,
 			MaxTokens:   1024,
-		
+
 			ProviderOverride: tc.ProviderOverride,
-			ModelOverride: tc.ModelOverride,
+			ModelOverride:    tc.ModelOverride,
 		}, onToken)
 	}
 	if err != nil {
@@ -296,6 +306,9 @@ func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMateria
 
 	// 交错思考 (Interleaved Thinking) — 强制 <reasoning> 块 (§8.2.3)
 	systemContent += "\n" + cotReasoningDirective
+
+	// 动态快捷回复 (Quick Replies) — 注入建议标签指令
+	systemContent += "\n" + quickRepliesDirective
 
 	messages := []llm.ChatMessage{
 		{Role: "system", Content: systemContent},

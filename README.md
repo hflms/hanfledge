@@ -82,7 +82,17 @@ The easiest way to start the entire development stack (infrastructure, backend, 
 bash scripts/dev.sh
 ```
 
-This script will automatically start tracking and proxying connections to Postgres, Neo4j, Redis, run backend migrations, populate test data, and start the NextJS frontend.
+This script automatically handles:
+- Starting Docker containers (Postgres, Neo4j, Redis)
+- Copying `.env.example` to `.env` if needed
+- Installing frontend dependencies
+- Starting the Go backend and Next.js frontend
+
+**Supported Arguments:**
+- `--seed`: Automatically run the seed script to create test accounts after infrastructure starts.
+- `--backend-only`: Only start the infrastructure and Go backend (skips frontend).
+- `--frontend-only`: Only start the Next.js frontend (assumes backend and infra are already running).
+- `--weknora`: Also start the optional WeKnora knowledge base service.
 
 ---
 
