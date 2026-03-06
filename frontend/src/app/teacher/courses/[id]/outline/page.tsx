@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
     getCourseOutline, uploadMaterial, getDocuments,
@@ -19,6 +19,7 @@ import styles from './page.module.css';
 
 export default function OutlinePage() {
     const params = useParams();
+    const router = useRouter();
     const courseId = Number(params.id);
     const { toast } = useToast();
     const fileInput = useRef<HTMLInputElement>(null);
@@ -66,18 +67,29 @@ export default function OutlinePage() {
     const [publishingId, setPublishingId] = useState<number | null>(null);
 
     const fetchData = useCallback(async () => {
+        if (!courseId || isNaN(courseId)) {
+            router.push('/teacher/courses');
+            return;
+        }
         try {
             const data = await getCourseOutline(courseId);
             setCourse(data.course);
             setDocs(data.documents || []);
             const activityRes = await listTeacherActivities(courseId, { page: 1, limit: 50 });
             setActivities(activityRes.items || []);
-        } catch (err) {
-            console.error('Failed to fetch outline', err);
+        } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            if (errorMsg.includes('课程不存在')) {
+                toast('课程不存在，已返回课程列表', 'error');
+                router.push('/teacher/courses');
+            } else {
+                console.warn('Failed to fetch outline:', err);
+                toast('获取课程大纲失败', 'error');
+            }
         } finally {
             setLoading(false);
         }
-    }, [courseId]);
+    }, [courseId, router, toast]);
 
     useEffect(() => {
         fetchData();
