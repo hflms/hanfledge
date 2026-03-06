@@ -35,13 +35,35 @@ func DefaultBKTParams() BKTParams {
 	}
 }
 
-// UpdateMastery 根据学生的一次答题结果更新掌握度。
+// EvidenceType 证据类型
+type EvidenceType string
+
+const (
+	EvidenceChat EvidenceType = "chat" // 弱证据：苏格拉底对话中的表现
+	EvidenceTest EvidenceType = "test" // 强证据：独立的技能测试结果
+)
+
+// UpdateMastery 根据学生的一次答题结果和证据类型更新掌握度。
 // correct: 本次是否答对
+// evidence: 证据类型 (chat 或 test)
 // 返回: 更新后的 mastery_score [0.0, 1.0]
-func (b *BKTParams) UpdateMastery(priorMastery float64, correct bool) float64 {
+func (b *BKTParams) UpdateMastery(priorMastery float64, correct bool, evidence EvidenceType) float64 {
+	// 动态调整参数
+	ps := b.PS
+	pg := b.PG
+
+	if evidence == EvidenceTest {
+		// 强证据：降低失误率和猜对率（测试题目要求严格）
+		ps = 0.05
+		pg = 0.05
+	} else {
+		// 弱证据：提高猜对率（因为有AI提示引导，很容易顺着说）
+		pg = 0.4
+	}
+
 	var pCorrectGivenMastered, pCorrectGivenNotMastered float64
-	pCorrectGivenMastered = 1.0 - b.PS
-	pCorrectGivenNotMastered = b.PG
+	pCorrectGivenMastered = 1.0 - ps
+	pCorrectGivenNotMastered = pg
 
 	// 贝叶斯后验更新
 	var posterior float64
@@ -50,9 +72,9 @@ func (b *BKTParams) UpdateMastery(priorMastery float64, correct bool) float64 {
 			(1-priorMastery)*pCorrectGivenNotMastered
 		posterior = (priorMastery * pCorrectGivenMastered) / pCorrect
 	} else {
-		pIncorrect := priorMastery*b.PS +
-			(1-priorMastery)*(1-b.PG)
-		posterior = (priorMastery * b.PS) / pIncorrect
+		pIncorrect := priorMastery*ps +
+			(1-priorMastery)*(1-pg)
+		posterior = (priorMastery * ps) / pIncorrect
 	}
 
 	// 学习转移：即使当前未掌握，也有概率通过本次练习学会
@@ -64,6 +86,15 @@ func (b *BKTParams) UpdateMastery(priorMastery float64, correct bool) float64 {
 	}
 	if mastery > 1.0 {
 		mastery = 1.0
+	}
+
+	// 弱证据上限：如果仅通过对话，掌握度最高只能增加到 0.75，除非本来就更高
+	if evidence == EvidenceChat && mastery > 0.75 && priorMastery <= 0.75 {
+		mastery = 0.75
+	}
+	// 如果强证据测错，可能大幅下降
+	if evidence == EvidenceTest && !correct && mastery > 0.4 {
+		mastery = 0.4 // 打回原型
 	}
 
 	return mastery
@@ -90,7 +121,7 @@ func NewBKTService(db *gorm.DB) *BKTService {
 // 2. 使用 BKT 算法计算新掌握度
 // 3. 持久化更新
 // 返回更新后的 MasteryUpdate 事件。
-func (s *BKTService) UpdateStudentMastery(studentID, kpID uint, correct bool) (MasteryUpdate, error) {
+func (s *BKTService) UpdateStudentMastery(studentID, kpID uint, correct bool, evidence EvidenceType) (MasteryUpdate, error) {
 	// Step 1: 查询或创建
 	var mastery model.StudentKPMastery
 	result := s.db.Where("student_id = ? AND kp_id = ?", studentID, kpID).First(&mastery)
@@ -112,7 +143,7 @@ func (s *BKTService) UpdateStudentMastery(studentID, kpID uint, correct bool) (M
 
 	// Step 2: BKT 更新
 	oldMastery := mastery.MasteryScore
-	newMastery := s.params.UpdateMastery(oldMastery, correct)
+	newMastery := s.params.UpdateMastery(oldMastery, correct, evidence)
 
 	// Step 3: 更新记录
 	mastery.MasteryScore = newMastery
@@ -120,6 +151,10 @@ func (s *BKTService) UpdateStudentMastery(studentID, kpID uint, correct bool) (M
 	if correct {
 		mastery.CorrectCount++
 	}
+	if evidence == EvidenceTest && correct {
+		mastery.PassedTest = true
+	}
+
 	now := time.Now()
 	mastery.LastAttemptAt = &now
 	mastery.UpdatedAt = now
@@ -135,7 +170,7 @@ func (s *BKTService) UpdateStudentMastery(studentID, kpID uint, correct bool) (M
 	}
 
 	slogBKT.Info("mastery updated",
-		"studentID", studentID, "kpID", kpID, "correct", correct,
+		"studentID", studentID, "kpID", kpID, "correct", correct, "evidence", evidence,
 		"oldMastery", oldMastery, "newMastery", newMastery, "attempts", mastery.AttemptCount)
 
 	return MasteryUpdate{

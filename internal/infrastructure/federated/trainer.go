@@ -114,7 +114,7 @@ func (t *LocalTrainer) CollectTrainingPairs(ctx context.Context, db *gorm.DB, sc
 			i.content AS query,
 			dc.content AS passage,
 			COALESCE(i.relevance_score, 0.5) AS score,
-			COALESCE(ss.current_kp_id, 0) AS kp_id
+			COALESCE(ss.current_kp, 0) AS kp_id
 		FROM interactions i
 		JOIN student_sessions ss ON ss.id = i.session_id
 		JOIN learning_activities la ON la.id = ss.activity_id

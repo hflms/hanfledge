@@ -15,6 +15,14 @@ const (
 	SessionStatusAbandoned SessionStatus = "abandoned"
 )
 
+// SessionMode 会话模式枚举。
+type SessionMode string
+
+const (
+	ModeSocratic SessionMode = "socratic"
+	ModeTesting  SessionMode = "testing"
+)
+
 // StudentSession 学生学习会话表。
 type StudentSession struct {
 	ID          uint          `gorm:"primaryKey" json:"id"`
@@ -26,6 +34,7 @@ type StudentSession struct {
 	SkillState  *string       `gorm:"type:jsonb" json:"skill_state,omitempty"` // 技能级会话状态 (e.g., FallacySessionState)
 	IsSandbox   bool          `gorm:"default:false" json:"is_sandbox"`         // 沙盒预览会话标记 (design.md §5.1 Step 3)
 	Status      SessionStatus `gorm:"size:20;default:active" json:"status"`
+	Mode        SessionMode   `gorm:"size:20;default:'socratic'" json:"mode"` // socratic | testing
 	StartedAt   time.Time     `json:"started_at"`
 	EndedAt     *time.Time    `json:"ended_at,omitempty"`
 }
@@ -57,6 +66,7 @@ type StudentKPMastery struct {
 	MasteryScore  float64    `gorm:"default:0.1" json:"mastery_score"`
 	AttemptCount  int        `gorm:"default:0" json:"attempt_count"`
 	CorrectCount  int        `gorm:"default:0" json:"correct_count"`
+	PassedTest    bool       `gorm:"default:false" json:"passed_test"`
 	LastAttemptAt *time.Time `json:"last_attempt_at,omitempty"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }

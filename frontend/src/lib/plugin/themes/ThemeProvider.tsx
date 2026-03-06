@@ -71,7 +71,7 @@ export function ThemeProvider({ children, defaultTheme }: ThemeProviderProps) {
     const themeId = saved || defaultTheme || 'default-dark';
     const found = themes.find((t) => t.id === themeId);
     if (found) {
-      setCurrentTheme(found);
+      setTimeout(() => setCurrentTheme(found), 0);
       applyTheme(found);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

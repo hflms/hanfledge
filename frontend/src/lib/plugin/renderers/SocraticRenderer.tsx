@@ -13,6 +13,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ChatInputArea from '@/components/ChatInputArea';
+import SkillTestOverlay from '@/components/SkillTestOverlay';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './SocraticRenderer.module.css';
 
@@ -40,14 +41,24 @@ export default function SocraticRenderer({
     scaffoldingLevel,
     agentChannel,
     onInteractionEvent,
+    initialMessages = [],
 }: SkillRendererProps) {
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [messages, setMessages] = useState<ChatMessage[]>(() => {
+        // Initialize with initialMessages immediately to avoid hydration flicker
+        return initialMessages.map(msg => ({
+            id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            role: msg.role as 'student' | 'coach' | 'system' | 'teacher',
+            content: msg.content,
+            timestamp: msg.timestamp || Date.now()
+        }));
+    });
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
     const [streamingContent, setStreamingContent] = useState('');
     const [scaffoldData, setScaffoldData] = useState<ScaffoldData>({});
     const [scaffoldTransition, setScaffoldTransition] = useState(false);
+    const [skillTestQuestion, setSkillTestQuestion] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -60,6 +71,30 @@ export default function SocraticRenderer({
     useEffect(() => {
         scrollToBottom();
     }, [messages, streamingContent, thinkingStatus, scrollToBottom]);
+
+    // -- Auto-start if empty -------------------------------------
+    const hasTriggeredRef = useRef(false);
+    useEffect(() => {
+        if (!hasTriggeredRef.current && messages.length === 0 && !sending && !streamingContent) {
+            hasTriggeredRef.current = true;
+            setTimeout(() => {
+                setSending(true);
+            }, 0);
+            agentChannel.send(JSON.stringify({
+                event: 'user_message',
+                payload: { text: '你好，我已经准备好进行本知识点的学习了，请开始。' },
+                timestamp: Math.floor(Date.now() / 1000),
+            }));
+            
+            // Optionally add the user message locally so they see it
+            setMessages([{
+                id: `student-sys-${Date.now()}`,
+                role: 'student',
+                content: '你好，我已经准备好进行本知识点的学习了，请开始。',
+                timestamp: Date.now()
+            }]);
+        }
+    }, [messages.length, sending, streamingContent, agentChannel]);
 
     // -- WebSocket message handling ------------------------------
 
@@ -78,21 +113,25 @@ export default function SocraticRenderer({
                         break;
                     }
                     case 'ui_scaffold_change': {
-                        const payload = event.payload as {
-                            data: {
-                                new_level: 'high' | 'medium' | 'low';
-                                mastery: number;
-                                direction: string;
-                            };
-                        };
+                        const payload = event.payload as any;
+                        if (payload.action === 'skill_test_start') {
+                            setSkillTestQuestion(payload.data.question);
+                            break;
+                        }
+                        if (payload.action === 'skill_test_result') {
+                            setSkillTestQuestion(null);
+                            break;
+                        }
+
                         setScaffoldTransition(true);
 
                         const direction = payload.data.direction === 'fade' ? '降低' : '增强';
-                        const labels = { high: '高支架', medium: '中支架', low: '低支架' };
+                        const labels: Record<string, string> = { high: '高支架', medium: '中支架', low: '低支架' };
+                        const newLevelLabel = labels[payload.data.new_level] || payload.data.new_level;
                         setMessages(prev => [...prev, {
                             id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                             role: 'system',
-                            content: `支架已${direction}至 ${labels[payload.data.new_level]} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
+                            content: `支架已${direction}至 ${newLevelLabel} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
                             timestamp: Date.now(),
                         }]);
 
@@ -340,8 +379,34 @@ export default function SocraticRenderer({
                 setInput={setInput}
                 sending={sending}
                 onSend={() => handleSend()}
-                placeholder={sending ? '苏格拉底正在思考...' : '输入消息...'}
+                placeholder={sending ? '苏格拉底正在思考...' : skillTestQuestion ? '请输入你的测试答案...' : '输入消息...'}
             />
+
+            {/* Exam Mode Overlay */}
+            {skillTestQuestion && (
+                <SkillTestOverlay 
+                    question={skillTestQuestion} 
+                    onClose={() => setSkillTestQuestion(null)} 
+                    onSubmit={(answer) => {
+                        setSkillTestQuestion(null);
+                        
+                        setMessages(prev => [...prev, {
+                            id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                            role: 'student',
+                            content: `[提交测试] ${answer}`,
+                            timestamp: Date.now(),
+                        }]);
+
+                        agentChannel.send(JSON.stringify({
+                            event: 'user_message',
+                            payload: { text: answer },
+                            timestamp: Math.floor(Date.now() / 1000),
+                        }));
+
+                        setSending(true);
+                    }}
+                />
+            )}
         </div>
     );
 }

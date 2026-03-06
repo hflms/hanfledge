@@ -18,7 +18,7 @@ export function useTranslation() {
 
   useEffect(() => {
     const detected = getLocale();
-    setCurrentLocale(detected);
+    setTimeout(() => setCurrentLocale(detected), 0);
     loadMessages(detected).then(setMessages);
   }, []);
 

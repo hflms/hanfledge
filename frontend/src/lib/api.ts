@@ -753,6 +753,7 @@ export interface KnowledgeMapNode {
   id: number;
   neo4j_id: string;
   title: string;
+  description?: string;
   chapter_id: number;
   chapter_title: string;
   difficulty: number;

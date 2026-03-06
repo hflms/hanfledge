@@ -33,6 +33,8 @@ type AgentOrchestrator struct {
 	critic     *CriticAgent
 	bkt        *BKTService
 	profile    *ProfileService
+	assessor   *AssessorAgent
+	evaluator  *EvaluatorAgent
 
 	// 依赖
 	db          *gorm.DB
@@ -88,6 +90,8 @@ func NewAgentOrchestrator(
 	o.critic = NewCriticAgent(llmClient)
 	o.bkt = NewBKTService(db)
 	o.profile = NewProfileService(db)
+	o.assessor = NewAssessorAgent(llmClient)
+	o.evaluator = NewEvaluatorAgent(llmClient)
 
 	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT, Profile")
 	return o
@@ -152,6 +156,130 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 
 	slogOrch.Debug("strategist results",
 		"kp_targets", len(prescription.TargetKPSequence), "scaffold", prescription.InitialScaffold, "skill", prescription.RecommendedSkill)
+
+	// ── Pre-Stage 2: Dynamic Skill Testing Intercept ──────────
+	var session model.StudentSession
+	if err := o.db.WithContext(tc.Ctx).First(&session, tc.SessionID).Error; err != nil {
+		return fmt.Errorf("load session failed: %w", err)
+	}
+
+	targetKPID := session.CurrentKP
+	if targetKPID == 0 && len(prescription.TargetKPSequence) > 0 {
+		targetKPID = prescription.TargetKPSequence[0].KPID
+	}
+
+	// 取出目标 KP 信息用于出题
+	kpTitle := "相关知识点"
+	var targetKP model.StudentKPMastery // Just to check PassedTest
+	var kpRecord struct{ Title string }
+	if targetKPID > 0 {
+		o.db.WithContext(tc.Ctx).Where("student_id = ? AND kp_id = ?", tc.StudentID, targetKPID).First(&targetKP)
+		o.db.WithContext(tc.Ctx).Table("knowledge_points").Where("id = ?", targetKPID).Select("title").Scan(&kpRecord)
+		if kpRecord.Title != "" {
+			kpTitle = kpRecord.Title
+		}
+	}
+
+	// 1. 如果当前处于测试模式，处理用户的回答
+	if session.Mode == model.ModeTesting {
+		if tc.OnThinking != nil {
+			tc.OnThinking("Evaluator 正在批改测试...")
+		}
+
+		// 找出上一轮 AI 发出的测试题
+		var lastCoachMsg model.Interaction
+		o.db.WithContext(tc.Ctx).Where("session_id = ? AND role = 'coach'", tc.SessionID).Order("id desc").First(&lastCoachMsg)
+
+		isCorrect, reason, err := o.evaluator.Grade(tc.Ctx, lastCoachMsg.Content, tc.UserInput)
+		if err != nil {
+			slogOrch.Warn("evaluator failed", "err", err)
+			isCorrect = false
+			reason = "评卷系统出错，请重新回答。"
+		}
+
+		// 强证据更新掌握度
+		if targetKPID > 0 {
+			update, bktErr := o.bkt.UpdateStudentMastery(tc.StudentID, targetKPID, isCorrect, EvidenceTest)
+			if bktErr != nil {
+				slogOrch.Warn("bkt update from test failed", "err", bktErr)
+			} else {
+				slogOrch.Info("test graded", "student_id", tc.StudentID, "kp_id", targetKPID, "correct", isCorrect, "new_mastery", update.NewMastery)
+			}
+		}
+
+		// 切回苏格拉底模式
+		o.db.WithContext(tc.Ctx).Model(&session).Update("mode", model.ModeSocratic)
+
+		// 构造并发送批改结果
+		feedback := reason
+		if isCorrect {
+			feedback = "回答正确！恭喜你通过了该知识点的技能测试。\n" + feedback
+		} else {
+			feedback = "回答不正确。你的掌握度已重置，让我们继续学习。\n" + feedback
+		}
+
+		if tc.OnTokenDelta != nil {
+			tc.OnTokenDelta(feedback)
+		}
+
+		if tc.OnScaffold != nil {
+			tc.OnScaffold("skill_test_result", map[string]interface{}{
+				"correct": isCorrect,
+			})
+		}
+
+		draft := &DraftResponse{
+			SessionID: tc.SessionID,
+			Content:   feedback,
+			SkillID:   "skill_test_grading",
+		}
+		_ = o.saveInteraction(tc, draft)
+		if tc.OnTurnComplete != nil {
+			tc.OnTurnComplete(0)
+		}
+		return nil
+	}
+
+	// 2. 如果掌握度达到 0.75 且未通过测试，触发测试
+	currentMastery := o.bkt.GetMastery(tc.StudentID, targetKPID)
+	if targetKPID > 0 && currentMastery >= 0.75 && !targetKP.PassedTest {
+		slogOrch.Info("triggering dynamic skill test", "student_id", tc.StudentID, "kp_id", targetKPID, "mastery", currentMastery)
+
+		if tc.OnThinking != nil {
+			tc.OnThinking("Assessor 正在生成技能测试...")
+		}
+
+		testQuestion, err := o.assessor.GenerateTest(tc.Ctx, kpTitle)
+		if err != nil {
+			slogOrch.Warn("assessor failed to generate test", "err", err)
+			// 退回常规流程
+		} else {
+			// 切换到测试模式
+			o.db.WithContext(tc.Ctx).Model(&session).Update("mode", model.ModeTesting)
+
+			// 直接返回测试题
+			if tc.OnTokenDelta != nil {
+				tc.OnTokenDelta(testQuestion)
+			}
+
+			if tc.OnScaffold != nil {
+				tc.OnScaffold("skill_test_start", map[string]interface{}{
+					"question": testQuestion,
+				})
+			}
+
+			draft := &DraftResponse{
+				SessionID: tc.SessionID,
+				Content:   testQuestion,
+				SkillID:   "skill_test_generation",
+			}
+			_ = o.saveInteraction(tc, draft)
+			if tc.OnTurnComplete != nil {
+				tc.OnTurnComplete(0)
+			}
+			return nil
+		}
+	}
 
 	// Hook: after skill match
 	o.publishEvent(ctx, plugin.HookAfterSkillMatch, map[string]interface{}{
@@ -434,7 +562,7 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 	oldMastery := o.bkt.GetMastery(tc.StudentID, kpID)
 
 	// BKT 掌握度更新
-	update, err := o.bkt.UpdateStudentMastery(tc.StudentID, kpID, correct)
+	update, err := o.bkt.UpdateStudentMastery(tc.StudentID, kpID, correct, EvidenceChat)
 	if err != nil {
 		slogOrch.Warn("BKT update failed",
 			"student_id", tc.StudentID, "kp_id", kpID, "err", err)

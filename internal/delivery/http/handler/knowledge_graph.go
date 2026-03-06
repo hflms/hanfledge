@@ -419,6 +419,7 @@ type KnowledgeMapNode struct {
 	ID           uint    `json:"id"`
 	Neo4jID      string  `json:"neo4j_id"`
 	Title        string  `json:"title"`
+	Description  string  `json:"description"`
 	ChapterID    uint    `json:"chapter_id"`
 	ChapterTitle string  `json:"chapter_title"`
 	Difficulty   float64 `json:"difficulty"`
@@ -511,6 +512,7 @@ func (h *KnowledgeGraphHandler) GetStudentKnowledgeMap(c *gin.Context) {
 				ID:           kp.ID,
 				Neo4jID:      kp.Neo4jNodeID,
 				Title:        kp.Title,
+				Description:  kp.Description,
 				ChapterID:    ch.ID,
 				ChapterTitle: ch.Title,
 				Difficulty:   kp.Difficulty,
@@ -638,6 +640,7 @@ func (h *KnowledgeGraphHandler) GetCourseKnowledgeGraph(c *gin.Context) {
 				ID:           kp.ID,
 				Neo4jID:      kp.Neo4jNodeID,
 				Title:        kp.Title,
+				Description:  kp.Description,
 				ChapterID:    ch.ID,
 				ChapterTitle: ch.Title,
 				Difficulty:   kp.Difficulty,

@@ -85,6 +85,7 @@ export default function KnowledgeGraph({ data }: KnowledgeGraphProps) {
                         const n = params.data._raw;
                         return [
                             `<b>${n.title}</b>`,
+                            n.description ? `<div style="max-width: 280px; white-space: normal; margin: 6px 0; color: #a29bfe; font-size: 12px; line-height: 1.4;">${n.description}</div>` : '',
                             `章节: ${n.chapter_title}`,
                             `难度: ${'★'.repeat(n.difficulty)}${'☆'.repeat(5 - n.difficulty)}`,
                             `掌握度: ${masteryLabel(n.mastery)}`,

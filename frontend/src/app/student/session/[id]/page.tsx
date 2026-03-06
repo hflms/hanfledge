@@ -296,6 +296,17 @@ export default function SessionPage() {
             try {
                 await updateSessionStep(sessionId, nextStep.kpId, nextStep.skill);
                 setSession(prev => prev ? { ...prev, current_kp_id: nextStep.kpId, active_skill: nextStep.skill } : null);
+                
+                // Clear messages to trigger auto-start in the new renderer
+                setMessages([]);
+                
+                // Optional: send a kickstart message immediately via WS
+                agentChannel.send(JSON.stringify({
+                    event: 'user_message',
+                    payload: { text: `[系统] 学生已进入下一步学习阶段：${nextStep.label}。请根据当前知识点和技能重新开始引导。` },
+                    timestamp: Math.floor(Date.now() / 1000)
+                }));
+
                 toast('已进入下一步', 'success');
             } catch (err) {
                 toast('切换步骤失败', 'error');
@@ -309,6 +320,17 @@ export default function SessionPage() {
             try {
                 await updateSessionStep(sessionId, prevStep.kpId, prevStep.skill);
                 setSession(prev => prev ? { ...prev, current_kp_id: prevStep.kpId, active_skill: prevStep.skill } : null);
+                
+                // Clear messages to trigger auto-start in the new renderer
+                setMessages([]);
+                
+                // Optional: send a kickstart message immediately via WS
+                agentChannel.send(JSON.stringify({
+                    event: 'user_message',
+                    payload: { text: `[系统] 学生已返回上一步学习阶段：${prevStep.label}。请恢复该阶段的引导。` },
+                    timestamp: Math.floor(Date.now() / 1000)
+                }));
+
                 toast('已返回上一步', 'success');
             } catch (err) {
                 toast('切换步骤失败', 'error');

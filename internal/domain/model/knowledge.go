@@ -51,6 +51,7 @@ type KnowledgePoint struct {
 	ChapterID   uint    `gorm:"not null;index" json:"chapter_id"`
 	Neo4jNodeID string  `gorm:"size:50;index" json:"neo4j_node_id"`
 	Title       string  `gorm:"size:200;not null" json:"title"`
+	Description string  `gorm:"type:text" json:"description"`
 	Difficulty  float64 `gorm:"default:0.5" json:"difficulty"`
 	IsKeyPoint  bool    `gorm:"default:false" json:"is_key_point"`
 

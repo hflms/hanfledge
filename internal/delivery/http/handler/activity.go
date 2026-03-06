@@ -528,8 +528,8 @@ func (h *ActivityHandler) UpdateSessionStep(c *gin.Context) {
 	query := h.DB.Model(&model.StudentSession{}).Where("id = ? AND student_id = ?", sessionID, studentID)
 
 	if err := query.Updates(map[string]interface{}{
-		"current_kp_id": req.KPID,
-		"active_skill":  req.ActiveSkill,
+		"current_kp":   req.KPID,
+		"active_skill": req.ActiveSkill,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新会话步骤失败"})
 		return

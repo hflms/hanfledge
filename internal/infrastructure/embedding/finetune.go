@@ -121,7 +121,7 @@ func (p *FineTunePipeline) CollectTrainingData(ctx context.Context, courseIDs []
 	// 查询所有会话交互中学生提问及对应的检索上下文
 	var rows []interactionRow
 	query := p.DB.Table("interactions i").
-		Select("i.session_id, i.content, i.role, i.skill_id, ss.current_kp_id as course_id").
+		Select("i.session_id, i.content, i.role, i.skill_id, ss.current_kp as course_id").
 		Joins("JOIN student_sessions ss ON ss.id = i.session_id").
 		Where("i.role = ?", "student").
 		Where("LENGTH(i.content) > ?", 10) // 过滤太短的输入

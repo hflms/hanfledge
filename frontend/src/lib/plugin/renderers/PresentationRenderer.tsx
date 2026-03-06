@@ -99,6 +99,7 @@ export default function PresentationRenderer({
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
     const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
+    const streamingContentRef = useRef('');
     const [streamingContent, setStreamingContent] = useState('');
 
     // Presentation-specific state
@@ -137,7 +138,7 @@ export default function PresentationRenderer({
                 } else {
                     parsedMessages.push({
                         id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                        role: msg.role as any,
+                        role: msg.role as 'student' | 'coach' | 'system',
                         content: msg.content,
                         timestamp: msg.timestamp || Date.now(),
                     });
@@ -145,19 +146,21 @@ export default function PresentationRenderer({
             } else {
                 parsedMessages.push({
                     id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                    role: msg.role as any,
+                    role: msg.role as 'student' | 'coach' | 'system',
                     content: msg.content,
                     timestamp: msg.timestamp || Date.now(),
                 });
             }
         }
         
-        setMessages(parsedMessages);
-        if (foundSlides && foundSlides.length > 0) {
-            setSlides(foundSlides);
-            setPhase('idle');
-            hasTriggeredRef.current = true;
-        }
+        setTimeout(() => {
+            setMessages(parsedMessages);
+            if (foundSlides && foundSlides.length > 0) {
+                setSlides(foundSlides);
+                setPhase('idle');
+                hasTriggeredRef.current = true;
+            }
+        }, 0);
     }, [initialMessages]);
 
     // -- Auto-generate if no initial messages --------------------
@@ -171,8 +174,10 @@ export default function PresentationRenderer({
             !streamingContent
         ) {
             hasTriggeredRef.current = true;
-            setSending(true);
-            setPhase('generating');
+            setTimeout(() => {
+                setSending(true);
+                setPhase('generating');
+            }, 0);
             
             // Auto-trigger the backend to start generating the presentation
             agentChannel.send(JSON.stringify({
@@ -246,49 +251,51 @@ export default function PresentationRenderer({
                     }
                     case 'token_delta': {
                         setThinkingStatus(null);
-                        setStreamingContent(prev => prev + (event.payload?.text || ''));
+                        const newText = event.payload?.text || '';
+                        streamingContentRef.current += newText;
+                        setStreamingContent(streamingContentRef.current);
                         break;
                     }
                     case 'turn_complete': {
                         setThinkingStatus(null);
                         setSending(false);
-                        setStreamingContent(prev => {
-                            if (prev) {
-                                const parsed = parseSlidesFromContent(prev);
-                                if (parsed && parsed.length > 0) {
-                                    setSlides(parsed);
-                                    setCurrentSlide(0);
-                                    setPhase('idle');
+                        const prev = streamingContentRef.current;
+                        if (prev) {
+                            const parsed = parseSlidesFromContent(prev);
+                            if (parsed && parsed.length > 0) {
+                                setSlides(parsed);
+                                setCurrentSlide(0);
+                                setPhase('idle');
 
-                                    const intro = stripSlidesTag(prev);
-                                    if (intro) {
-                                        setMessages(msgs => [...msgs, {
-                                            id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                                            role: 'coach',
-                                            content: intro,
-                                            timestamp: Date.now(),
-                                        }]);
-                                    }
-
-                                    onInteractionEvent({
-                                        type: 'presentation_generated',
-                                        payload: {
-                                            skillId: 'presentation_generator',
-                                            slideCount: parsed.length,
-                                        },
-                                        timestamp: Date.now(),
-                                    });
-                                } else {
+                                const intro = stripSlidesTag(prev);
+                                if (intro) {
                                     setMessages(msgs => [...msgs, {
                                         id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                                         role: 'coach',
-                                        content: prev,
+                                        content: intro,
                                         timestamp: Date.now(),
                                     }]);
                                 }
+
+                                onInteractionEvent({
+                                    type: 'presentation_generated',
+                                    payload: {
+                                        skillId: 'presentation_generator',
+                                        slideCount: parsed.length,
+                                    },
+                                    timestamp: Date.now(),
+                                });
+                            } else {
+                                setMessages(msgs => [...msgs, {
+                                    id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                                    role: 'coach',
+                                    content: prev,
+                                    timestamp: Date.now(),
+                                }]);
                             }
-                            return '';
-                        });
+                        }
+                        streamingContentRef.current = '';
+                        setStreamingContent('');
                         break;
                     }
                     case 'ui_scaffold_change': {
@@ -365,6 +372,7 @@ export default function PresentationRenderer({
         }));
 
         setSending(true);
+        streamingContentRef.current = '';
         setStreamingContent('');
     }, [agentChannel]);
 
@@ -389,6 +397,7 @@ export default function PresentationRenderer({
 
         setInput('');
         setSending(true);
+        streamingContentRef.current = '';
         setStreamingContent('');
     }, [input, sending, agentChannel]);
 

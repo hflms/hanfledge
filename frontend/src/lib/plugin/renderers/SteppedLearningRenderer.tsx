@@ -63,7 +63,7 @@ export default function SteppedLearningRenderer({
     // Initial prompt kick off if no pages yet
     useEffect(() => {
         if (pages.length === 0 && !waitingForAI && streamingContent === '') {
-            setWaitingForAI(true);
+            setTimeout(() => setWaitingForAI(true), 0);
             agentChannel.send(
                 JSON.stringify({
                     event: 'user_message',
