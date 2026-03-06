@@ -23,7 +23,7 @@ const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
 interface ChatMessage {
     id: string;
-    role: 'student' | 'coach' | 'system';
+    role: 'student' | 'coach' | 'system' | 'teacher';
     content: string;
     timestamp: number;
 }
