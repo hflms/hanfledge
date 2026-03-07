@@ -11,6 +11,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@ricky0123/vad-web": "^0.0.30",
     "@types/reveal.js": "^5.2.2",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.6",

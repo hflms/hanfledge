@@ -160,6 +160,39 @@ func (c *Client) GetPrerequisites(ctx context.Context, kpID uint) ([]map[string]
 	return prereqs, nil
 }
 
+// GetKPContext retrieves N-hop neighborhood context around a knowledge point.
+// Used for parallel preloading in Designer agent.
+func (c *Client) GetKPContext(ctx context.Context, kpID uint, maxDepth int) ([]map[string]interface{}, error) {
+	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	result, err := session.Run(ctx, `
+		MATCH path = (center:KnowledgePoint {id: $kpId})-[*0..`+fmt.Sprintf("%d", maxDepth)+`]-(neighbor:KnowledgePoint)
+		RETURN DISTINCT neighbor.id AS id, neighbor.title AS title, neighbor.difficulty AS difficulty
+		LIMIT 50
+	`, map[string]interface{}{
+		"kpId": fmt.Sprintf("kp_%d", kpID),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var nodes []map[string]interface{}
+	for result.Next(ctx) {
+		record := result.Record()
+		id, _ := record.Get("id")
+		title, _ := record.Get("title")
+		difficulty, _ := record.Get("difficulty")
+		
+		nodes = append(nodes, map[string]interface{}{
+			"id":         id,
+			"title":      title,
+			"difficulty": difficulty,
+		})
+	}
+	return nodes, nil
+}
+
 // ── Misconception CRUD ──────────────────────────────────────
 
 // CreateMisconceptionNode creates a Misconception node and links it to a KP via HAS_TRAP.

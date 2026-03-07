@@ -8,10 +8,12 @@ import styles from './RevealDeck.module.css';
 interface RevealDeckProps {
     markdown: string;
     onSlideChange?: (indexh: number, indexv: number) => void;
+    fullscreen?: boolean;
 }
 
-export default function RevealDeck({ markdown, onSlideChange }: RevealDeckProps) {
+export default function RevealDeck({ markdown, onSlideChange, fullscreen = false }: RevealDeckProps) {
     const deckRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const revealInstance = useRef<any>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const onSlideChangeRef = useRef(onSlideChange);
@@ -19,6 +21,39 @@ export default function RevealDeck({ markdown, onSlideChange }: RevealDeckProps)
     useEffect(() => {
         onSlideChangeRef.current = onSlideChange;
     }, [onSlideChange]);
+
+    // Handle fullscreen mode
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const handleFullscreenChange = () => {
+            if (revealInstance.current) {
+                revealInstance.current.layout();
+            }
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    // Enter/exit fullscreen
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        if (fullscreen) {
+            if (containerRef.current.requestFullscreen) {
+                containerRef.current.requestFullscreen().catch(err => {
+                    console.warn('Fullscreen request failed:', err);
+                });
+            }
+        } else {
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(err => {
+                    console.warn('Exit fullscreen failed:', err);
+                });
+            }
+        }
+    }, [fullscreen]);
 
     useEffect(() => {
         let mounted = true;
@@ -38,10 +73,31 @@ export default function RevealDeck({ markdown, onSlideChange }: RevealDeckProps)
                 progress: true,
                 center: true,
                 hash: false,
-                embedded: true,
+                embedded: !fullscreen,
                 width: 960,
                 height: 700,
-                margin: 0.1,
+                margin: 0.04,
+                transition: 'slide',
+                backgroundTransition: 'fade',
+                slideNumber: 'c/t',
+                keyboard: true,
+                overview: true,
+                touch: true,
+                loop: false,
+                rtl: false,
+                navigationMode: 'default',
+                shuffle: false,
+                fragments: true,
+                fragmentInURL: false,
+                help: true,
+                showNotes: false,
+                autoPlayMedia: null,
+                preloadIframes: null,
+                autoAnimate: true,
+                autoAnimateMatcher: null,
+                autoAnimateEasing: 'ease',
+                autoAnimateDuration: 1.0,
+                autoAnimateUnmatched: true,
             });
 
             await revealInstance.current.initialize();
@@ -68,15 +124,14 @@ export default function RevealDeck({ markdown, onSlideChange }: RevealDeckProps)
                 console.warn('Reveal destruction error', e);
             }
         };
-    }, []);
+    }, [fullscreen]);
 
-    // Handle updates to markdown content
+    // Sync layout when markdown changes
     useEffect(() => {
         if (isLoaded && revealInstance.current) {
             try {
-                // If the markdown content changes, we might need to recreate the textarea content
-                // and call layout syncs. 
-                // But for simplicity, we can just remount RevealDeck if markdown changes drastically.
+                revealInstance.current.sync();
+                revealInstance.current.layout();
             } catch (e) {
                 console.warn('Reveal sync error', e);
             }
@@ -84,7 +139,7 @@ export default function RevealDeck({ markdown, onSlideChange }: RevealDeckProps)
     }, [markdown, isLoaded]);
 
     return (
-        <div className={styles.deckContainer}>
+        <div ref={containerRef} className={`${styles.deckContainer} ${fullscreen ? styles.fullscreen : ''}`}>
             <div className="reveal" ref={deckRef}>
                 <div className="slides">
                     <section 

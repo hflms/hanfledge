@@ -383,43 +383,56 @@ export default function PresentationRenderer({
             <div
                 ref={slideContainerRef}
                 className={`${styles.slideViewer} ${isFullscreen ? styles.slideViewerFullscreen : ''}`}
-                style={{ padding: 0, height: '600px', display: 'flex', flexDirection: 'column' }}
             >
-                {/* Toolbar */}
-                <div className={styles.slideToolbar} style={{ zIndex: 10 }}>
-                    <div className={styles.slideCounter}>
-                        <span className={styles.slideCounterCurrent}>演示文稿</span>
+                {/* Toolbar - only show when not in fullscreen */}
+                {!isFullscreen && (
+                    <div className={styles.slideToolbar}>
+                        <div className={styles.slideCounter}>
+                            <span className={styles.slideCounterCurrent}>演示文稿</span>
+                        </div>
+                        <div className={styles.toolbarActions}>
+                            <button
+                                className={styles.toolbarBtn}
+                                onClick={() => setIsFullscreen(true)}
+                                title="全屏模式 (F)"
+                            >
+                                ⛶ 全屏
+                            </button>
+                            <button
+                                className={styles.toolbarBtn}
+                                onClick={() => setPhase('idle')}
+                                title="收起演示文稿"
+                            >
+                                收起
+                            </button>
+                            <button
+                                className={styles.toolbarBtn}
+                                onClick={handleRegenerate}
+                                disabled={sending}
+                                title="重新生成"
+                            >
+                                🔄 重新生成
+                            </button>
+                        </div>
                     </div>
-                    <div className={styles.toolbarActions}>
-                        <button
-                            className={styles.toolbarBtn}
-                            onClick={() => setIsFullscreen(prev => !prev)}
-                            title="全屏模式 (F)"
-                        >
-                            {isFullscreen ? '⬜' : '⛶'}
-                        </button>
-                        <button
-                            className={styles.toolbarBtn}
-                            onClick={() => setPhase('idle')}
-                            title="收起演示文稿"
-                        >
-                            收起
-                        </button>
-                        <button
-                            className={styles.toolbarBtn}
-                            onClick={handleRegenerate}
-                            disabled={sending}
-                            title="重新生成"
-                        >
-                            🔄
-                        </button>
-                    </div>
+                )}
+
+                {/* RevealDeck with fullscreen support */}
+                <div className={styles.slideContent}>
+                    <RevealDeck 
+                        key={slidesMarkdown} 
+                        markdown={slidesMarkdown} 
+                        onSlideChange={handleSlideChange}
+                        fullscreen={isFullscreen}
+                    />
                 </div>
 
-                {/* RevealDeck */}
-                <div style={{ flex: 1, position: 'relative' }}>
-                    <RevealDeck key={slidesMarkdown} markdown={slidesMarkdown} onSlideChange={handleSlideChange} />
-                </div>
+                {/* Fullscreen exit hint */}
+                {isFullscreen && (
+                    <div className={styles.fullscreenHint}>
+                        按 <kbd>ESC</kbd> 或 <kbd>F</kbd> 退出全屏
+                    </div>
+                )}
             </div>
         );
     };

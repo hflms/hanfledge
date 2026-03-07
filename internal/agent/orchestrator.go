@@ -139,15 +139,52 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		return o.returnCachedResponse(tc, hit.Entry.Response, hit.Entry.SkillID, start)
 	}
 
-	// ── Stage 1: Strategist — 生成学习处方 ──────────────
+	// ── Stage 1: Strategist + Designer 并行预处理 ──────────────
 	if tc.OnThinking != nil {
-		tc.OnThinking("Strategist 正在分析学情...")
+		tc.OnThinking("Strategist & Designer 正在并行分析...")
 	}
 
-	prescription, err := o.strategist.Analyze(ctx, tc.SessionID, tc.StudentID, tc.ActivityID)
-	if err != nil {
-		return fmt.Errorf("strategist failed: %w", err)
+	type strategistResult struct {
+		prescription LearningPrescription
+		err          error
 	}
+	type designerPreloadResult struct {
+		graphContext []map[string]interface{}
+		err          error
+	}
+
+	strategistCh := make(chan strategistResult, 1)
+	designerCh := make(chan designerPreloadResult, 1)
+
+	// 并行分支 A: Strategist 分析学情
+	go func() {
+		prescription, err := o.strategist.Analyze(ctx, tc.SessionID, tc.StudentID, tc.ActivityID)
+		strategistCh <- strategistResult{prescription, err}
+	}()
+
+	// 并行分支 B: Designer 预加载当前 KP 的图谱上下文
+	go func() {
+		var session model.StudentSession
+		if err := o.db.WithContext(ctx).First(&session, tc.SessionID).Error; err != nil {
+			designerCh <- designerPreloadResult{nil, err}
+			return
+		}
+		if session.CurrentKP == 0 {
+			designerCh <- designerPreloadResult{nil, nil}
+			return
+		}
+		graphCtx, err := o.neo4j.GetKPContext(ctx, session.CurrentKP, 2)
+		designerCh <- designerPreloadResult{graphCtx, err}
+	}()
+
+	// 汇聚层: 等待两个分支完成
+	stratResult := <-strategistCh
+	designerPreload := <-designerCh
+
+	if stratResult.err != nil {
+		return fmt.Errorf("strategist failed: %w", stratResult.err)
+	}
+	prescription := stratResult.prescription
 	tc.Prescription = &prescription
 
 	slogOrch.Info("[DEBUG] strategist done", "session_id", tc.SessionID,
@@ -156,6 +193,12 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 
 	slogOrch.Debug("strategist results",
 		"kp_targets", len(prescription.TargetKPSequence), "scaffold", prescription.InitialScaffold, "skill", prescription.RecommendedSkill)
+
+	if designerPreload.err != nil {
+		slogOrch.Warn("designer preload failed", "err", designerPreload.err)
+	} else if designerPreload.graphContext != nil {
+		slogOrch.Info("[DEBUG] designer preload done", "nodes", len(designerPreload.graphContext), "elapsed", time.Since(start))
+	}
 
 	// ── Pre-Stage 2: Dynamic Skill Testing Intercept ──────────
 	var session model.StudentSession

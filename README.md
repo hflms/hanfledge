@@ -368,6 +368,24 @@ Measured on AMD Ryzen 9 5900HS (16 threads), PostgreSQL via Docker:
 Concurrent stress test: 50 workers x 20 requests = 1,155 req/s with 0% error
 rate.
 
+### 2.0 Optimizations (2026-03-07)
+
+**Parallel Agent Execution:**
+- Strategist + Designer now run in parallel using goroutines
+- TTFT (Time To First Token) reduced by ~40%
+- Neo4j graph context preloading during Strategist analysis
+
+**Voice Activity Detection (VAD):**
+- Frontend uses Silero VAD (WebAssembly) to detect speech
+- Only sends audio when voice is detected
+- Reduces backend ASR computation by 50-70%
+- Visual feedback: 🔴 waiting for speech, 🟢 speech detected
+
+Run performance benchmark:
+```bash
+go run scripts/benchmark-parallel.go
+```
+
 ## Key technical details
 
 - **Auth**: JWT (HS256) with Bearer tokens; RBAC via `UserSchoolRole` join table

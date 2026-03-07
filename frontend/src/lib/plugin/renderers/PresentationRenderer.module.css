@@ -102,6 +102,7 @@
     display: flex;
     flex-direction: column;
     transition: all 0.3s ease;
+    margin: 16px 0;
 }
 
 .slideViewerFullscreen {
@@ -113,6 +114,7 @@
     z-index: 9999;
     border-radius: 0;
     border: none;
+    margin: 0;
 }
 
 /* -- Slide Toolbar -------------------------------------------- */
@@ -121,9 +123,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 16px;
+    padding: 12px 20px;
     background: var(--surface-secondary, #f8f9fa);
     border-bottom: 1px solid var(--border, #e0e0e0);
+    z-index: 10;
 }
 
 .slideCounter {
@@ -139,34 +142,27 @@
     font-size: 18px;
 }
 
-.slideCounterSep {
-    color: var(--text-muted, #999);
-    margin: 0 2px;
-}
-
-.slideCounterTotal {
-    color: var(--text-muted, #999);
-}
-
 .toolbarActions {
     display: flex;
-    gap: 4px;
+    gap: 8px;
 }
 
 .toolbarBtn {
-    padding: 4px 8px;
+    padding: 6px 12px;
     border: 1px solid var(--border, #e0e0e0);
     border-radius: 6px;
     background: var(--surface, #fff);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     transition: all 0.2s ease;
-    line-height: 1;
+    line-height: 1.4;
+    white-space: nowrap;
 }
 
 .toolbarBtn:hover:not(:disabled) {
     background: var(--surface-secondary, #f5f5f5);
     border-color: var(--primary, #4a7dff);
+    color: var(--primary, #4a7dff);
 }
 
 .toolbarBtn:disabled {
@@ -174,30 +170,48 @@
     cursor: not-allowed;
 }
 
-.toolbarBtnActive {
-    background: rgba(74, 125, 255, 0.1);
-    border-color: var(--primary, #4a7dff);
-    color: var(--primary, #4a7dff);
-}
-
 /* -- Slide Content -------------------------------------------- */
 
 .slideContent {
     flex: 1;
-    padding: 32px 40px;
-    min-height: 320px;
-    max-height: 60vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+    position: relative;
+    min-height: 600px;
 }
 
 .slideViewerFullscreen .slideContent {
-    min-height: unset;
-    max-height: unset;
-    padding: 48px 64px;
-    font-size: 1.2em;
+    min-height: 100vh;
+}
+
+/* -- Fullscreen Hint ------------------------------------------ */
+
+.fullscreenHint {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 10000;
+    animation: fadeInOut 3s ease-in-out;
+    pointer-events: none;
+}
+
+.fullscreenHint kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+    margin: 0 2px;
+}
+
+@keyframes fadeInOut {
+    0%, 100% { opacity: 0; }
+    10%, 90% { opacity: 1; }
 }
 
 /* -- Speaker Notes -------------------------------------------- */
