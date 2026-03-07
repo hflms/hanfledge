@@ -107,26 +107,55 @@ export default function SessionPage() {
     // -- WebSocket Event Handler ------------------------------------
 
     const handleWSEvent = useCallback((event: WSEvent) => {
-        // Skip events when a plugin renderer handles the WebSocket directly
-        if (activePlugin) return;
-
         switch (event.event) {
-            case 'agent_thinking': {
-                const payload = event.payload as { status: string };
-                setThinkingStatus(payload.status);
-                break;
-            }
+            // Skill renderer 处理的事件 - 如果有 activePlugin 则跳过
+            case 'agent_thinking':
+            case 'token_delta':
+            case 'turn_complete': {
+                if (activePlugin) return; // Skill renderer 会处理这些事件
+                
+                // 原有逻辑
+                if (event.event === 'agent_thinking') {
+                    const payload = event.payload as { status: string };
+                    setThinkingStatus(payload.status);
+                } else if (event.event === 'token_delta') {
+                    const payload = event.payload as { text?: string; content?: string; delta?: string };
+                    const delta = payload.text ?? payload.content ?? payload.delta ?? '';
+                    if (!delta) break;
+                    setThinkingStatus(null);
+                    setStreamingContent(prev => {
+                        const next = prev + delta;
+                        lastResponseRef.current = next;
+                        return next;
+                    });
+                } else if (event.event === 'turn_complete') {
+                    console.log('[SESSION DEBUG] ✅ turn_complete 收到, 流式内容长度:', streamingContent.length);
+                    setThinkingStatus(null);
+                    setSending(false);
 
-            case 'token_delta': {
-                const payload = event.payload as { text?: string; content?: string; delta?: string };
-                const delta = payload.text ?? payload.content ?? payload.delta ?? '';
-                if (!delta) break;
-                setThinkingStatus(null);
-                setStreamingContent(prev => {
-                    const next = prev + delta;
-                    lastResponseRef.current = next;
-                    return next;
-                });
+                    setStreamingContent(prev => {
+                        const content = prev || lastResponseRef.current;
+                        if (content) {
+                            setMessages(msgs => [
+                                ...msgs,
+                                {
+                                    id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                                    role: 'coach',
+                                    content,
+                                    timestamp: Date.now(),
+                                },
+                            ]);
+
+                            const pendingQ = pendingQuestionRef.current;
+                            if (pendingQ) {
+                                setCachedResponse(sessionId, pendingQ, content);
+                                pendingQuestionRef.current = null;
+                            }
+                        }
+                        lastResponseRef.current = '';
+                        return '';
+                    });
+                }
                 break;
             }
 
@@ -178,6 +207,7 @@ export default function SessionPage() {
             }
 
             case 'teacher_takeover': {
+                // 教师接管事件 - 始终由 page.tsx 处理
                 const payload = event.payload as { id: number, content: string, created_at: string };
                 setMessages(prev => [
                     ...prev,
@@ -191,36 +221,6 @@ export default function SessionPage() {
                 // Clear any ongoing AI thinking/streaming since teacher interrupted
                 setThinkingStatus(null);
                 setStreamingContent('');
-                break;
-            }
-
-            case 'turn_complete': {
-                console.log('[SESSION DEBUG] ✅ turn_complete 收到, 流式内容长度:', streamingContent.length);
-                setThinkingStatus(null);
-                setSending(false);
-
-                setStreamingContent(prev => {
-                    const content = prev || lastResponseRef.current;
-                    if (content) {
-                        setMessages(msgs => [
-                            ...msgs,
-                            {
-                                id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                                role: 'coach',
-                                content,
-                                timestamp: Date.now(),
-                            },
-                        ]);
-
-                        const pendingQ = pendingQuestionRef.current;
-                        if (pendingQ) {
-                            setCachedResponse(sessionId, pendingQ, content);
-                            pendingQuestionRef.current = null;
-                        }
-                    }
-                    lastResponseRef.current = '';
-                    return '';
-                });
                 break;
             }
 

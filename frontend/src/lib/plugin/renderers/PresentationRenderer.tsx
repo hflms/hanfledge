@@ -239,9 +239,11 @@ export default function PresentationRenderer({
                         if (prev) {
                             const parsed = parseSlidesFromContent(prev);
                             if (parsed) {
+                                // 找到了 slides 标签
                                 setSlidesMarkdown(parsed);
                                 setPhase('idle');
 
+                                // 只添加 slides 外的介绍文字（如果有）
                                 const intro = stripSlidesTag(prev);
                                 if (intro) {
                                     setMessages(msgs => [...msgs, {
@@ -260,6 +262,7 @@ export default function PresentationRenderer({
                                     timestamp: Date.now(),
                                 });
                             } else {
+                                // 没有 slides 标签，添加完整内容作为普通消息
                                 setMessages(msgs => [...msgs, {
                                     id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                                     role: 'coach',
@@ -268,6 +271,7 @@ export default function PresentationRenderer({
                                 }]);
                             }
                         }
+                        // 清空流式内容
                         streamingContentRef.current = '';
                         setStreamingContent('');
                         break;
