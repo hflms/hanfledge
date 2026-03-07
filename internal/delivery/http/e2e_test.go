@@ -659,10 +659,25 @@ func TestE2ETeacherStudentFlow(t *testing.T) {
 func TestSessionAccessControl(t *testing.T) {
 	env := setupTestEnv(t)
 
+	// Create a course + activity for the session to be valid
+	course := model.Course{SchoolID: env.schoolID, TeacherID: env.teacherID, Title: "Course X", Subject: "math", GradeLevel: 10}
+	env.db.Create(&course)
+
+	activity := model.LearningActivity{
+		CourseID:    course.ID,
+		TeacherID:   env.teacherID,
+		Title:       "Activity X",
+		KPIDS:       "[]",
+		SkillConfig: "{}",
+		Status:      model.ActivityStatusPublished,
+		CreatedAt:   time.Now().Format(time.RFC3339),
+	}
+	env.db.Create(&activity)
+
 	// Create a session for student
 	session := model.StudentSession{
 		StudentID:  env.studentID,
-		ActivityID: 999, // fake
+		ActivityID: activity.ID,
 		CurrentKP:  1,
 		Scaffold:   model.ScaffoldHigh,
 		Status:     model.SessionStatusActive,

@@ -163,6 +163,25 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		return fmt.Errorf("load session failed: %w", err)
 	}
 
+	// 检查技能是否发生了动态切换，如果是，通知前端刷新渲染器
+	if prescription.RecommendedSkill != "" && prescription.RecommendedSkill != session.ActiveSkill {
+		oldSkill := session.ActiveSkill
+		slogOrch.Info("dynamic skill transition triggered",
+			"session_id", tc.SessionID, "old_skill", oldSkill, "new_skill", prescription.RecommendedSkill)
+
+		// 更新会话的 ActiveSkill
+		o.db.WithContext(tc.Ctx).Model(&session).Update("active_skill", prescription.RecommendedSkill)
+		session.ActiveSkill = prescription.RecommendedSkill
+
+		// 通知前端发生技能切换
+		if tc.OnScaffold != nil {
+			tc.OnScaffold("skill_change", map[string]interface{}{
+				"old_skill": oldSkill,
+				"new_skill": prescription.RecommendedSkill,
+			})
+		}
+	}
+
 	targetKPID := session.CurrentKP
 	if targetKPID == 0 && len(prescription.TargetKPSequence) > 0 {
 		targetKPID = prescription.TargetKPSequence[0].KPID

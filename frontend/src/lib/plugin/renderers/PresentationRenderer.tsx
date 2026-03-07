@@ -16,6 +16,9 @@ import dynamic from 'next/dynamic';
 import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './PresentationRenderer.module.css';
+import RevealDeck from '@/components/RevealDeck';
+import { useTelemetry } from '@/lib/useTelemetry';
+import TextSelectionTooltip from '@/components/TextSelectionTooltip';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
@@ -38,13 +41,10 @@ type PresentationPhase = 'generating' | 'viewing' | 'idle';
  * @param content - Raw coach response string
  * @returns Array of slide markdown strings, or null if no slides found
  */
-function parseSlidesFromContent(content: string): string[] | null {
+function parseSlidesFromContent(content: string): string | null {
     const match = content.match(/<slides>([\s\S]*?)<\/slides>/);
     if (!match) return null;
-    const raw = match[1].trim();
-    // Split by horizontal rule separator (---)
-    const slides = raw.split(/\n---\n/).map(s => s.trim()).filter(Boolean);
-    return slides.length > 0 ? slides : null;
+    return match[1].trim();
 }
 
 /**
@@ -57,36 +57,7 @@ function stripSlidesTag(content: string): string {
     return content.replace(/<slides>[\s\S]*?<\/slides>/, '').trim();
 }
 
-/**
- * Extracts speaker notes from a slide's markdown.
- * Notes are formatted as blockquote lines starting with "备注：".
- *
- * @param slideMarkdown - Single slide's markdown content
- * @returns Object with slide content and speaker notes separated
- */
-function extractSpeakerNotes(slideMarkdown: string): { content: string; notes: string | null } {
-    const lines = slideMarkdown.split('\n');
-    const contentLines: string[] = [];
-    const noteLines: string[] = [];
-    let inNotes = false;
 
-    for (const line of lines) {
-        if (line.match(/^>\s*备注[：:]/)) {
-            inNotes = true;
-            noteLines.push(line.replace(/^>\s*备注[：:]\s*/, '').trim());
-        } else if (inNotes && line.startsWith('>')) {
-            noteLines.push(line.replace(/^>\s*/, '').trim());
-        } else {
-            inNotes = false;
-            contentLines.push(line);
-        }
-    }
-
-    return {
-        content: contentLines.join('\n').trim(),
-        notes: noteLines.length > 0 ? noteLines.join('\n') : null,
-    };
-}
 
 // -- Component ---------------------------------------------------
 
@@ -94,6 +65,8 @@ export default function PresentationRenderer({
     agentChannel,
     onInteractionEvent,
     initialMessages = [],
+    studentContext,
+    knowledgePoint,
 }: SkillRendererProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -102,11 +75,25 @@ export default function PresentationRenderer({
     const streamingContentRef = useRef('');
     const [streamingContent, setStreamingContent] = useState('');
 
+    const { trackEvent } = useTelemetry(studentContext?.sessionId || 0, studentContext?.courseId || 0);
+
+    const handleSlideChange = useCallback((indexh: number, indexv: number) => {
+        trackEvent({
+            event_type: 'custom',
+            skill_id: 'presentation_generator',
+            kp_id: knowledgePoint?.id,
+            trigger_reason: 'slide_changed',
+            metadata: {
+                slide_h: indexh,
+                slide_v: indexv,
+                timestamp: Date.now()
+            }
+        });
+    }, [trackEvent, knowledgePoint]);
+
     // Presentation-specific state
     const [phase, setPhase] = useState<PresentationPhase>('generating');
-    const [slides, setSlides] = useState<string[]>([]);
-    const [currentSlide, setCurrentSlide] = useState(0);
-    const [showNotes, setShowNotes] = useState(false);
+    const [slidesMarkdown, setSlidesMarkdown] = useState<string | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -119,7 +106,7 @@ export default function PresentationRenderer({
         if (!initialMessages || initialMessages.length === 0) return;
         
         const parsedMessages: ChatMessage[] = [];
-        let foundSlides: string[] | null = null;
+        let foundSlides: string | null = null;
         
         for (const msg of initialMessages) {
             if (msg.role === 'coach' && msg.content) {
@@ -155,8 +142,8 @@ export default function PresentationRenderer({
         
         setTimeout(() => {
             setMessages(parsedMessages);
-            if (foundSlides && foundSlides.length > 0) {
-                setSlides(foundSlides);
+            if (foundSlides) {
+                setSlidesMarkdown(foundSlides);
                 setPhase('idle');
                 hasTriggeredRef.current = true;
             }
@@ -188,15 +175,6 @@ export default function PresentationRenderer({
         }
     }, [initialMessages.length, messages.length, sending, streamingContent, agentChannel]);
 
-    // -- Parse current slide content & notes ---------------------
-
-    const currentSlideData = useMemo(() => {
-        if (slides.length === 0 || currentSlide >= slides.length) {
-            return { content: '', notes: null };
-        }
-        return extractSpeakerNotes(slides[currentSlide]);
-    }, [slides, currentSlide]);
-
     // -- Scroll to bottom ----------------------------------------
 
     const scrollToBottom = useCallback(() => {
@@ -213,30 +191,16 @@ export default function PresentationRenderer({
         if (phase !== 'viewing') return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
-                e.preventDefault();
-                setCurrentSlide(prev => Math.min(prev + 1, slides.length - 1));
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                setCurrentSlide(prev => Math.max(prev - 1, 0));
-            } else if (e.key === 'Home') {
-                e.preventDefault();
-                setCurrentSlide(0);
-            } else if (e.key === 'End') {
-                e.preventDefault();
-                setCurrentSlide(slides.length - 1);
-            } else if (e.key === 'Escape' && isFullscreen) {
+            if (e.key === 'Escape' && isFullscreen) {
                 setIsFullscreen(false);
             } else if (e.key === 'f' || e.key === 'F') {
                 setIsFullscreen(prev => !prev);
-            } else if (e.key === 'n' || e.key === 'N') {
-                setShowNotes(prev => !prev);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [phase, slides.length, isFullscreen]);
+    }, [phase, isFullscreen]);
 
     // -- WebSocket message handling ------------------------------
 
@@ -262,9 +226,8 @@ export default function PresentationRenderer({
                         const prev = streamingContentRef.current;
                         if (prev) {
                             const parsed = parseSlidesFromContent(prev);
-                            if (parsed && parsed.length > 0) {
-                                setSlides(parsed);
-                                setCurrentSlide(0);
+                            if (parsed) {
+                                setSlidesMarkdown(parsed);
                                 setPhase('idle');
 
                                 const intro = stripSlidesTag(prev);
@@ -281,7 +244,6 @@ export default function PresentationRenderer({
                                     type: 'presentation_generated',
                                     payload: {
                                         skillId: 'presentation_generator',
-                                        slideCount: parsed.length,
                                     },
                                     timestamp: Date.now(),
                                 });
@@ -344,26 +306,11 @@ export default function PresentationRenderer({
         };
     }, [agentChannel, onInteractionEvent]);
 
-    // -- Slide navigation ----------------------------------------
-
-    const goToSlide = useCallback((index: number) => {
-        setCurrentSlide(Math.max(0, Math.min(index, slides.length - 1)));
-    }, [slides.length]);
-
-    const goToPrev = useCallback(() => {
-        setCurrentSlide(prev => Math.max(prev - 1, 0));
-    }, []);
-
-    const goToNext = useCallback(() => {
-        setCurrentSlide(prev => Math.min(prev + 1, slides.length - 1));
-    }, [slides.length]);
-
     // -- Request regeneration ------------------------------------
 
     const handleRegenerate = useCallback(() => {
         setPhase('generating');
-        setSlides([]);
-        setCurrentSlide(0);
+        setSlidesMarkdown(null);
 
         agentChannel.send(JSON.stringify({
             event: 'user_message',
@@ -403,7 +350,15 @@ export default function PresentationRenderer({
 
     
 
-    // -- Render thinking indicator --------------------------------
+    // -- Render Slide Viewer or Content wrapper -----------------
+
+    const handleAskAI = useCallback((selectedText: string) => {
+        setInput(prev => {
+            const prefix = prev.length > 0 && !prev.endsWith('\n') ? prev + '\n' : prev;
+            return prefix + `> ${selectedText}\n\n请解释一下这段话：`;
+        });
+        // Optionally focus the input if possible, but state update might be enough
+    }, []);
 
     const renderThinking = () => {
         if (!thinkingStatus) return null;
@@ -422,28 +377,20 @@ export default function PresentationRenderer({
     // -- Render slide viewer -------------------------------------
 
     const renderSlideViewer = () => {
-        if (slides.length === 0) return null;
+        if (!slidesMarkdown) return null;
 
         return (
             <div
                 ref={slideContainerRef}
                 className={`${styles.slideViewer} ${isFullscreen ? styles.slideViewerFullscreen : ''}`}
+                style={{ padding: 0, height: '600px', display: 'flex', flexDirection: 'column' }}
             >
                 {/* Toolbar */}
-                <div className={styles.slideToolbar}>
+                <div className={styles.slideToolbar} style={{ zIndex: 10 }}>
                     <div className={styles.slideCounter}>
-                        <span className={styles.slideCounterCurrent}>{currentSlide + 1}</span>
-                        <span className={styles.slideCounterSep}>/</span>
-                        <span className={styles.slideCounterTotal}>{slides.length}</span>
+                        <span className={styles.slideCounterCurrent}>演示文稿</span>
                     </div>
                     <div className={styles.toolbarActions}>
-                        <button
-                            className={`${styles.toolbarBtn} ${showNotes ? styles.toolbarBtnActive : ''}`}
-                            onClick={() => setShowNotes(prev => !prev)}
-                            title="演讲备注 (N)"
-                        >
-                            📝
-                        </button>
                         <button
                             className={styles.toolbarBtn}
                             onClick={() => setIsFullscreen(prev => !prev)}
@@ -469,49 +416,9 @@ export default function PresentationRenderer({
                     </div>
                 </div>
 
-                {/* Slide content */}
-                <div className={styles.slideContent}>
-                    <MarkdownRenderer content={currentSlideData.content} />
-                </div>
-
-                {/* Speaker notes */}
-                {showNotes && currentSlideData.notes && (
-                    <div className={styles.speakerNotes}>
-                        <div className={styles.speakerNotesLabel}>📌 演讲备注</div>
-                        <div className={styles.speakerNotesContent}>
-                            {currentSlideData.notes}
-                        </div>
-                    </div>
-                )}
-
-                {/* Navigation */}
-                <div className={styles.slideNavigation}>
-                    <button
-                        className={styles.navBtn}
-                        onClick={goToPrev}
-                        disabled={currentSlide === 0}
-                    >
-                        ◀ 上一页
-                    </button>
-
-                    <div className={styles.slideIndicators}>
-                        {slides.map((_, idx) => (
-                            <button
-                                key={idx}
-                                className={`${styles.slideIndicator} ${idx === currentSlide ? styles.slideIndicatorActive : ''}`}
-                                onClick={() => goToSlide(idx)}
-                                title={`第 ${idx + 1} 页`}
-                            />
-                        ))}
-                    </div>
-
-                    <button
-                        className={styles.navBtn}
-                        onClick={goToNext}
-                        disabled={currentSlide === slides.length - 1}
-                    >
-                        下一页 ▶
-                    </button>
+                {/* RevealDeck */}
+                <div style={{ flex: 1, position: 'relative' }}>
+                    <RevealDeck key={slidesMarkdown} markdown={slidesMarkdown} onSlideChange={handleSlideChange} />
                 </div>
             </div>
         );
@@ -521,6 +428,7 @@ export default function PresentationRenderer({
 
     return (
         <div className={styles.presentationContainer}>
+            <TextSelectionTooltip onAsk={handleAskAI} />
             {/* Messages area */}
             <div className={styles.messagesArea}>
                 {messages.map(msg => (
@@ -568,7 +476,7 @@ export default function PresentationRenderer({
                 {renderThinking()}
 
                 {/* Show Presentation Button */}
-                {slides.length > 0 && phase === 'idle' && (
+                {slidesMarkdown && phase === 'idle' && (
                     <div style={{
                         margin: '24px 0',
                         padding: '24px',
@@ -581,7 +489,7 @@ export default function PresentationRenderer({
                         <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎉</div>
                         <h3 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)' }}>演示文稿已生成</h3>
                         <p style={{ margin: '0 0 20px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>
-                            已为你准备好包含 {slides.length} 页幻灯片的课堂演示材料
+                            已为你准备好互动演示材料
                         </p>
                         <button 
                             style={{ 

@@ -133,20 +133,21 @@ export default function SessionPage() {
             case 'ui_scaffold_change': {
                 const payload = event.payload as {
                     action: string;
-                    data: {
-                        old_level: string;
-                        new_level: ScaffoldLevel;
-                        mastery: number;
-                        kp_id: number;
-                        direction: string;
-                    };
+                    data: any; // Allow mixed types
                 };
 
+                if (payload.action === 'skill_change') {
+                    const newSkill = payload.data.new_skill;
+                    setSession(prev => prev ? { ...prev, active_skill: newSkill } : null);
+                    toast(`系统已根据您的掌握度自动切换到技能: ${newSkill}`, 'success');
+                    break;
+                }
+
                 setScaffoldTransition(true);
-                setScaffoldLevel(payload.data.new_level);
+                setScaffoldLevel(payload.data.new_level as ScaffoldLevel);
 
                 const direction = payload.data.direction === 'fade' ? '降低' : '增强';
-                const newLabel = SCAFFOLD_LABELS[payload.data.new_level];
+                const newLabel = SCAFFOLD_LABELS[payload.data.new_level as ScaffoldLevel];
                 setMessages(prev => [
                     ...prev,
                     {

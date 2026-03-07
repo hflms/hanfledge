@@ -84,6 +84,14 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		// 查询已挂载技能
 		skillID := a.getSkillForKP(kpID)
 
+		// 动态技能降级策略 (§5.2 Dynamic Orchestration Fallback)
+		if skillID == "" {
+			skillID = a.findDynamicSkill(currentMastery)
+			if skillID != "" {
+				slogStrat.Info("dynamic skill fallback selected", "skill", skillID, "mastery", currentMastery, "kp_id", kpID)
+			}
+		}
+
 		// Step 3.5: 渐进策略触发 — 检查是否满足技能切换条件 (§5.2 Step 2, item 4)
 		// 例如: 苏格拉底引导 mastery >= 0.8 → 自动切换为谬误侦探
 		if a.registry != nil && skillID != "" {
@@ -360,4 +368,22 @@ func parseTriggerCondition(condition string, mastery float64) bool {
 		slogStrat.Warn("unsupported trigger operator", "operator", operator)
 		return false
 	}
+}
+
+// findDynamicSkill 当没有静态绑定的技能时，基于掌握度动态选择合适的技能。
+func (a *StrategistAgent) findDynamicSkill(mastery float64) string {
+	if a.registry == nil {
+		return "socratic" // fallback 默认
+	}
+	allSkills := a.registry.ListSkills("", "")
+	for _, candidate := range allSkills {
+		ct := candidate.Metadata.ProgressiveTriggers
+		if ct == nil || ct.ActivateWhen == "" {
+			continue
+		}
+		if parseTriggerCondition(ct.ActivateWhen, mastery) {
+			return candidate.Metadata.ID
+		}
+	}
+	return "socratic" // 默认退底为苏格拉底
 }

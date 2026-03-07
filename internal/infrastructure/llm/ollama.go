@@ -53,11 +53,11 @@ type ChatRequest struct {
 
 // ChatOptions holds generation parameters.
 type ChatOptions struct {
-	Temperature float64 `json:"temperature,omitempty"`
-	TopP        float64 `json:"top_p,omitempty"`
-	MaxTokens   int     `json:"num_predict,omitempty"`
-	ProviderOverride string `json:"-"`
-	ModelOverride    string `json:"-"`
+	Temperature      float64 `json:"temperature,omitempty"`
+	TopP             float64 `json:"top_p,omitempty"`
+	MaxTokens        int     `json:"num_predict,omitempty"`
+	ProviderOverride string  `json:"-"`
+	ModelOverride    string  `json:"-"`
 }
 
 // ChatResponse is the response from Ollama /api/chat.

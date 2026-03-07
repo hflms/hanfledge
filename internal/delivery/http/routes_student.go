@@ -16,6 +16,7 @@ func registerStudentRoutes(
 	dashboardHandler *handler.DashboardHandler,
 	kgHandler *handler.KnowledgeGraphHandler,
 	achievementHandler *handler.AchievementHandler,
+	telemetryHandler *handler.TelemetryHandler,
 ) {
 	student := protected.Group("/student")
 	student.Use(middleware.RBAC(db, model.RoleStudent, model.RoleSysAdmin))
@@ -26,5 +27,6 @@ func registerStudentRoutes(
 		student.GET("/error-notebook", dashboardHandler.GetErrorNotebook)            // Error Notebook
 		student.GET("/achievements", achievementHandler.GetMyAchievements)           // Achievements
 		student.GET("/achievements/definitions", achievementHandler.ListDefinitions) // Achievement defs
+		student.POST("/telemetry", telemetryHandler.RecordTelemetry)                 // Telemetry
 	}
 }

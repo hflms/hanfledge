@@ -14,6 +14,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ChatInputArea from '@/components/ChatInputArea';
 import SkillTestOverlay from '@/components/SkillTestOverlay';
+import TextSelectionTooltip from '@/components/TextSelectionTooltip';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './SocraticRenderer.module.css';
 
@@ -191,6 +192,13 @@ export default function SocraticRenderer({
 
     // -- Send message --------------------------------------------
 
+    const handleAskAI = useCallback((selectedText: string) => {
+        setInput(prev => {
+            const prefix = prev.length > 0 && !prev.endsWith('\n') ? prev + '\n' : prev;
+            return prefix + `> ${selectedText}\n\n`;
+        });
+    }, []);
+
     const handleSend = useCallback(() => {
         const text = input.trim();
         if (!text || sending) return;
@@ -297,6 +305,8 @@ export default function SocraticRenderer({
 
     return (
         <div className={styles.container}>
+            <TextSelectionTooltip onAsk={handleAskAI} />
+
             {/* KP context header */}
             {knowledgePoint.title && (
                 <div className={styles.kpHeader}>

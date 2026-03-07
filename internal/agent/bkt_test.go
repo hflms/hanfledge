@@ -42,9 +42,9 @@ func TestUpdateMastery_CorrectAnswer(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := p.UpdateMastery(tc.priorMastery, true)
+			result := p.UpdateMastery(tc.priorMastery, true, EvidenceTest)
 			if tc.wantHigher && result <= tc.priorMastery {
-				t.Errorf("UpdateMastery(%f, true) = %f, expected > %f",
+				t.Errorf("UpdateMastery(%f, true, EvidenceTest) = %f, expected > %f",
 					tc.priorMastery, result, tc.priorMastery)
 			}
 		})
@@ -67,10 +67,10 @@ func TestUpdateMastery_IncorrectAnswer(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := p.UpdateMastery(tc.priorMastery, false)
+			result := p.UpdateMastery(tc.priorMastery, false, EvidenceTest)
 			// 结果应在 [0, 1] 范围内
 			if result < 0.0 || result > 1.0 {
-				t.Errorf("UpdateMastery(%f, false) = %f, out of [0, 1] range",
+				t.Errorf("UpdateMastery(%f, false, EvidenceTest) = %f, out of [0, 1] range",
 					tc.priorMastery, result)
 			}
 		})
@@ -82,9 +82,9 @@ func TestUpdateMastery_Clamp(t *testing.T) {
 	p := BKTParams{PL0: 0.1, PT: 1.0, PG: 0.0, PS: 0.0}
 
 	// PT=1.0 意味着 100% 学习转移，mastery 应为 1.0
-	result := p.UpdateMastery(0.5, true)
+	result := p.UpdateMastery(0.5, true, EvidenceTest)
 	if result != 1.0 {
-		t.Errorf("With PT=1.0, UpdateMastery(0.5, true) = %f, want 1.0", result)
+		t.Errorf("With PT=1.0, UpdateMastery(0.5, true, EvidenceTest) = %f, want 1.0", result)
 	}
 }
 
@@ -94,7 +94,7 @@ func TestUpdateMastery_MonotonicallyIncreases_ConsecutiveCorrect(t *testing.T) {
 
 	// 连续 10 次答对，掌握度应单调递增
 	for i := 0; i < 10; i++ {
-		newMastery := p.UpdateMastery(mastery, true)
+		newMastery := p.UpdateMastery(mastery, true, EvidenceTest)
 		if newMastery < mastery {
 			t.Errorf("第 %d 次答对后掌握度下降: %f → %f", i+1, mastery, newMastery)
 		}
@@ -111,8 +111,8 @@ func TestUpdateMastery_CorrectVsIncorrect_Difference(t *testing.T) {
 	p := DefaultBKTParams()
 	prior := 0.5
 
-	correctResult := p.UpdateMastery(prior, true)
-	incorrectResult := p.UpdateMastery(prior, false)
+	correctResult := p.UpdateMastery(prior, true, EvidenceTest)
+	incorrectResult := p.UpdateMastery(prior, false, EvidenceTest)
 
 	// 答对的掌握度应高于答错的
 	if correctResult <= incorrectResult {
@@ -136,13 +136,13 @@ func TestUpdateMastery_BoundaryValues(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := p.UpdateMastery(tc.priorMastery, tc.correct)
+			result := p.UpdateMastery(tc.priorMastery, tc.correct, EvidenceTest)
 			if result < 0.0 || result > 1.0 {
-				t.Errorf("UpdateMastery(%f, %t) = %f, out of [0, 1]",
+				t.Errorf("UpdateMastery(%f, %t, EvidenceTest) = %f, out of [0, 1]",
 					tc.priorMastery, tc.correct, result)
 			}
 			if math.IsNaN(result) || math.IsInf(result, 0) {
-				t.Errorf("UpdateMastery(%f, %t) = %f, got NaN or Inf",
+				t.Errorf("UpdateMastery(%f, %t, EvidenceTest) = %f, got NaN or Inf",
 					tc.priorMastery, tc.correct, result)
 			}
 		})
@@ -150,19 +150,19 @@ func TestUpdateMastery_BoundaryValues(t *testing.T) {
 }
 
 func TestUpdateMastery_BayesianPosterior_KnownValues(t *testing.T) {
-	// 使用默认参数手工验证贝叶斯后验公式
-	// P(G)=0.2, P(S)=0.1, P(T)=0.3
+	// 使用 EvidenceTest 参数手工验证贝叶斯后验公式
+	// EvidenceTest 下: P(G)=0.05, P(S)=0.05. P(T)依然为默认 0.3
 	// prior=0.5, correct=true
-	//   pCorrectGivenMastered = 1-0.1 = 0.9
-	//   pCorrectGivenNotMastered = 0.2
-	//   pCorrect = 0.5*0.9 + 0.5*0.2 = 0.55
-	//   posterior = 0.5*0.9/0.55 ≈ 0.818182
-	//   mastery = 0.818182 + (1-0.818182)*0.3 ≈ 0.872727
+	//   pCorrectGivenMastered = 1-0.05 = 0.95
+	//   pCorrectGivenNotMastered = 0.05
+	//   pCorrect = 0.5*0.95 + 0.5*0.05 = 0.5
+	//   posterior = 0.5*0.95/0.5 = 0.95
+	//   mastery = 0.95 + (1-0.95)*0.3 = 0.965
 	p := DefaultBKTParams()
-	result := p.UpdateMastery(0.5, true)
-	expected := 0.872727
+	result := p.UpdateMastery(0.5, true, EvidenceTest)
+	expected := 0.965
 
 	if math.Abs(result-expected) > 0.001 {
-		t.Errorf("UpdateMastery(0.5, true) = %f, want ≈ %f", result, expected)
+		t.Errorf("UpdateMastery(0.5, true, EvidenceTest) = %f, want ≈ %f", result, expected)
 	}
 }

@@ -59,7 +59,7 @@ func (h *SessionHandler) HandleIntervention(c *gin.Context) {
 		Content:   req.Content,
 		CreatedAt: time.Now(),
 	}
-	
+
 	// If it's a whisper, we mark it internally so the frontend doesn't show it directly
 	// Or we can add a new type field. For now, let's prefix content or add a meta field.
 	// We'll update the Interaction model to include TurnType or Meta if needed.
@@ -78,18 +78,18 @@ func (h *SessionHandler) HandleIntervention(c *gin.Context) {
 			"content":    req.Content,
 			"created_at": interaction.CreatedAt,
 		})
-		
+
 		// Optional: We might need to interrupt any ongoing LLM generation here.
 		// For now, it just sends the message.
 	} else if req.Type == "whisper" {
 		// Whisper: Send an event to the orchestrator to trigger a new AI response based on the instruction
 		// We'll call a new Orchestrator method for this
-		
+
 		// For now just ack
 		h.sendEvent(ws, "system_message", map[string]string{
 			"content": "老师向AI发送了一条指令...",
 		})
-		
+
 		go h.Orchestrator.HandleWhisper(c.Request.Context(), &session, req.Content, func(evt agent.WSEvent) {
 			ws.writeJSON(evt)
 		})

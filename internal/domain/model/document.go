@@ -8,17 +8,17 @@ import "time"
 
 // Document 上传的教材文档记录。
 type Document struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	CourseID  uint      `gorm:"not null;index" json:"course_id"`
-	FileName  string    `gorm:"size:500;not null" json:"file_name"`
-	FilePath  string    `gorm:"size:1000;not null" json:"file_path"`
-	FileSize  int64     `json:"file_size"`
-	MimeType  string    `gorm:"size:100" json:"mime_type"`
-	Status    DocStatus `gorm:"size:20;default:uploaded" json:"status"` // uploaded, processing, completed, failed
-	PageCount int       `json:"page_count"`
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	CourseID     uint      `gorm:"not null;index" json:"course_id"`
+	FileName     string    `gorm:"size:500;not null" json:"file_name"`
+	FilePath     string    `gorm:"size:1000;not null" json:"file_path"`
+	FileSize     int64     `json:"file_size"`
+	MimeType     string    `gorm:"size:100" json:"mime_type"`
+	Status       DocStatus `gorm:"size:20;default:uploaded" json:"status"` // uploaded, processing, completed, failed
+	PageCount    int       `json:"page_count"`
 	ErrorMessage string    `gorm:"type:text" json:"error_message,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 
 	Course Course          `gorm:"foreignKey:CourseID" json:"-"`
 	Chunks []DocumentChunk `gorm:"foreignKey:DocumentID" json:"chunks,omitempty"`

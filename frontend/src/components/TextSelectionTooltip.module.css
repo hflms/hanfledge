@@ -1,0 +1,41 @@
+.tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: var(--primary, #4a7dff);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.tooltip:hover {
+  background: var(--primary-hover, #3a65db);
+}
+
+.tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px 4px 0;
+  border-style: solid;
+  border-color: var(--primary, #4a7dff) transparent transparent transparent;
+}
+
+.tooltip:hover::after {
+  border-color: var(--primary-hover, #3a65db) transparent transparent transparent;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translate(-50%, 10px) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
