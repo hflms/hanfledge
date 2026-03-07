@@ -75,10 +75,25 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 		return PersonalizedMaterial{}, fmt.Errorf("get course_id: %w", err)
 	}
 
+	// Step 1.5: 构建增强查询 — 将知识点标题加入检索查询
+	// 这确保检索到的材料与目标知识点相关，而不是仅依赖学生输入
+	enhancedQuery := userInput
+	if len(prescription.TargetKPSequence) > 0 {
+		var kp model.KnowledgePoint
+		if err := a.db.First(&kp, prescription.TargetKPSequence[0].KPID).Error; err == nil {
+			// 将知识点标题作为主要查询，学生输入作为辅助
+			enhancedQuery = kp.Title + " " + userInput
+			slogDesigner.Info("enhanced query with KP title", 
+				"kp_title", kp.Title, 
+				"original_query", userInput,
+				"enhanced_query", enhancedQuery)
+		}
+	}
+
 	// Step 2: RAG-Fusion 查询扩展 (§8.1.2)
-	// 将原始查询扩展为多个学术化变体，提升召回覆盖面
+	// 将增强查询扩展为多个学术化变体，提升召回覆盖面
 	slogDesigner.Info("[DEBUG] starting query expansion", "session_id", prescription.SessionID)
-	expandedQueries := a.expander.ExpandQuery(ctx, userInput)
+	expandedQueries := a.expander.ExpandQuery(ctx, enhancedQuery)
 	slogDesigner.Info("[DEBUG] query expansion done", "session_id", prescription.SessionID, "variants", len(expandedQueries))
 
 	// Step 3: 多路语义检索
