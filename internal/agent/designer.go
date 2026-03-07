@@ -84,10 +84,20 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 			// 将知识点标题作为主要查询，学生输入作为辅助
 			enhancedQuery = kp.Title + " " + userInput
 			slogDesigner.Info("enhanced query with KP title", 
+				"session_id", prescription.SessionID,
+				"kp_id", prescription.TargetKPSequence[0].KPID,
 				"kp_title", kp.Title, 
-				"original_query", userInput,
+				"user_input", userInput,
 				"enhanced_query", enhancedQuery)
+		} else {
+			slogDesigner.Warn("failed to load KP for query enhancement",
+				"session_id", prescription.SessionID,
+				"kp_id", prescription.TargetKPSequence[0].KPID,
+				"err", err)
 		}
+	} else {
+		slogDesigner.Warn("no target KP in prescription",
+			"session_id", prescription.SessionID)
 	}
 
 	// Step 2: RAG-Fusion 查询扩展 (§8.1.2)
@@ -405,8 +415,20 @@ func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chu
 		var kp model.KnowledgePoint
 		if err := a.db.First(&kp, currentKP.KPID).Error; err == nil {
 			sb.WriteString(fmt.Sprintf("**你必须围绕这个知识点进行教学：%s**\n", kp.Title))
+			slogDesigner.Info("system prompt includes target KP",
+				"session_id", prescription.SessionID,
+				"kp_id", currentKP.KPID,
+				"kp_title", kp.Title)
+		} else {
+			slogDesigner.Warn("failed to load KP title for system prompt",
+				"session_id", prescription.SessionID,
+				"kp_id", currentKP.KPID,
+				"err", err)
 		}
 		sb.WriteString("\n")
+	} else {
+		slogDesigner.Warn("no target KP in prescription for system prompt",
+			"session_id", prescription.SessionID)
 	}
 
 	// 支架说明

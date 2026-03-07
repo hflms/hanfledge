@@ -136,6 +136,19 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		recommendedSkill = targets[0].SkillID
 	}
 
+	// 日志：输出目标知识点序列
+	if len(targets) > 0 {
+		var kp model.KnowledgePoint
+		if err := a.db.First(&kp, targets[0].KPID).Error; err == nil {
+			slogStrat.Info("strategist analysis complete",
+				"session_id", sessionID,
+				"target_kp_id", targets[0].KPID,
+				"target_kp_title", kp.Title,
+				"current_mastery", targets[0].CurrentMastery,
+				"skill_id", targets[0].SkillID)
+		}
+	}
+
 	prescription := LearningPrescription{
 		SessionID:        sessionID,
 		StudentID:        studentID,
