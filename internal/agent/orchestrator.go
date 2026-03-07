@@ -225,9 +225,21 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		}
 	}
 
-	targetKPID := session.CurrentKP
-	if targetKPID == 0 && len(prescription.TargetKPSequence) > 0 {
+	// 使用 Strategist 分析后的第一个目标知识点 (已按掌握度排序)
+	targetKPID := uint(0)
+	if len(prescription.TargetKPSequence) > 0 {
 		targetKPID = prescription.TargetKPSequence[0].KPID
+	}
+
+	// 如果 Strategist 没有返回目标,回退到会话的 CurrentKP
+	if targetKPID == 0 {
+		targetKPID = session.CurrentKP
+	}
+
+	// 更新会话的 CurrentKP 为实际引导的知识点
+	if targetKPID != session.CurrentKP && targetKPID != 0 {
+		o.db.WithContext(tc.Ctx).Model(&session).Update("current_kp", targetKPID)
+		session.CurrentKP = targetKPID
 	}
 
 	// 取出目标 KP 信息用于出题
@@ -606,10 +618,14 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 		return
 	}
 
-	// 获取当前目标 KP（会话的 CurrentKP）
-	kpID := session.CurrentKP
-	if kpID == 0 && tc.Prescription != nil && len(tc.Prescription.TargetKPSequence) > 0 {
+	// 获取当前目标 KP (优先使用 Strategist 分析后的结果)
+	kpID := uint(0)
+	if tc.Prescription != nil && len(tc.Prescription.TargetKPSequence) > 0 {
 		kpID = tc.Prescription.TargetKPSequence[0].KPID
+	}
+	// 回退到会话的 CurrentKP
+	if kpID == 0 {
+		kpID = session.CurrentKP
 	}
 	if kpID == 0 {
 		slogOrch.Warn("no current KP, skipping mastery update", "session_id", tc.SessionID)
