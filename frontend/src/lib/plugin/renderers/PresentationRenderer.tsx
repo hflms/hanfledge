@@ -37,6 +37,7 @@ type PresentationPhase = 'generating' | 'viewing' | 'idle';
 
 /**
  * Extracts markdown slides content from the <slides> tag.
+ * Filters out <reasoning> tags and other XML-like tags.
  *
  * @param content - Raw coach response string
  * @returns Array of slide markdown strings, or null if no slides found
@@ -44,17 +45,28 @@ type PresentationPhase = 'generating' | 'viewing' | 'idle';
 function parseSlidesFromContent(content: string): string | null {
     const match = content.match(/<slides>([\s\S]*?)<\/slides>/);
     if (!match) return null;
-    return match[1].trim();
+    
+    // Remove <reasoning> tags and other common XML-like tags
+    let slides = match[1].trim();
+    slides = slides.replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '');
+    slides = slides.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
+    slides = slides.replace(/<analysis>[\s\S]*?<\/analysis>/g, '');
+    
+    return slides.trim();
 }
 
 /**
- * Strips the <slides> tag from a message, returning any surrounding text.
+ * Strips the <slides> tag and <reasoning> tags from a message, returning any surrounding text.
  *
  * @param content - Raw coach response string
- * @returns The content with the <slides> block removed
+ * @returns The content with the <slides> and <reasoning> blocks removed
  */
 function stripSlidesTag(content: string): string {
-    return content.replace(/<slides>[\s\S]*?<\/slides>/, '').trim();
+    let result = content.replace(/<slides>[\s\S]*?<\/slides>/, '');
+    result = result.replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '');
+    result = result.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
+    result = result.replace(/<analysis>[\s\S]*?<\/analysis>/g, '');
+    return result.trim();
 }
 
 
