@@ -400,7 +400,7 @@ export default function PresentationRenderer({
                 {!isFullscreen && (
                     <div className={styles.slideToolbar}>
                         <div className={styles.slideCounter}>
-                            <span className={styles.slideCounterCurrent}>演示文稿</span>
+                            <span className={styles.slideCounterCurrent}>📊 演示文稿</span>
                         </div>
                         <div className={styles.toolbarActions}>
                             <button
@@ -409,13 +409,6 @@ export default function PresentationRenderer({
                                 title="全屏模式 (F)"
                             >
                                 ⛶ 全屏
-                            </button>
-                            <button
-                                className={styles.toolbarBtn}
-                                onClick={() => setPhase('idle')}
-                                title="收起演示文稿"
-                            >
-                                收起
                             </button>
                             <button
                                 className={styles.toolbarBtn}
@@ -500,46 +493,8 @@ export default function PresentationRenderer({
 
                 {renderThinking()}
 
-                {/* Show Presentation Button */}
-                {slidesMarkdown && phase === 'idle' && (
-                    <div style={{
-                        margin: '24px 0',
-                        padding: '24px',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--border)',
-                        borderRadius: '12px',
-                        textAlign: 'center',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-                    }}>
-                        <div style={{ fontSize: '32px', marginBottom: '12px' }}>🎉</div>
-                        <h3 style={{ margin: '0 0 8px 0', color: 'var(--text-primary)' }}>演示文稿已生成</h3>
-                        <p style={{ margin: '0 0 20px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>
-                            已为你准备好互动演示材料
-                        </p>
-                        <button 
-                            style={{ 
-                                padding: '10px 28px', 
-                                fontSize: '16px', 
-                                fontWeight: 500,
-                                borderRadius: '8px', 
-                                cursor: 'pointer', 
-                                background: 'var(--primary, #4a7dff)', 
-                                color: '#fff', 
-                                border: 'none',
-                                transition: 'all 0.2s ease',
-                                boxShadow: '0 2px 6px rgba(74, 125, 255, 0.3)'
-                            }}
-                            onClick={() => setPhase('viewing')}
-                            onMouseOver={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-                            onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
-                        >
-                            📊 立即查看演示文稿
-                        </button>
-                    </div>
-                )}
-
-                {/* Slide viewer */}
-                {phase === 'viewing' && renderSlideViewer()}
+                {/* Embedded Slide Viewer - Always show when slides are available */}
+                {slidesMarkdown && renderSlideViewer()}
 
                 <div ref={messagesEndRef} />
             </div>
