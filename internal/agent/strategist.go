@@ -113,7 +113,8 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		}
 		*/
 		if a.neo4j != nil {
-			_, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, nil)
+			prereqInserted := make(map[uint]bool)
+			_, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, prereqInserted)
 			prereqGaps = append(prereqGaps, gapDescs...)
 		}
 
