@@ -70,7 +70,8 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 	// Step 3: 构建目标 KP 序列（按掌握度从低到高排列）
 	targets := make([]KnowledgePointTarget, 0, len(kpIDs))
 	var prereqGaps []string
-	prereqInserted := make(map[uint]bool) // 防止重复插入前置 KP
+	// 注释掉前置知识点自动插入功能,确保只引导活动指定的知识点
+	// prereqInserted := make(map[uint]bool) // 防止重复插入前置 KP
 
 	for _, kpID := range kpIDs {
 		currentMastery := masteryMap[kpID] // 默认 0.0
@@ -102,10 +103,17 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 			}
 		}
 
-		// Step 4: 检查前置知识差距 → 自动插入前置复习环节
+		// Step 4: 检查前置知识差距 (仅记录,不自动插入)
+		// 禁用自动插入功能,确保只引导活动指定的知识点
+		/*
 		if a.neo4j != nil {
 			gapTargets, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, prereqInserted)
 			targets = append(targets, gapTargets...)
+			prereqGaps = append(prereqGaps, gapDescs...)
+		}
+		*/
+		if a.neo4j != nil {
+			_, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, nil)
 			prereqGaps = append(prereqGaps, gapDescs...)
 		}
 
