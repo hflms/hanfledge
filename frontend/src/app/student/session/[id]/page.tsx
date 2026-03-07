@@ -375,6 +375,8 @@ export default function SessionPage() {
 
     // -- Load session data ------------------------------------------
 
+    const autoStartTriggeredRef = useRef(false);
+
     useEffect(() => {
         if (!sessionId) return;
 
@@ -394,6 +396,12 @@ export default function SessionPage() {
                     })
                 );
                 setMessages(existingMessages);
+
+                // 自动开始: 如果是新会话(无历史消息),标记需要自动开始
+                if (existingMessages.length === 0 && data.session.status === 'active' && !autoStartTriggeredRef.current) {
+                    autoStartTriggeredRef.current = true;
+                    console.log('[SESSION] 新会话,准备自动开始学习活动');
+                }
             } catch (err) {
                 console.error('Failed to load session:', err);
                 toast('加载会话失败', 'error');
@@ -405,6 +413,21 @@ export default function SessionPage() {
 
         loadSession();
     }, [sessionId, router, toast]);
+
+    // -- Auto-start session when WebSocket is ready ----------------
+
+    useEffect(() => {
+        if (autoStartTriggeredRef.current && wsStatus === 'connected' && !sending) {
+            console.log('[SESSION] WebSocket 已连接,自动发送开始消息');
+            agentChannel.send(JSON.stringify({
+                event: 'user_message',
+                payload: { text: '开始学习' },
+                timestamp: Math.floor(Date.now() / 1000),
+            }));
+            setSending(true);
+            autoStartTriggeredRef.current = false; // 防止重复触发
+        }
+    }, [wsStatus, agentChannel, sending]);
 
     // -- Send Message -----------------------------------------------
 
