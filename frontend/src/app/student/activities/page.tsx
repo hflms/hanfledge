@@ -14,6 +14,14 @@ export default function StudentActivitiesPage() {
     const [activities, setActivities] = useState<LearningActivity[]>([]);
     const [loading, setLoading] = useState(true);
     const [joining, setJoining] = useState<number | null>(null);
+    const [activeTab, setActiveTab] = useState<'all' | 'active' | 'completed'>('active');
+
+    const filteredActivities = activities.filter(activity => {
+        const isCompleted = activity.has_session && activity.session_status === 'completed';
+        if (activeTab === 'completed') return isCompleted;
+        if (activeTab === 'active') return !isCompleted;
+        return true;
+    });
 
     const fetchActivities = async () => {
         try {
@@ -59,14 +67,40 @@ export default function StudentActivitiesPage() {
                 <h1 className={styles.pageTitle}>学习活动</h1>
             </div>
 
+            <div className={styles.tabs}>
+                <button
+                    className={`${styles.tabBtn} ${activeTab === 'active' ? styles.tabBtnActive : ''}`}
+                    onClick={() => setActiveTab('active')}
+                >
+                    需处理
+                </button>
+                <button
+                    className={`${styles.tabBtn} ${activeTab === 'completed' ? styles.tabBtnActive : ''}`}
+                    onClick={() => setActiveTab('completed')}
+                >
+                    已完成
+                </button>
+                <button
+                    className={`${styles.tabBtn} ${activeTab === 'all' ? styles.tabBtnActive : ''}`}
+                    onClick={() => setActiveTab('all')}
+                >
+                    全部活动
+                </button>
+            </div>
+
             {activities.length === 0 ? (
                 <div className={styles.emptyState}>
                     <div className={styles.emptyIcon}>📋</div>
                     <div className={styles.emptyText}>暂无可用的学习活动</div>
                 </div>
+            ) : filteredActivities.length === 0 ? (
+                <div className={styles.emptyState}>
+                    <div className={styles.emptyIcon}>🔍</div>
+                    <div className={styles.emptyText}>当前分类下无活动</div>
+                </div>
             ) : (
                 <div className={styles.activityGrid}>
-                    {activities.map(activity => (
+                    {filteredActivities.map(activity => (
                         <div key={activity.id} className={`card ${styles.activityCard}`}>
                             <div className={styles.cardHeader}>
                                 <div>
@@ -90,16 +124,16 @@ export default function StudentActivitiesPage() {
                             <div className={styles.activityMeta}>
                                 {activity.deadline && (
                                     <div className={styles.metaItem}>
-                                        截止日期 <span className={styles.metaValue}>
+                                        📅 截止日期 <span className={styles.metaValue}>
                                             {new Date(activity.deadline).toLocaleDateString('zh-CN')}
                                         </span>
                                     </div>
                                 )}
                                 <div className={styles.metaItem}>
-                                    最大尝试 <span className={styles.metaValue}>{activity.max_attempts} 次</span>
+                                    🔄 最大尝试 <span className={styles.metaValue}>{activity.max_attempts} 次</span>
                                 </div>
                                 <div className={styles.metaItem}>
-                                    允许重试 <span className={styles.metaValue}>{activity.allow_retry ? '是' : '否'}</span>
+                                    🔁 允许重试 <span className={styles.metaValue}>{activity.allow_retry ? '是' : '否'}</span>
                                 </div>
                             </div>
 

@@ -307,10 +307,40 @@
     font-size: 14px;
 }
 
-/* === Upload Panel === */
 .uploadPanel {
     position: sticky;
     top: calc(var(--header-height) + 32px);
+}
+
+.panelTabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+}
+
+.panelTabBtn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s ease;
+}
+
+.panelTabBtn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.panelTabBtnActive {
+    color: var(--accent);
+    background: rgba(108, 92, 231, 0.08);
+    font-weight: 600;
 }
 
 .uploadZone {

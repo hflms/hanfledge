@@ -12,6 +12,37 @@
     font-weight: 700;
 }
 
+.tabs {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+}
+
+.tabBtn {
+    background: transparent;
+    border: none;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s ease;
+}
+
+.tabBtn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.tabBtnActive {
+    color: var(--accent);
+    background: rgba(108, 92, 231, 0.08); /* Assuming purple tint */
+    font-weight: 600;
+}
+
 .activityGrid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));

@@ -65,6 +65,7 @@ export default function OutlinePage() {
     const [selectedClasses, setSelectedClasses] = useState<Set<number>>(new Set());
     const [creatingActivity, setCreatingActivity] = useState(false);
     const [publishingId, setPublishingId] = useState<number | null>(null);
+    const [rightTab, setRightTab] = useState<'materials' | 'activities'>('materials');
 
     const fetchData = useCallback(async () => {
         if (!courseId || isNaN(courseId)) {
@@ -639,59 +640,75 @@ export default function OutlinePage() {
 
                 {/* Right: Upload & Docs */}
                 <div className={styles.uploadPanel}>
-                    <h3 style={{ marginBottom: 16, fontSize: 15, fontWeight: 600 }}>📤 教材文档</h3>
-
-                    <div
-                        className={`${styles.uploadZone} ${dragging ? styles.uploadZoneDragging : ''}`}
-                        role="button"
-                        tabIndex={0}
-                        aria-label="上传 PDF 文件"
-                        onClick={() => fileInput.current?.click()}
-                        onKeyDown={handleCardKeyDown}
-                        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-                        onDragLeave={() => setDragging(false)}
-                        onDrop={handleDrop}
-                    >
-                        <input
-                            ref={fileInput}
-                            type="file"
-                            accept=".pdf"
-                            style={{ display: 'none' }}
-                            onChange={e => {
-                                const file = e.target.files?.[0];
-                                if (file) handleUpload(file);
-                            }}
-                        />
-                        <div className={styles.uploadIcon}>{uploading ? '⏳' : '📎'}</div>
-                        <div className={styles.uploadText}>
-                            {uploading ? '上传中...' : '点击或拖拽 PDF 文件到此处'}
-                        </div>
-                        <div className={styles.uploadHint}>
-                            上传后 AI 将自动解析并生成知识图谱
-                        </div>
+                    <div className={styles.panelTabs}>
+                        <button
+                            className={`${styles.panelTabBtn} ${rightTab === 'materials' ? styles.panelTabBtnActive : ''}`}
+                            onClick={() => setRightTab('materials')}
+                        >
+                            📚 教材管理
+                        </button>
+                        <button
+                            className={`${styles.panelTabBtn} ${rightTab === 'activities' ? styles.panelTabBtnActive : ''}`}
+                            onClick={() => setRightTab('activities')}
+                        >
+                            📣 活动发布
+                        </button>
                     </div>
 
-                    <div className={styles.docList}>
-                        {docs.map(doc => (
-                            <div key={doc.id} className={styles.docItem}>
-                                <span style={{ fontSize: 16 }}>
-                                    {doc.status === 'processing' ? '⏳' : doc.status === 'completed' ? '✅' : doc.status === 'failed' ? '❌' : '📄'}
-                                </span>
-                                <span className={styles.docName}>{doc.file_name}</span>
-                                {doc.page_count > 0 && (
-                                    <span className={styles.docPages}>{doc.page_count}页</span>
-                                )}
-                                <span className={`badge badge-${doc.status}`}>
-                                    {DOCUMENT_STATUS_LABEL[doc.status] || doc.status}
-                                </span>
+                    {rightTab === 'materials' && (
+                        <>
+                            <div
+                                className={`${styles.uploadZone} ${dragging ? styles.uploadZoneDragging : ''}`}
+                                role="button"
+                                tabIndex={0}
+                                aria-label="上传 PDF 文件"
+                                onClick={() => fileInput.current?.click()}
+                                onKeyDown={handleCardKeyDown}
+                                onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                                onDragLeave={() => setDragging(false)}
+                                onDrop={handleDrop}
+                            >
+                                <input
+                                    ref={fileInput}
+                                    type="file"
+                                    accept=".pdf"
+                                    style={{ display: 'none' }}
+                                    onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleUpload(file);
+                                    }}
+                                />
+                                <div className={styles.uploadIcon}>{uploading ? '⏳' : '📎'}</div>
+                                <div className={styles.uploadText}>
+                                    {uploading ? '上传中...' : '点击或拖拽 PDF 文件到此处'}
+                                </div>
+                                <div className={styles.uploadHint}>
+                                    上传后 AI 将自动解析并生成知识图谱
+                                </div>
                             </div>
-                        ))}
-                    </div>
 
-                    <div className={styles.activityPanel}>
-                        <h3 className={styles.activityTitle}>📣 活动发布到班级</h3>
+                            <div className={styles.docList}>
+                                {docs.map(doc => (
+                                    <div key={doc.id} className={styles.docItem}>
+                                        <span style={{ fontSize: 16 }}>
+                                            {doc.status === 'processing' ? '⏳' : doc.status === 'completed' ? '✅' : doc.status === 'failed' ? '❌' : '📄'}
+                                        </span>
+                                        <span className={styles.docName}>{doc.file_name}</span>
+                                        {doc.page_count > 0 && (
+                                            <span className={styles.docPages}>{doc.page_count}页</span>
+                                        )}
+                                        <span className={`badge badge-${doc.status}`}>
+                                            {DOCUMENT_STATUS_LABEL[doc.status] || doc.status}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
 
-                        <form className={styles.activityForm} onSubmit={handleCreateActivity}>
+                    {rightTab === 'activities' && (
+                        <div className={styles.activityPanel} style={{ marginTop: 0, borderTop: 'none', paddingTop: 0 }}>
+                            <form className={styles.activityForm} onSubmit={handleCreateActivity}>
                             <div className="form-group">
                                 <label className="label" htmlFor="activity-title">活动名称</label>
                                 <input
@@ -835,6 +852,7 @@ export default function OutlinePage() {
                             )}
                         </div>
                     </div>
+                    )}
                 </div>
             </div>
 
