@@ -378,6 +378,22 @@ func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chu
 
 	sb.WriteString("你是一位 AI 学习教练，正在帮助学生学习。\n\n")
 
+	// 当前教学目标知识点
+	if len(prescription.TargetKPSequence) > 0 {
+		currentKP := prescription.TargetKPSequence[0]
+		sb.WriteString("【当前教学目标】\n")
+		sb.WriteString(fmt.Sprintf("知识点 ID: %d\n", currentKP.KPID))
+		sb.WriteString(fmt.Sprintf("当前掌握度: %.2f\n", currentKP.CurrentMastery))
+		sb.WriteString(fmt.Sprintf("目标掌握度: %.2f\n", currentKP.TargetMastery))
+		
+		// 从数据库查询知识点标题
+		var kp model.KnowledgePoint
+		if err := a.db.First(&kp, currentKP.KPID).Error; err == nil {
+			sb.WriteString(fmt.Sprintf("**你必须围绕这个知识点进行教学：%s**\n", kp.Title))
+		}
+		sb.WriteString("\n")
+	}
+
 	// 支架说明
 	switch prescription.InitialScaffold {
 	case ScaffoldHigh:
