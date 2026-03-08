@@ -490,7 +490,10 @@ export default function PresentationRenderer({
                             <span className={styles.roleLabel}>AI 导师</span>
                         </div>
                         <div className={styles.messageContent}>
-                            <MarkdownRenderer content={streamingContent} isStreaming />
+                            <MarkdownRenderer 
+                                content={stripSlidesTag(streamingContent)} 
+                                isStreaming 
+                            />
                         </div>
                     </div>
                 )}
