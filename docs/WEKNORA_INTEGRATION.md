@@ -21,11 +21,69 @@ Hanfledge integrates with [WeKnora](https://github.com/WeChat-OpenAI/WeKnora), a
 
 ## Features
 
-- **Knowledge Base Management**: List and browse WeKnora knowledge bases
+- **Knowledge Base Management**: List, create, and delete WeKnora knowledge bases
 - **Course Binding**: Bind external knowledge bases to Hanfledge courses
 - **Semantic Search**: Search across bound knowledge bases
 - **User Synchronization**: Automatic user sync with role mapping
-- **Single Sign-On**: Shared bcrypt password hashing
+- **Single Sign-On (SSO)**: Jump to WeKnora without re-login
+
+## SSO Single Sign-On
+
+Users can jump from Hanfledge to WeKnora management interface without re-login.
+
+### Usage
+
+1. Login to Hanfledge (teacher or admin account)
+2. Visit "WeKnora Knowledge Base" page
+3. Click "Open WeKnora Management Interface" button
+4. System automatically opens WeKnora in new window, no re-login required
+
+### Technical Implementation
+
+**Backend API**:
+```
+GET /api/v1/weknora/login-token
+Authorization: Bearer {hanfledge_token}
+
+Response:
+{
+  "token": "eyJhbGci...",
+  "weknora_url": "http://localhost:9381"
+}
+```
+
+**Frontend Jump**:
+```typescript
+const { token, weknora_url } = await getWeKnoraLoginToken();
+window.open(`${weknora_url}?token=${token}`, '_blank');
+```
+
+**WeKnora Frontend** (requires support):
+```javascript
+// WeKnora frontend should check URL params on startup
+const urlParams = new URLSearchParams(window.location.search);
+const token = urlParams.get('token');
+if (token) {
+    localStorage.setItem('token', token);
+    window.location.href = '/';
+}
+```
+
+### Configuration
+
+Configure WeKnora frontend URL in `.env`:
+
+```bash
+WEKNORA_FRONTEND_URL=http://localhost:9381  # Development
+# WEKNORA_FRONTEND_URL=https://weknora.example.com  # Production
+```
+
+### Security Considerations
+
+- Token passed via URL parameter, used only during jump
+- Token validity: 24 hours (WeKnora default)
+- Recommend HTTPS in production
+- WeKnora frontend should remove token from URL after receiving
 
 ## Setup
 
@@ -40,6 +98,7 @@ docker ps | grep weknora
 ```
 
 This starts:
+- **WeKnora Frontend** (`localhost:9381`) - Vue 3 web interface
 - **WeKnora App** (`localhost:9380`) - Main API service
 - **DocReader** (`localhost:50051`) - Document parsing service
 - **ParadeDB** - PostgreSQL 18 with `pg_search` and `pgvector` extensions
