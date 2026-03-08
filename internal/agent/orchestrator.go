@@ -53,6 +53,9 @@ type AgentOrchestrator struct {
 	outputGuard *safety.OutputGuard      // 输出安全审核器
 	searchConn  *search.DynamicConnector // Web search fallback (§8.1.2, nil-safe)
 
+	// Soul 规则
+	soulRules string // 从 soul.md 加载的 AI 教学规则
+
 	// Actor-Critic 最大重试轮数
 	maxCriticRetries int
 
@@ -106,6 +109,13 @@ func NewAgentOrchestrator(
 
 	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT, Assessor, Evaluator")
 	return o
+}
+
+// LoadSoulRules 加载 Soul 规则到 Orchestrator。
+func (o *AgentOrchestrator) LoadSoulRules(rules string) {
+	o.soulRules = rules
+	o.designer.soulRules = rules
+	slogOrch.Info("soul rules loaded", "length", len(rules))
 }
 
 // SetEvalNotifier 注入评估引擎通知函数。

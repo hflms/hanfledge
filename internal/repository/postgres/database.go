@@ -100,6 +100,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.AnalyticsEvent{},
 		// Soul 版本管理
 		&model.SoulVersion{},
+		// 系统通知
+		&model.Notification{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

@@ -38,6 +38,7 @@ type DesignerAgent struct {
 	gateway    *QualityGateway          // CRAG 质量网关 (§8.1.2)
 	reranker   *CrossEncoderReranker    // Cross-Encoder 精重排 (§8.1.1 Stage 2)
 	searchConn *search.DynamicConnector // Web search fallback (§8.1.2, nil-safe)
+	soulRules  string                   // Soul 规则
 }
 
 // NewDesignerAgent 创建设计师 Agent。
@@ -422,6 +423,13 @@ func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chu
 	var sb strings.Builder
 
 	sb.WriteString("你是一位 AI 学习教练，正在帮助学生学习。\n\n")
+
+	// 注入 Soul 规则（如果已加载）
+	if a.soulRules != "" {
+		sb.WriteString("## 教学规则（Soul）\n")
+		sb.WriteString(a.soulRules)
+		sb.WriteString("\n\n请严格遵循以上规则进行教学。\n\n")
+	}
 
 	// 当前教学目标知识点
 	if len(prescription.TargetKPSequence) > 0 {

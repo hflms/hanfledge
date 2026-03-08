@@ -225,6 +225,19 @@ func main() {
 	// ── Agent Orchestrator ──────────────────────────────
 	orchestrator := agent.NewAgentOrchestrator(db, llmProvider, neo4jClient, karagEngine, registry, eventBus, piiRedactor, redisCache, outputGuard, searchConnector)
 
+	// ── Load Soul Rules ─────────────────────────────────
+	if soulContent, err := os.ReadFile("soul.md"); err == nil {
+		orchestrator.LoadSoulRules(string(soulContent))
+	} else {
+		log.Warn("soul.md not found, using default rules", "err", err)
+	}
+
+	// ── Soul Evolution Cron ─────────────────────────────
+	soulCron := agent.NewSoulCronService(db, llmProvider, "soul.md")
+	cronCtx, cronCancel := context.WithCancel(context.Background())
+	defer cronCancel()
+	go soulCron.Start(cronCtx)
+
 	// ── RAGAS Evaluator (§4.2 Background Quality Evaluation) ──
 	evaluator := agent.NewRAGASEvaluator(db, llmProvider, agent.DefaultEvalConfig())
 	orchestrator.SetEvalNotifier(evaluator.Notify)

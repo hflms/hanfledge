@@ -106,7 +106,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	customSkillHandler := handler.NewCustomSkillHandler(deps.DB, deps.Registry)
 	marketplaceHandler := handler.NewMarketplaceHandler(deps.DB)
 	// telemetryHandler := handler.NewTelemetryHandler(deps.DB) // Disabled
-	soulHandler := handler.NewSoulHandler(deps.DB, "soul.md")
+	soulHandler := handler.NewSoulHandler(deps.DB, "soul.md", deps.Orchestrator)
 
 	// ── API v1 ──────────────────────────────────────────
 	v1 := r.Group("/api/v1")
@@ -127,6 +127,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	registerSystemRoutes(protected, deps.DB, deps.LLMProvider)
 	registerMarketplaceRoutes(protected, deps.DB, marketplaceHandler)
 	registerSoulRoutes(protected, deps.DB, soulHandler)
+	registerNotificationRoutes(protected, deps.DB)
 
 	// Metrics endpoint (public)
 	v1.GET("/metrics/cache", metricsHandler.GetCacheMetrics)

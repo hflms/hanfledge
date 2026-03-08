@@ -7,17 +7,19 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"gorm.io/gorm"
 )
 
 type SoulHandler struct {
-	db       *gorm.DB
-	soulPath string
+	db           *gorm.DB
+	soulPath     string
+	orchestrator *agent.AgentOrchestrator
 }
 
-func NewSoulHandler(db *gorm.DB, soulPath string) *SoulHandler {
-	return &SoulHandler{db: db, soulPath: soulPath}
+func NewSoulHandler(db *gorm.DB, soulPath string, orchestrator *agent.AgentOrchestrator) *SoulHandler {
+	return &SoulHandler{db: db, soulPath: soulPath, orchestrator: orchestrator}
 }
 
 // GET /api/v1/system/soul
@@ -77,6 +79,11 @@ func (h *SoulHandler) UpdateSoul(c *gin.Context) {
 	}
 	h.db.Create(&version)
 
+	// Reload rules into orchestrator
+	if h.orchestrator != nil {
+		h.orchestrator.LoadSoulRules(req.Content)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "version": version.Version})
 }
 
@@ -116,6 +123,11 @@ func (h *SoulHandler) Rollback(c *gin.Context) {
 	// Update active flag
 	h.db.Model(&model.SoulVersion{}).Where("is_active = ?", true).Update("is_active", false)
 	h.db.Model(&version).Update("is_active", true)
+
+	// Reload rules into orchestrator
+	if h.orchestrator != nil {
+		h.orchestrator.LoadSoulRules(version.Content)
+	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "version": version.Version})
 }

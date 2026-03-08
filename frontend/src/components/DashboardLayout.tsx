@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/lib/auth-store';
 import { PluginRegistryProvider } from '@/lib/plugin/PluginRegistry';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import NotificationBell from '@/components/NotificationBell';
 import styles from './DashboardLayout.module.css';
 
 interface NavItem {
@@ -145,6 +146,7 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
                             {navItems.find(n => pathname.startsWith(n.href))?.label || 'Hanfledge'}
                         </div>
                         <div className={styles.headerRight}>
+                            {isAdmin && <NotificationBell />}
                             <div className={styles.userInfo}>
                                 <span className={styles.userName}>{user.display_name}</span>
                                 <span className={styles.userRole}>{ROLE_LABELS[primaryRole] || primaryRole}</span>
