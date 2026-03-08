@@ -22,36 +22,13 @@ export default function RevealDeck({ markdown, onSlideChange, fullscreen = false
         onSlideChangeRef.current = onSlideChange;
     }, [onSlideChange]);
 
-    // Handle fullscreen mode
+    // Handle fullscreen mode - just trigger layout recalculation
     useEffect(() => {
-        if (!containerRef.current) return;
-
-        const handleFullscreenChange = () => {
-            if (revealInstance.current) {
-                revealInstance.current.layout();
-            }
-        };
-
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    }, []);
-
-    // Enter/exit fullscreen
-    useEffect(() => {
-        if (!containerRef.current) return;
-
-        if (fullscreen) {
-            if (containerRef.current.requestFullscreen) {
-                containerRef.current.requestFullscreen().catch(err => {
-                    console.warn('Fullscreen request failed:', err);
-                });
-            }
-        } else {
-            if (document.fullscreenElement) {
-                document.exitFullscreen().catch(err => {
-                    console.warn('Exit fullscreen failed:', err);
-                });
-            }
+        if (revealInstance.current && fullscreen) {
+            // Small delay to ensure CSS transition completes
+            setTimeout(() => {
+                revealInstance.current?.layout();
+            }, 100);
         }
     }, [fullscreen]);
 
