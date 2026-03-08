@@ -1,0 +1,67 @@
+.card {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.card.answered {
+  border-color: #2196F3;
+}
+
+.card.correct {
+  border-color: #4CAF50;
+  background: #f1f8f4;
+}
+
+.card.incorrect {
+  border-color: #f44336;
+  background: #fef5f5;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.number {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+}
+
+.badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.correct .badge {
+  background: #4CAF50;
+  color: white;
+}
+
+.incorrect .badge {
+  background: #f44336;
+  color: white;
+}
+
+.stem {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #333;
+  margin-bottom: 16px;
+}
+
+.content {
+  margin-top: 12px;
+}
