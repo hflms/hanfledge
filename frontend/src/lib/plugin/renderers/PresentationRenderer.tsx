@@ -36,23 +36,32 @@ type PresentationPhase = 'generating' | 'viewing' | 'idle';
 // -- Slides Parser -----------------------------------------------
 
 /**
- * Extracts markdown slides content from the <slides> tag.
- * Filters out <reasoning> tags and other XML-like tags.
+ * Extracts markdown slides content from coach response.
+ * Supports two formats:
+ * 1. Wrapped in <slides> tags
+ * 2. Direct Reveal.js markdown (contains --- separators)
  *
  * @param content - Raw coach response string
- * @returns Array of slide markdown strings, or null if no slides found
+ * @returns Slide markdown string, or null if no slides found
  */
 function parseSlidesFromContent(content: string): string | null {
-    const match = content.match(/<slides>([\s\S]*?)<\/slides>/);
-    if (!match) return null;
+    // Try format 1: <slides> tag
+    const tagMatch = content.match(/<slides>([\s\S]*?)<\/slides>/);
+    if (tagMatch) {
+        let slides = tagMatch[1].trim();
+        slides = slides.replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '');
+        slides = slides.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
+        slides = slides.replace(/<analysis>[\s\S]*?<\/analysis>/g, '');
+        return slides.trim();
+    }
     
-    // Remove <reasoning> tags and other common XML-like tags
-    let slides = match[1].trim();
-    slides = slides.replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '');
-    slides = slides.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
-    slides = slides.replace(/<analysis>[\s\S]*?<\/analysis>/g, '');
+    // Try format 2: Direct Reveal.js markdown (has --- separators and typical slide structure)
+    if (content.includes('---') && (content.includes('##') || content.includes('#'))) {
+        console.log('[PresentationRenderer] Detected direct Reveal.js format');
+        return content.trim();
+    }
     
-    return slides.trim();
+    return null;
 }
 
 /**
