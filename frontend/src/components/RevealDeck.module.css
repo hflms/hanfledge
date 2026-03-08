@@ -2,11 +2,10 @@
     width: 100%;
     height: 600px;
     position: relative;
-    border-radius: 8px;
+    border-radius: 0;
     overflow: hidden;
     background: #fff;
-    border: 1px solid var(--border);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    border: none;
 }
 
 /* Fullscreen mode */
@@ -19,11 +18,12 @@
     z-index: 9999;
     border-radius: 0;
     border: none;
+    background: #000;
 }
 
 /* Customize reveal inside the container */
 .deckContainer :global(.reveal) {
-    font-family: inherit;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
 /* Fullscreen reveal adjustments */
@@ -37,41 +37,131 @@
     text-align: left;
 }
 
-.deckContainer :global(.reveal h1),
-.deckContainer :global(.reveal h2),
+.deckContainer :global(.reveal h1) {
+    text-transform: none;
+    font-size: 2.5em;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 0.5em;
+}
+
+.deckContainer :global(.reveal h2) {
+    text-transform: none;
+    font-size: 1.8em;
+    font-weight: 600;
+    color: #2a2a2a;
+    margin-bottom: 0.5em;
+}
+
 .deckContainer :global(.reveal h3) {
     text-transform: none;
+    font-size: 1.4em;
+    font-weight: 600;
+    color: #3a3a3a;
+}
+
+.deckContainer :global(.reveal p) {
+    font-size: 1.1em;
+    line-height: 1.6;
+    margin-bottom: 0.8em;
+}
+
+.deckContainer :global(.reveal ul),
+.deckContainer :global(.reveal ol) {
+    font-size: 1.05em;
+    line-height: 1.8;
+}
+
+.deckContainer :global(.reveal li) {
+    margin-bottom: 0.5em;
+}
+
+.deckContainer :global(.reveal strong) {
+    color: #667eea;
+    font-weight: 600;
+}
+
+.deckContainer :global(.reveal em) {
+    color: #764ba2;
+    font-style: normal;
 }
 
 .deckContainer :global(.reveal pre) {
     width: 100%;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    padding: 1em;
 }
 
 .deckContainer :global(.reveal code) {
-    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-family: 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+    background: rgba(102, 126, 234, 0.1);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+}
+
+.deckContainer :global(.reveal table) {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+}
+
+.deckContainer :global(.reveal th) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    padding: 0.8em;
+    font-weight: 600;
+}
+
+.deckContainer :global(.reveal td) {
+    padding: 0.8em;
+    border: 1px solid #e0e0e0;
+}
+
+.deckContainer :global(.reveal tr:nth-child(even)) {
+    background: rgba(102, 126, 234, 0.05);
 }
 
 /* Progress bar styling */
 .deckContainer :global(.reveal .progress) {
     background: rgba(0,0,0,0.1);
-    height: 3px;
+    height: 4px;
 }
 
 .deckContainer :global(.reveal .progress span) {
-    background: var(--primary, #4a7dff);
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
 }
 
 /* Controls styling */
 .deckContainer :global(.reveal .controls) {
-    color: var(--primary, #4a7dff);
+    color: #667eea;
 }
 
 .deckContainer :global(.reveal .controls button) {
-    opacity: 0.7;
-    transition: opacity 0.2s;
+    opacity: 0.6;
+    transition: all 0.2s;
 }
 
 .deckContainer :global(.reveal .controls button:hover) {
     opacity: 1;
+    transform: scale(1.1);
+}
+
+/* Slide number styling */
+.deckContainer :global(.reveal .slide-number) {
+    background: rgba(102, 126, 234, 0.9);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+/* Blockquote (备注) styling */
+.deckContainer :global(.reveal blockquote) {
+    background: rgba(102, 126, 234, 0.05);
+    border-left: 4px solid #667eea;
+    padding: 1em 1.5em;
+    margin: 1em 0;
+    font-style: normal;
+    color: #555;
 }

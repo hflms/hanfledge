@@ -95,14 +95,15 @@
 
 .slideViewer {
     width: 100%;
-    background: var(--surface, #fff);
-    border: 1px solid var(--border, #e0e0e0);
-    border-radius: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 16px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     transition: all 0.3s ease;
-    margin: 16px 0;
+    margin: 24px 0;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
 }
 
 .slideViewerFullscreen {
@@ -115,6 +116,7 @@
     border-radius: 0;
     border: none;
     margin: 0;
+    background: #000;
 }
 
 /* -- Slide Toolbar -------------------------------------------- */
@@ -123,51 +125,60 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 20px;
-    background: var(--surface-secondary, #f8f9fa);
-    border-bottom: 1px solid var(--border, #e0e0e0);
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
     z-index: 10;
 }
 
 .slideCounter {
     display: flex;
-    align-items: baseline;
-    gap: 2px;
-    font-size: 14px;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
     font-weight: 600;
+    color: #333;
 }
 
 .slideCounterCurrent {
-    color: var(--primary, #4a7dff);
-    font-size: 18px;
+    color: #667eea;
+    font-size: 20px;
 }
 
 .toolbarActions {
     display: flex;
-    gap: 8px;
+    gap: 10px;
 }
 
 .toolbarBtn {
-    padding: 6px 12px;
-    border: 1px solid var(--border, #e0e0e0);
-    border-radius: 6px;
-    background: var(--surface, #fff);
+    padding: 8px 16px;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 14px;
+    font-weight: 500;
     transition: all 0.2s ease;
     line-height: 1.4;
     white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .toolbarBtn:hover:not(:disabled) {
-    background: var(--surface-secondary, #f5f5f5);
-    border-color: var(--primary, #4a7dff);
-    color: var(--primary, #4a7dff);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.toolbarBtn:active:not(:disabled) {
+    transform: translateY(0);
 }
 
 .toolbarBtn:disabled {
-    opacity: 0.4;
+    opacity: 0.5;
     cursor: not-allowed;
+    transform: none;
 }
 
 /* -- Slide Content -------------------------------------------- */
@@ -176,6 +187,7 @@
     flex: 1;
     position: relative;
     min-height: 600px;
+    background: #fff;
 }
 
 .slideViewerFullscreen .slideContent {
@@ -186,17 +198,29 @@
 
 .fullscreenHint {
     position: fixed;
-    bottom: 20px;
+    bottom: 40px;
     left: 50%;
     transform: translateX(-50%);
-    padding: 8px 16px;
-    background: rgba(0, 0, 0, 0.8);
+    padding: 12px 24px;
+    background: rgba(0, 0, 0, 0.9);
     color: #fff;
-    border-radius: 6px;
-    font-size: 13px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
     z-index: 10000;
-    animation: fadeInOut 3s ease-in-out;
+    animation: fadeInOut 4s ease-in-out;
     pointer-events: none;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.fullscreenHint kbd {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 0 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 13px;
 }
 
 .fullscreenHint kbd {
