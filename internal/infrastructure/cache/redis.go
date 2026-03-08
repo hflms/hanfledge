@@ -31,7 +31,23 @@ var slogRedis = logger.L("Redis")
 
 // RedisCache wraps a go-redis client with domain-specific caching methods.
 type RedisCache struct {
-	client *redis.Client
+	client  *redis.Client
+	metrics *CacheMetrics
+}
+
+// CacheMetrics tracks cache performance.
+type CacheMetrics struct {
+	Hits   int64
+	Misses int64
+}
+
+// HitRate returns the cache hit rate.
+func (m *CacheMetrics) HitRate() float64 {
+	total := m.Hits + m.Misses
+	if total == 0 {
+		return 0
+	}
+	return float64(m.Hits) / float64(total)
 }
 
 // NewRedisCache creates a new Redis cache client from a Redis URL.
@@ -60,7 +76,7 @@ func NewRedisCache(redisURL string) (*RedisCache, error) {
 	}
 
 	slogRedis.Info("connected", "addr", opts.Addr, "pool", opts.PoolSize)
-	return &RedisCache{client: client}, nil
+	return &RedisCache{client: client, metrics: &CacheMetrics{}}, nil
 }
 
 // Close shuts down the Redis connection pool.
@@ -325,12 +341,14 @@ func (rc *RedisCache) FindSemanticMatch(ctx context.Context, courseID uint, quer
 	hashes, err := rc.client.SMembers(ctx, idxKey).Result()
 	if err != nil {
 		if err == redis.Nil {
+			rc.metrics.Misses++
 			return nil, nil
 		}
 		return nil, fmt.Errorf("redis smembers %s: %w", idxKey, err)
 	}
 
 	if len(hashes) == 0 {
+		rc.metrics.Misses++
 		return nil, nil
 	}
 
@@ -383,7 +401,10 @@ func (rc *RedisCache) FindSemanticMatch(ctx context.Context, courseID uint, quer
 	}
 
 	if bestHit != nil {
+		rc.metrics.Hits++
 		slogRedis.Debug("l2 cache hit", "similarity", bestHit.Similarity, "cached_query", truncateStr(bestHit.Entry.QueryText, 40))
+	} else {
+		rc.metrics.Misses++
 	}
 
 	return bestHit, nil
@@ -534,6 +555,51 @@ func CosineSimilarity(a, b []float64) float64 {
 	}
 
 	return dot / denom
+}
+
+// ── Metrics ─────────────────────────────────────────────────
+
+// GetMetrics returns current cache metrics.
+func (rc *RedisCache) GetMetrics() CacheMetrics {
+	return *rc.metrics
+}
+
+// ResetMetrics resets cache metrics counters.
+func (rc *RedisCache) ResetMetrics() {
+	rc.metrics.Hits = 0
+	rc.metrics.Misses = 0
+}
+
+// ── Cache Management ────────────────────────────────────────
+
+// InvalidateByPattern removes all keys matching a pattern.
+// Pattern examples: "session:*", "semantic:course:123:*"
+func (rc *RedisCache) InvalidateByPattern(ctx context.Context, pattern string) (int64, error) {
+	var cursor uint64
+	var deleted int64
+
+	for {
+		keys, nextCursor, err := rc.client.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return deleted, fmt.Errorf("redis scan: %w", err)
+		}
+
+		if len(keys) > 0 {
+			n, err := rc.client.Del(ctx, keys...).Result()
+			if err != nil {
+				return deleted, fmt.Errorf("redis del: %w", err)
+			}
+			deleted += n
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+
+	slogRedis.Info("cache invalidated", "pattern", pattern, "deleted", deleted)
+	return deleted, nil
 }
 
 // ── Helpers ─────────────────────────────────────────────────

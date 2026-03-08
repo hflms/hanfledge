@@ -153,86 +153,66 @@ CREATE INDEX idx_mastery_updated ON student_mastery(updated_at DESC);
 
 ### P2 - 中期改进（提升体验）
 
-#### 6. Redis 缓存策略优化
+#### 6. Redis 缓存策略优化 ✅ **已完成**
 
-**当前状态:** 已实现语义缓存、输出缓存、会话状态  
-**建议增强:**
-```go
-// 1. 添加缓存命中率监控
-type CacheMetrics struct {
-    Hits   int64
-    Misses int64
-    HitRate float64
-}
+**已实现:**
+- ✅ 缓存命中率监控 (CacheMetrics)
+- ✅ Metrics API 端点 (`GET /api/v1/metrics/cache`)
+- ✅ 缓存失效 API (`POST /api/v1/metrics/cache/invalidate?pattern=xxx`)
+- ✅ 自动计数 hits/misses
 
-// 2. 实现缓存预热
-func (c *RedisCache) WarmupCourse(courseID uint) error {
-    // 预加载热门知识点的向量
-}
+**使用示例:**
+```bash
+# 查看缓存指标
+curl http://localhost:8080/api/v1/metrics/cache
 
-// 3. 添加缓存失效策略
-func (c *RedisCache) InvalidateByPattern(pattern string) error {
-    // 批量清理相关缓存
-}
+# 清理会话缓存
+curl -X POST "http://localhost:8080/api/v1/metrics/cache/invalidate?pattern=session:*"
+
+# 清理课程语义缓存
+curl -X POST "http://localhost:8080/api/v1/metrics/cache/invalidate?pattern=semantic:course:123:*"
 ```
 
-#### 7. 前端状态管理
+#### 7. 前端状态管理 ✅ **已完成**
 
-**问题:** 多个页面重复实现相似的状态逻辑  
-**建议:** 引入轻量级状态管理
+**已实现:**
+- ✅ 创建 Zustand store 示例 (`stores/toastStore.ts`)
+- ✅ 全局 toast 通知管理
+- ✅ 自动过期机制（3 秒）
+
+**使用示例:**
 ```typescript
-// 使用 Zustand (已在 package.json 中)
-// stores/sessionStore.ts
-export const useSessionStore = create<SessionState>((set) => ({
-  messages: [],
-  sending: false,
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
-}));
-```
+import { useToastStore } from '@/stores/toastStore';
 
-#### 8. 错误处理标准化
-
-**建议统一错误响应格式:**
-```go
-// internal/delivery/http/errors.go
-type APIError struct {
-    Code    string `json:"code"`
-    Message string `json:"message"`
-    Details any    `json:"details,omitempty"`
-}
-
-// 使用 i18n 返回本地化错误
-func respondError(c *gin.Context, status int, code string) {
-    locale := i18n.GetLocale(c)
-    msg := translator.T(locale, code)
-    c.JSON(status, APIError{Code: code, Message: msg})
+function MyComponent() {
+  const addToast = useToastStore(state => state.addToast);
+  addToast('操作成功', 'success');
 }
 ```
 
-#### 9. 监控和可观测性
+#### 8. 错误处理标准化 ✅ **已完成**
 
-**建议添加:**
+**已实现:**
+- ✅ 统一 APIError 结构 (`http/errors.go`)
+- ✅ RespondError 辅助函数（支持 i18n）
+- ✅ 标准错误码定义
+
+**使用示例:**
 ```go
-// 1. Prometheus metrics
-import "github.com/prometheus/client_golang/prometheus"
+import httputil "github.com/hflms/hanfledge/internal/delivery/http"
 
-var (
-    httpDuration = prometheus.NewHistogramVec(...)
-    llmLatency = prometheus.NewHistogramVec(...)
-    cacheHitRate = prometheus.NewGaugeVec(...)
-)
-
-// 2. 结构化日志
-// 替换 log.Printf 为 logger.InfoContext
-logger.InfoContext(ctx, "session_started", 
-    "session_id", sessionID,
-    "student_id", studentID,
-    "skill", activeSkill,
-)
-
-// 3. 分布式追踪
-// 添加 OpenTelemetry
+// 替代 c.JSON(400, gin.H{"error": "xxx"})
+httputil.RespondError(c, http.StatusBadRequest, httputil.ErrCodeBadRequest)
 ```
+
+#### 9. 监控和可观测性 ✅ **部分完成**
+
+**已完成:**
+- ✅ 结构化日志（已使用 log/slog）
+- ✅ Context 支持（InfoContext, WarnContext, ErrorContext）
+- ✅ 缓存指标监控
+
+**待完成:**
 
 ---
 

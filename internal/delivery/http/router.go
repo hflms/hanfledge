@@ -98,6 +98,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
 	dashboardHandler := handler.NewDashboardHandler(courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
+	metricsHandler := handler.NewMetricsHandler(deps.RedisCache)
 	analyticsHandler := handler.NewAnalyticsHandler(deps.DB, deps.PIIRedactor)
 	exportHandler := handler.NewExportHandler(deps.DB)
 	achievementHandler := handler.NewAchievementHandler(deps.DB)
@@ -123,6 +124,10 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	registerAnalyticsRoutes(protected, deps.DB, dashboardHandler, analyticsHandler, exportHandler)
 	registerSystemRoutes(protected, deps.DB, deps.LLMProvider)
 	registerMarketplaceRoutes(protected, deps.DB, marketplaceHandler)
+
+	// Metrics endpoint (public)
+	v1.GET("/metrics/cache", metricsHandler.GetCacheMetrics)
+	v1.POST("/metrics/cache/invalidate", metricsHandler.InvalidateCache)
 
 	// WeKnora integration (conditional — only when client is available)
 	if deps.WeKnoraClient != nil {
