@@ -100,7 +100,18 @@
 - components/ActivityForm.tsx # 活动表单
 ```
 
-#### 4. 前端性能优化
+#### 4. 前端性能优化 ✅ **部分完成**
+
+**已完成:**
+- ✅ 提取 `useSkillMounting` hook (技能挂载逻辑)
+- ✅ 提取 `useSkillRecommendation` hook (AI 推荐逻辑)
+- ✅ 提取 `useActivityPublish` hook (活动发布逻辑)
+- ✅ 提取 `useOutlineData` hook (数据获取逻辑)
+- ✅ 创建模块化 API 结构 (api/core.ts, api/auth.ts)
+
+**待完成:**
+
+**api.ts 模块化 (1198 行, 133 函数)**
 
 **问题:** SessionPage 组件复杂度过高 (678 行, 94.3 分)  
 **建议:**
