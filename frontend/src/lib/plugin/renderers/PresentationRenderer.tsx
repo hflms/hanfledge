@@ -11,9 +11,12 @@
  * Supports <slides>Markdown</slides> parsing from coach responses.
  */
 
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ChatInputArea from '@/components/ChatInputArea';
+import SkillModal from '@/components/SkillModal';
+import SkillHistoryDrawer, { type SkillHistoryItem } from '@/components/SkillHistoryDrawer';
+import { useSkillHistory } from '@/lib/plugin/useSkillHistory';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './PresentationRenderer.module.css';
 import RevealDeck from '@/components/RevealDeck';
@@ -109,6 +112,9 @@ export default function PresentationRenderer({
     const [streamingContent, setStreamingContent] = useState('');
 
     const { trackEvent } = useTelemetry(studentContext?.sessionId || 0, studentContext?.courseId || 0);
+    
+    // Skill history management
+    const { historyItems, addEntry, getEntry } = useSkillHistory<string>();
 
     const handleSlideChange = useCallback((indexh: number, indexv: number) => {
         trackEvent({
@@ -126,11 +132,11 @@ export default function PresentationRenderer({
 
     // Presentation-specific state
     const [phase, setPhase] = useState<PresentationPhase>('generating');
-    const [slidesMarkdown, setSlidesMarkdown] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [currentPresentationId, setCurrentPresentationId] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const slideContainerRef = useRef<HTMLDivElement>(null);
     const hasTriggeredRef = useRef(false);
 
     // -- Load initial messages -----------------------------------
@@ -176,12 +182,26 @@ export default function PresentationRenderer({
         setTimeout(() => {
             setMessages(parsedMessages);
             if (foundSlides) {
-                setSlidesMarkdown(foundSlides);
+                const presentationId = addEntry(
+                    'presentation',
+                    '演示文稿 1',
+                    foundSlides,
+                    '📊'
+                );
+                setCurrentPresentationId(presentationId);
                 setPhase('idle');
+                
+                // 添加打开按钮消息
+                parsedMessages.push({
+                    id: presentationId,
+                    role: 'system',
+                    content: '📊 演示文稿已生成',
+                    timestamp: Date.now(),
+                });
                 hasTriggeredRef.current = true;
             }
         }, 0);
-    }, [initialMessages]);
+    }, [initialMessages, addEntry]);
 
     // -- Auto-generate if no initial messages --------------------
 
@@ -278,11 +298,18 @@ export default function PresentationRenderer({
                             const parsed = parseSlidesFromContent(prev);
                             if (parsed) {
                                 console.log('[PresentationRenderer] ✅ Found slides, length:', parsed.length);
-                                // 找到了 slides 标签
-                                setSlidesMarkdown(parsed);
+                                
+                                // 添加到历史记录
+                                const presentationId = addEntry(
+                                    'presentation',
+                                    `演示文稿 ${historyItems.filter(i => i.type === 'presentation').length + 1}`,
+                                    parsed,
+                                    '📊'
+                                );
+                                setCurrentPresentationId(presentationId);
                                 setPhase('idle');
 
-                                // 只添加 slides 外的介绍文字（如果有）
+                                // 添加介绍文字
                                 const intro = stripSlidesTag(prev);
                                 if (intro) {
                                     console.log('[PresentationRenderer] Adding intro message, length:', intro.length);
@@ -293,6 +320,14 @@ export default function PresentationRenderer({
                                         timestamp: Date.now(),
                                     }]);
                                 }
+
+                                // 添加打开按钮消息
+                                setMessages(msgs => [...msgs, {
+                                    id: presentationId,
+                                    role: 'system',
+                                    content: '📊 演示文稿已生成',
+                                    timestamp: Date.now(),
+                                }]);
 
                                 onInteractionEvent({
                                     type: 'presentation_generated',
@@ -367,7 +402,7 @@ export default function PresentationRenderer({
 
     const handleRegenerate = useCallback(() => {
         setPhase('generating');
-        setSlidesMarkdown(null);
+        setIsModalOpen(false);
 
         agentChannel.send(JSON.stringify({
             event: 'user_message',
@@ -379,6 +414,18 @@ export default function PresentationRenderer({
         streamingContentRef.current = '';
         setStreamingContent('');
     }, [agentChannel]);
+
+    // -- Handle history item click -------------------------------
+
+    const handleHistoryItemClick = useCallback((item: SkillHistoryItem) => {
+        if (item.type === 'presentation') {
+            const entry = getEntry(item.id);
+            if (entry) {
+                setCurrentPresentationId(item.id);
+                setIsModalOpen(true);
+            }
+        }
+    }, [getEntry]);
 
     // -- Free-form message send ---------------------------------
 
@@ -431,77 +478,18 @@ export default function PresentationRenderer({
         );
     };
 
-    // -- Render slide viewer -------------------------------------
-
-    const renderSlideViewer = () => {
-        if (!slidesMarkdown) return null;
-
-        return (
-            <div
-                ref={slideContainerRef}
-                className={`${styles.slideViewer} ${isFullscreen ? styles.slideViewerFullscreen : ''}`}
-            >
-                {/* Toolbar */}
-                <div className={styles.slideToolbar}>
-                    <div className={styles.slideCounter}>
-                        <span className={styles.slideCounterCurrent}>📊 演示文稿</span>
-                    </div>
-                    <div className={styles.toolbarActions}>
-                        {!isFullscreen ? (
-                            <>
-                                <button
-                                    className={styles.toolbarBtn}
-                                    onClick={() => setIsFullscreen(true)}
-                                    title="全屏模式 (F)"
-                                >
-                                    ⛶ 全屏
-                                </button>
-                                <button
-                                    className={styles.toolbarBtn}
-                                    onClick={handleRegenerate}
-                                    disabled={sending}
-                                    title="重新生成"
-                                >
-                                    🔄 重新生成
-                                </button>
-                            </>
-                        ) : (
-                            <button
-                                className={styles.toolbarBtn}
-                                onClick={() => setIsFullscreen(false)}
-                                title="退出全屏 (ESC)"
-                            >
-                                ✕ 退出全屏
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {/* RevealDeck with fullscreen support */}
-                <div className={styles.slideContent}>
-                    <RevealDeck 
-                        key={slidesMarkdown} 
-                        markdown={slidesMarkdown} 
-                        onSlideChange={handleSlideChange}
-                        fullscreen={isFullscreen}
-                    />
-                </div>
-
-                {/* Fullscreen exit hint */}
-                {isFullscreen && (
-                    <div className={styles.fullscreenHint}>
-                        按 <kbd>ESC</kbd> 或 <kbd>F</kbd> 退出全屏
-                    </div>
-                )}
-            </div>
-        );
-    };
-
     // -- Main render ---------------------------------------------
 
     return (
         <div className={styles.presentationContainer}>
             <TextSelectionTooltip onAsk={handleAskAI} />
+            
+            {/* History Drawer */}
+            <SkillHistoryDrawer 
+                items={historyItems}
+                onItemClick={handleHistoryItemClick}
+            />
+            
             {/* Messages area */}
             <div className={styles.messagesArea}>
                 {messages.map(msg => (
@@ -524,7 +512,17 @@ export default function PresentationRenderer({
                             </div>
                         )}
                         <div className={styles.messageContent}>
-                            {msg.role === 'coach' ? (
+                            {msg.role === 'system' && msg.content.includes('演示文稿已生成') ? (
+                                <button 
+                                    className={styles.openPresentationBtn}
+                                    onClick={() => {
+                                        setCurrentPresentationId(msg.id);
+                                        setIsModalOpen(true);
+                                    }}
+                                >
+                                    📊 查看演示文稿
+                                </button>
+                            ) : msg.role === 'coach' ? (
                                 <MarkdownRenderer content={stripSlidesTag(msg.content)} />
                             ) : (
                                 msg.content
@@ -534,9 +532,6 @@ export default function PresentationRenderer({
                 ))}
 
                 {renderThinking()}
-
-                {/* Embedded Slide Viewer - Always show when slides are available */}
-                {slidesMarkdown && renderSlideViewer()}
 
                 <div ref={messagesEndRef} />
             </div>
@@ -549,6 +544,41 @@ export default function PresentationRenderer({
                 onSend={() => handleSend()}
                 placeholder={sending ? '处理中...' : '输入消息...'}
             />
+
+            {/* Modal for Presentation */}
+            {currentPresentationId && (() => {
+                const entry = getEntry(currentPresentationId);
+                return entry ? (
+                    <SkillModal
+                        isOpen={isModalOpen}
+                        onClose={() => setIsModalOpen(false)}
+                        title="📊 演示文稿"
+                        fullscreen={isFullscreen}
+                    >
+                        <div className={styles.modalToolbar}>
+                            <button
+                                className={styles.toolbarBtn}
+                                onClick={() => setIsFullscreen(!isFullscreen)}
+                            >
+                                {isFullscreen ? '⛶ 退出全屏' : '⛶ 全屏'}
+                            </button>
+                            <button
+                                className={styles.toolbarBtn}
+                                onClick={handleRegenerate}
+                                disabled={sending}
+                            >
+                                🔄 重新生成
+                            </button>
+                        </div>
+                        <RevealDeck 
+                            key={currentPresentationId}
+                            markdown={entry.data} 
+                            onSlideChange={handleSlideChange}
+                            fullscreen={false}
+                        />
+                    </SkillModal>
+                ) : null;
+            })()}
         </div>
     );
 }

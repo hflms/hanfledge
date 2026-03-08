@@ -13,6 +13,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ChatInputArea from '@/components/ChatInputArea';
+import SkillHistoryDrawer, { type SkillHistoryItem } from '@/components/SkillHistoryDrawer';
+import SkillModal from '@/components/SkillModal';
+import { useSkillHistory } from '@/lib/plugin/useSkillHistory';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './QuizRenderer.module.css';
 
@@ -94,6 +97,11 @@ export default function QuizRenderer({
     const [studentAnswers, setStudentAnswers] = useState<Record<number, string[]>>({});
     const [gradedResults, setGradedResults] = useState<GradedQuestion[]>([]);
     const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
+    
+    // History management
+    const { historyItems, addEntry, getEntry } = useSkillHistory<{ results: GradedQuestion[]; score: { correct: number; total: number } }>();
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentQuizId, setCurrentQuizId] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -156,9 +164,25 @@ export default function QuizRenderer({
                                         timestamp: Date.now(),
                                     }]);
 
-                                    // If we were in grading phase, move to reviewing
-                                    if (phase === 'grading') {
+                                    // If we were in grading phase, move to reviewing and save to history
+                                    if (phase === 'grading' && gradedResults.length > 0 && score) {
                                         setPhase('reviewing');
+                                        
+                                        // 添加到历史记录
+                                        const quizId = addEntry(
+                                            'quiz',
+                                            `测验 ${historyItems.filter(i => i.type === 'quiz').length + 1} (${score.correct}/${score.total})`,
+                                            { results: gradedResults, score },
+                                            '📝'
+                                        );
+                                        
+                                        // 添加查看按钮
+                                        setMessages(msgs => [...msgs, {
+                                            id: quizId,
+                                            role: 'system',
+                                            content: '📝 测验结果已保存',
+                                            timestamp: Date.now(),
+                                        }]);
                                     }
                                 }
                             }
@@ -345,6 +369,18 @@ export default function QuizRenderer({
         setStreamingContent('');
     }, [input, sending, agentChannel]);
 
+    // -- Handle history item click -------------------------------
+
+    const handleHistoryItemClick = useCallback((item: SkillHistoryItem) => {
+        if (item.type === 'quiz') {
+            const entry = getEntry(item.id);
+            if (entry) {
+                setCurrentQuizId(item.id);
+                setIsModalOpen(true);
+            }
+        }
+    }, [getEntry]);
+
     
 
     // -- Render question card -----------------------------------
@@ -467,8 +503,40 @@ export default function QuizRenderer({
 
     // -- Main render ---------------------------------------------
 
+    const renderQuizModal = () => {
+        if (!currentQuizId) return null;
+        const entry = getEntry(currentQuizId);
+        if (!entry) return null;
+
+        return (
+            <SkillModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title="📝 测验结果"
+            >
+                <div className={styles.quizCards}>
+                    <div className={styles.scoreCard}>
+                        <div className={styles.scoreNumber}>
+                            {entry.data.score.correct} / {entry.data.score.total}
+                        </div>
+                        <div className={styles.scoreLabel}>
+                            正确率: {Math.round((entry.data.score.correct / entry.data.score.total) * 100)}%
+                        </div>
+                    </div>
+                    {entry.data.results.map(g => renderQuestion(g, g))}
+                </div>
+            </SkillModal>
+        );
+    };
+
     return (
         <div className={styles.quizContainer}>
+            {/* History Drawer */}
+            <SkillHistoryDrawer 
+                items={historyItems}
+                onItemClick={handleHistoryItemClick}
+            />
+            
             {/* Phase indicator */}
             <div className={styles.phaseBar}>
                 {(Object.entries(PHASE_LABELS) as [QuizPhase, string][]).map(([p, label]) => (
@@ -508,7 +576,17 @@ export default function QuizRenderer({
                             </div>
                         )}
                         <div className={styles.messageContent}>
-                            {msg.role === 'coach' ? (
+                            {msg.role === 'system' && msg.content.includes('测验结果已保存') ? (
+                                <button 
+                                    className={styles.openQuizBtn}
+                                    onClick={() => {
+                                        setCurrentQuizId(msg.id);
+                                        setIsModalOpen(true);
+                                    }}
+                                >
+                                    📝 查看测验结果
+                                </button>
+                            ) : msg.role === 'coach' ? (
                                 <MarkdownRenderer content={msg.content} />
                             ) : (
                                 msg.content
@@ -583,6 +661,9 @@ export default function QuizRenderer({
                 onSend={() => handleSend()}
                 placeholder={sending ? '批改中...' : '输入你的回答...'}
             />
+            
+            {/* Quiz Results Modal */}
+            {renderQuizModal()}
         </div>
     );
 }
