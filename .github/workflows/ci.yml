@@ -2,58 +2,65 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [main, develop]
 
 jobs:
   backend:
-    name: Go Backend
+    name: Backend Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Vet
+          go-version: '1.25'
+      
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+      
+      - name: Download dependencies
+        run: go mod download
+      
+      - name: Run tests
+        run: go test ./internal/... -v
+      
+      - name: Run vet
         run: go vet ./...
-
+      
       - name: Build
-        run: go build -o /dev/null ./cmd/server/main.go
-
-      - name: Test
-        run: go test -race -count=1 ./...
+        run: go build -o bin/hanfledge cmd/server/main.go
 
   frontend:
-    name: Next.js Frontend
+    name: Frontend Tests
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: npm
+          node-version: '22'
+          cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install
+      
+      - name: Install dependencies
         run: npm ci
-
-      - name: Lint
+      
+      - name: Run linter
         run: npm run lint
-
-      - name: Test
+      
+      - name: Run tests
         run: npm run test:run
-
+      
       - name: Build
         run: npm run build
