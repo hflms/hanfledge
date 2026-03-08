@@ -79,7 +79,7 @@ services:
     container_name: hanfledge-weknora
     restart: unless-stopped
     ports:
-      - "${WEKNORA_PORT:-9380}:9380"
+      - "${WEKNORA_PORT:-9380}:8080"
     environment:
       DB_DRIVER: postgres
       DB_HOST: postgres
@@ -87,6 +87,7 @@ services:
       DB_USER: ${POSTGRES_USER:-hanfledge}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-hanfledge_secret}
       DB_NAME: ${WEKNORA_DB_NAME:-weknora}
+      REDIS_ADDR: redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 0

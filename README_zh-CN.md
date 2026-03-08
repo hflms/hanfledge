@@ -113,15 +113,15 @@ docker compose -f deployments/docker-compose.yml up -d
 docker compose -f deployments/docker-compose.yml --profile weknora up -d
 ```
 
-> **注意：** WeKnora 需要 `pg_search` PostgreSQL 扩展，但标准的
-> `pgvector/pgvector:pg16` 镜像中未包含此扩展。服务启动时会因迁移错误而失败。
-> 若要使用 WeKnora，需要安装了 `pg_search` 的自定义 PostgreSQL 镜像，
-> 或者不使用 `--profile weknora` 标志来禁用 WeKnora。
+WeKnora 现已完全集成，包含以下服务：
 
 | 服务       | 镜像                              | 宿主端口 | 用途           |
 |------------|-----------------------------------|----------|----------------|
 | WeKnora    | wechatopenai/weknora-app:latest   | 9380     | 知识库服务     |
 | DocReader  | wechatopenai/weknora-docreader    | 50051    | 文档解析服务   |
+
+PostgreSQL 服务使用 `paradedb/paradedb:latest` 镜像，同时包含 `pg_search`
+（WeKnora 所需）和 `pgvector` 扩展。
 
 ### 2. 配置环境变量
 

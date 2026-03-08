@@ -118,18 +118,15 @@ To also start the optional WeKnora knowledge base service:
 docker compose -f deployments/docker-compose.yml --profile weknora up -d
 ```
 
-> **Note:** WeKnora requires the `pg_search` PostgreSQL extension (provided by
-> ParadeDB). The PostgreSQL service has been updated to use `paradedb/paradedb:latest`
-> which includes both `pg_search` and `pgvector` extensions. However, WeKnora
-> configuration requires additional environment variables for Redis connectivity.
-> The service is currently under configuration. To use WeKnora, ensure all required
-> environment variables are properly set, or disable WeKnora by not using the
-> `--profile weknora` flag.
+WeKnora is now fully integrated with the following services:
 
 | Service    | Image                             | Host port | Purpose             |
 |------------|-----------------------------------|-----------|---------------------|
 | WeKnora    | wechatopenai/weknora-app:latest   | 9380      | Knowledge base svc  |
 | DocReader  | wechatopenai/weknora-docreader    | 50051     | Document parser     |
+
+The PostgreSQL service uses `paradedb/paradedb:latest` which includes both
+`pg_search` (required by WeKnora) and `pgvector` extensions.
 
 ### 2. Configure environment
 
