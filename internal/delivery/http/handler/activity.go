@@ -27,11 +27,12 @@ type ActivityHandler struct {
 	DB           *gorm.DB
 	Orchestrator *agent.AgentOrchestrator
 	EventBus     *plugin.EventBus
+	Registry     *plugin.Registry
 }
 
 // NewActivityHandler creates a new ActivityHandler.
-func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus) *ActivityHandler {
-	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus}
+func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus, registry *plugin.Registry) *ActivityHandler {
+	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus, Registry: registry}
 }
 
 // publishEvent fires an EventBus event if the bus is available (nil-safe).
@@ -43,14 +44,16 @@ func (h *ActivityHandler) publishEvent(ctx context.Context, hook plugin.HookPoin
 
 // CreateActivityRequest 创建学习活动请求。
 type CreateActivityRequest struct {
-	CourseID    uint                   `json:"course_id" binding:"required"`
-	Title       string                 `json:"title" binding:"required"`
-	KPIDS       []uint                 `json:"kp_ids" binding:"required"`
-	SkillConfig map[string]interface{} `json:"skill_config,omitempty"`
-	Deadline    *string                `json:"deadline,omitempty"`
-	AllowRetry  *bool                  `json:"allow_retry,omitempty"`
-	MaxAttempts *int                   `json:"max_attempts,omitempty"`
-	ClassIDs    []uint                 `json:"class_ids,omitempty"`
+	CourseID       uint                   `json:"course_id" binding:"required"`
+	Title          string                 `json:"title" binding:"required"`
+	DesignerID     string                 `json:"designer_id,omitempty"`
+	DesignerConfig map[string]interface{} `json:"designer_config,omitempty"`
+	KPIDS          []uint                 `json:"kp_ids" binding:"required"`
+	SkillConfig    map[string]interface{} `json:"skill_config,omitempty"`
+	Deadline       *string                `json:"deadline,omitempty"`
+	AllowRetry     *bool                  `json:"allow_retry,omitempty"`
+	MaxAttempts    *int                   `json:"max_attempts,omitempty"`
+	ClassIDs       []uint                 `json:"class_ids,omitempty"`
 }
 
 // CreateActivity creates a new learning activity.
@@ -91,15 +94,27 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 		skillConfigJSON = string(data)
 	}
 
+	designerConfigJSON := "{}"
+	if req.DesignerConfig != nil {
+		data, err := json.Marshal(req.DesignerConfig)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "设计者配置序列化失败"})
+			return
+		}
+		designerConfigJSON = string(data)
+	}
+
 	activity := model.LearningActivity{
-		CourseID:    req.CourseID,
-		TeacherID:   teacherID,
-		Title:       req.Title,
-		KPIDS:       string(kpIDsJSON),
-		SkillConfig: skillConfigJSON,
-		Deadline:    req.Deadline,
-		Status:      model.ActivityStatusDraft,
-		CreatedAt:   time.Now().Format(time.RFC3339),
+		CourseID:       req.CourseID,
+		TeacherID:      teacherID,
+		Title:          req.Title,
+		DesignerID:     req.DesignerID,
+		DesignerConfig: designerConfigJSON,
+		KPIDS:          string(kpIDsJSON),
+		SkillConfig:    skillConfigJSON,
+		Deadline:       req.Deadline,
+		Status:         model.ActivityStatusDraft,
+		CreatedAt:      time.Now().Format(time.RFC3339),
 	}
 
 	if req.AllowRetry != nil {
@@ -124,6 +139,24 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, activity)
+}
+
+// ListDesigners returns available instructional designers.
+//
+//	@Summary      获取教学设计者列表
+//	@Description  返回可用的教学设计者风格（苏格拉底式、项目式、精熟式、探究式）
+//	@Tags         Activities
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Success      200  {array}  map[string]interface{}
+//	@Router       /designers [get]
+func (h *ActivityHandler) ListDesigners(c *gin.Context) {
+	designers, err := h.Registry.ListDesigners()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取设计者列表失败"})
+		return
+	}
+	c.JSON(http.StatusOK, designers)
 }
 
 // ListActivities returns learning activities for a teacher.

@@ -487,6 +487,8 @@ export interface LearningActivity {
   course_id: number;
   teacher_id: number;
   title: string;
+  designer_id?: string;
+  designer_config?: string;
   kp_ids: string;
   skill_config: string;
   deadline?: string;
@@ -651,6 +653,8 @@ export async function listTeacherActivities(courseId?: number, pg?: PaginationPa
 export async function createActivity(data: {
   course_id: number;
   title: string;
+  designer_id?: string;
+  designer_config?: Record<string, unknown>;
   kp_ids: number[];
   class_ids?: number[];
   deadline?: string;
@@ -662,6 +666,23 @@ export async function createActivity(data: {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export interface InstructionalDesigner {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  config_schema: Record<string, unknown>;
+  strategy: {
+    skill_coordination: string;
+    scaffold_preference: string;
+    intervention_style: string;
+  };
+}
+
+export async function listDesigners(): Promise<InstructionalDesigner[]> {
+  return apiFetch<InstructionalDesigner[]>('/designers');
 }
 
 export async function publishActivity(activityId: number): Promise<{ message: string }> {

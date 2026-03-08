@@ -95,7 +95,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	userHandler := handler.NewUserHandler(deps.DB)
 	courseHandler := handler.NewCourseHandler(courseRepo, docRepo, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry, deps.LLMProvider)
-	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus)
+	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus, deps.Registry)
 	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
 	dashboardHandler := handler.NewDashboardHandler(courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)

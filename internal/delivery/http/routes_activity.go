@@ -18,6 +18,9 @@ func registerActivityRoutes(
 ) {
 	teacherRoles := middleware.RBAC(db, model.RoleTeacher, model.RoleSchoolAdmin, model.RoleSysAdmin)
 
+	// Instructional Designers (TEACHER)
+	protected.GET("/designers", teacherRoles, activityHandler.ListDesigners)
+
 	// Learning Activities (TEACHER) — Phase 4
 	activities := protected.Group("/activities")
 	activities.Use(teacherRoles)

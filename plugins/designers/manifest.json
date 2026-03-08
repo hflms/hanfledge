@@ -1,0 +1,107 @@
+[
+  {
+    "id": "socratic-designer",
+    "name": "苏格拉底式设计者",
+    "description": "通过持续追问引导学生深度思考，强调批判性思维和自主探索",
+    "category": "instructional_designer",
+    "version": "1.0.0",
+    "author": "Hanfledge Team",
+    "config_schema": {
+      "questioning_depth": {
+        "type": "string",
+        "enum": ["shallow", "moderate", "deep"],
+        "default": "moderate",
+        "label": "追问深度"
+      },
+      "allow_direct_answers": {
+        "type": "boolean",
+        "default": false,
+        "label": "允许直接给出答案"
+      }
+    },
+    "strategy": {
+      "skill_coordination": "sequential",
+      "scaffold_preference": "high",
+      "intervention_style": "questioning"
+    }
+  },
+  {
+    "id": "project-based-designer",
+    "name": "项目式设计者",
+    "description": "围绕真实项目组织学习，强调实践应用和问题解决",
+    "category": "instructional_designer",
+    "version": "1.0.0",
+    "author": "Hanfledge Team",
+    "config_schema": {
+      "project_complexity": {
+        "type": "string",
+        "enum": ["simple", "moderate", "complex"],
+        "default": "moderate",
+        "label": "项目复杂度"
+      },
+      "collaboration_mode": {
+        "type": "boolean",
+        "default": false,
+        "label": "协作模式"
+      }
+    },
+    "strategy": {
+      "skill_coordination": "parallel",
+      "scaffold_preference": "medium",
+      "intervention_style": "coaching"
+    }
+  },
+  {
+    "id": "mastery-based-designer",
+    "name": "精熟式设计者",
+    "description": "基于掌握度逐步推进，强调扎实基础和个性化节奏",
+    "category": "instructional_designer",
+    "version": "1.0.0",
+    "author": "Hanfledge Team",
+    "config_schema": {
+      "mastery_threshold": {
+        "type": "number",
+        "min": 0.6,
+        "max": 0.95,
+        "default": 0.8,
+        "label": "精熟阈值"
+      },
+      "adaptive_pacing": {
+        "type": "boolean",
+        "default": true,
+        "label": "自适应节奏"
+      }
+    },
+    "strategy": {
+      "skill_coordination": "adaptive",
+      "scaffold_preference": "dynamic",
+      "intervention_style": "diagnostic"
+    }
+  },
+  {
+    "id": "inquiry-based-designer",
+    "name": "探究式设计者",
+    "description": "以问题驱动学习，鼓励假设验证和科学探究",
+    "category": "instructional_designer",
+    "version": "1.0.0",
+    "author": "Hanfledge Team",
+    "config_schema": {
+      "inquiry_cycle": {
+        "type": "string",
+        "enum": ["guided", "structured", "open"],
+        "default": "structured",
+        "label": "探究周期"
+      },
+      "hypothesis_required": {
+        "type": "boolean",
+        "default": true,
+        "label": "要求提出假设"
+      }
+    },
+    "strategy": {
+      "skill_coordination": "cyclic",
+      "scaffold_preference": "medium",
+      "intervention_style": "facilitation"
+    }
+  }
+]

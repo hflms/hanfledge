@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,15 @@ import (
 )
 
 var slogStrat = logger.L("Strategist")
+
+// DesignerStrategy 教学设计者策略。
+type DesignerStrategy struct {
+	ID                  string
+	SkillCoordination   string // sequential, parallel, adaptive, cyclic
+	ScaffoldPreference  string // high, medium, low, dynamic
+	InterventionStyle   string // questioning, coaching, diagnostic, facilitation
+	Config              map[string]interface{}
+}
 
 // ============================
 // Strategist Agent — 策略师
@@ -40,17 +50,23 @@ func NewStrategistAgent(db *gorm.DB, neo4jClient *neo4jRepo.Client, registry *pl
 func (a *StrategistAgent) Name() string { return "Strategist" }
 
 // Analyze 分析学生学情，生成学习处方。
-// 1. 查询 LearningActivity → 获取目标 KP 列表
+// 1. 查询 LearningActivity → 获取目标 KP 列表和教学设计者
 // 2. 查询 StudentKPMastery → 获取当前掌握度
 // 3. 查询 Neo4j → 获取前置知识差距
-// 4. 决定支架等级和技能推荐
+// 4. 根据教学设计者策略决定支架等级和技能推荐
 func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, activityID uint) (LearningPrescription, error) {
 	slogStrat.Info("analyzing student", "student_id", studentID, "activity_id", activityID)
 
-	// Step 1: 加载学习活动 → 获取目标 KP IDs
+	// Step 1: 加载学习活动 → 获取目标 KP IDs 和教学设计者
 	var activity model.LearningActivity
 	if err := a.db.First(&activity, activityID).Error; err != nil {
 		return LearningPrescription{}, fmt.Errorf("load activity %d: %w", activityID, err)
+	}
+
+	// 加载教学设计者策略
+	var designerStrategy *DesignerStrategy
+	if activity.DesignerID != "" {
+		designerStrategy = a.loadDesignerStrategy(activity.DesignerID, activity.DesignerConfig)
 	}
 
 	kpIDs, err := parseKPIDs(activity.KPIDS)
@@ -79,8 +95,8 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 			currentMastery = 0.1 // BKT 初始值 P(L0) = 0.1
 		}
 
-		// 决定该 KP 的支架等级
-		scaffold := scaffoldForMastery(currentMastery)
+		// 决定该 KP 的支架等级（考虑教学设计者偏好）
+		scaffold := a.scaffoldForMasteryWithDesigner(currentMastery, designerStrategy)
 
 		// 查询已挂载技能
 		skillID := a.getSkillForKP(kpID)
@@ -176,6 +192,28 @@ func scaffoldForMastery(mastery float64) ScaffoldLevel {
 		return ScaffoldMedium
 	default:
 		return ScaffoldHigh
+	}
+}
+
+// scaffoldForMasteryWithDesigner 根据掌握度和教学设计者策略决定支架等级。
+func (a *StrategistAgent) scaffoldForMasteryWithDesigner(mastery float64, designer *DesignerStrategy) ScaffoldLevel {
+	if designer == nil {
+		return scaffoldForMastery(mastery)
+	}
+
+	// 根据设计者偏好调整支架
+	switch designer.ScaffoldPreference {
+	case "high":
+		return ScaffoldHigh
+	case "low":
+		return ScaffoldLow
+	case "dynamic":
+		return scaffoldForMastery(mastery)
+	default: // "medium"
+		if mastery >= 0.7 {
+			return ScaffoldLow
+		}
+		return ScaffoldMedium
 	}
 }
 
@@ -408,4 +446,40 @@ func (a *StrategistAgent) findDynamicSkill(mastery float64) string {
 		}
 	}
 	return "socratic" // 默认退底为苏格拉底
+}
+
+// loadDesignerStrategy 加载教学设计者策略。
+func (a *StrategistAgent) loadDesignerStrategy(designerID, configJSON string) *DesignerStrategy {
+	data, err := os.ReadFile("plugins/designers/manifest.json")
+	if err != nil {
+		slogStrat.Warn("load designers manifest failed", "err", err)
+		return nil
+	}
+
+	var designers []map[string]interface{}
+	if err := json.Unmarshal(data, &designers); err != nil {
+		slogStrat.Warn("parse designers manifest failed", "err", err)
+		return nil
+	}
+
+	for _, d := range designers {
+		if d["id"] == designerID {
+			strategy := d["strategy"].(map[string]interface{})
+			
+			var config map[string]interface{}
+			if configJSON != "" && configJSON != "{}" {
+				json.Unmarshal([]byte(configJSON), &config)
+			}
+			
+			return &DesignerStrategy{
+				ID:                  designerID,
+				SkillCoordination:   strategy["skill_coordination"].(string),
+				ScaffoldPreference:  strategy["scaffold_preference"].(string),
+				InterventionStyle:   strategy["intervention_style"].(string),
+				Config:              config,
+			}
+		}
+	}
+	
+	return nil
 }

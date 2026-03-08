@@ -300,6 +300,22 @@ func (r *Registry) ListSkills(subject, category string) []*RegisteredSkill {
 	return result
 }
 
+// ListDesigners returns all instructional designers.
+func (r *Registry) ListDesigners() ([]map[string]interface{}, error) {
+	designersPath := "plugins/designers/manifest.json"
+	data, err := os.ReadFile(designersPath)
+	if err != nil {
+		return nil, fmt.Errorf("read designers manifest: %w", err)
+	}
+	
+	var designers []map[string]interface{}
+	if err := json.Unmarshal(data, &designers); err != nil {
+		return nil, fmt.Errorf("parse designers manifest: %w", err)
+	}
+	
+	return designers, nil
+}
+
 // LoadConstraints reads the SKILL.md content for a given skill (lazy loading).
 // For programmatic plugins, delegates to the SkillPlugin.LoadConstraints method.
 // For DB-backed custom skills, returns the in-memory SkillMDContent.
