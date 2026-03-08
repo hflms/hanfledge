@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -498,4 +499,45 @@ func (h *AnalyticsHandler) maskName(name string) string {
 	}
 	masked := string(runes[0]) + strings.Repeat("*", len(runes)-1)
 	return masked
+}
+
+// -- Performance Monitoring (前端性能监控) -------------------------
+
+// RecordPerformance records frontend performance metrics.
+// POST /api/v1/analytics/performance
+func (h *AnalyticsHandler) RecordPerformance(c *gin.Context) {
+	var req struct {
+		Events []struct {
+			Type      string                 `json:"type" binding:"required"`
+			Component string                 `json:"component" binding:"required"`
+			Data      map[string]interface{} `json:"data" binding:"required"`
+			Timestamp int64                  `json:"timestamp" binding:"required"`
+		} `json:"events" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+		return
+	}
+
+	userID := c.GetUint("user_id")
+	events := make([]model.AnalyticsEvent, len(req.Events))
+
+	for i, e := range req.Events {
+		dataJSON, _ := json.Marshal(e.Data)
+		events[i] = model.AnalyticsEvent{
+			Type:      e.Type,
+			Component: e.Component,
+			Data:      string(dataJSON),
+			UserID:    &userID,
+			Timestamp: e.Timestamp,
+		}
+	}
+
+	if err := h.DB.Create(&events).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "count": len(events)})
 }

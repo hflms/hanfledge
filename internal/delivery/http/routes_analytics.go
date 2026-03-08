@@ -51,4 +51,10 @@ func registerAnalyticsRoutes(
 		export.GET("/courses/:id/error-notebook", exportHandler.ExportErrorNotebook)
 		export.GET("/sessions/:id/interactions", exportHandler.ExportInteractionLog)
 	}
+
+	// Performance Monitoring (ANY authenticated user)
+	analytics := protected.Group("/analytics")
+	{
+		analytics.POST("/performance", analyticsHandler.RecordPerformance)
+	}
 }

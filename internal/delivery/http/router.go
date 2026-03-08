@@ -105,7 +105,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	achievementHandler := handler.NewAchievementHandler(deps.DB)
 	customSkillHandler := handler.NewCustomSkillHandler(deps.DB, deps.Registry)
 	marketplaceHandler := handler.NewMarketplaceHandler(deps.DB)
-	telemetryHandler := handler.NewTelemetryHandler(deps.DB)
+	// telemetryHandler := handler.NewTelemetryHandler(deps.DB) // Disabled
 
 	// ── API v1 ──────────────────────────────────────────
 	v1 := r.Group("/api/v1")
@@ -121,7 +121,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	registerAdminRoutes(protected, deps.DB, userHandler)
 	registerCourseRoutes(protected, deps.DB, courseHandler, skillHandler, customSkillHandler, kgHandler)
 	registerActivityRoutes(protected, deps.DB, activityHandler, sessionHandler, dashboardHandler)
-	registerStudentRoutes(protected, deps.DB, activityHandler, dashboardHandler, kgHandler, achievementHandler, telemetryHandler)
+	registerStudentRoutes(protected, deps.DB, activityHandler, dashboardHandler, kgHandler, achievementHandler)
 	registerAnalyticsRoutes(protected, deps.DB, dashboardHandler, analyticsHandler, exportHandler)
 	registerSystemRoutes(protected, deps.DB, deps.LLMProvider)
 	registerMarketplaceRoutes(protected, deps.DB, marketplaceHandler)

@@ -96,10 +96,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.WeKnoraKBRef{},
 		// WeKnora 用户 Token 映射
 		&model.WeKnoraToken{},
-		// 跨会话学习分析
-		&model.StudentProfile{},
-		&model.LearningPathLog{},
-		&model.StudentDimensionRecord{},
+		// 性能监控
+		&model.AnalyticsEvent{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

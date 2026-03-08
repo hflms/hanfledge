@@ -33,14 +33,14 @@ type AgentOrchestrator struct {
 	coach      *CoachAgent
 	critic     *CriticAgent
 	bkt        *BKTService
-	profile    *ProfileService
+	// profile    *ProfileService // Disabled: missing model definitions
 	assessor   *AssessorAgent
 	evaluator  *EvaluatorAgent
 
 	// 模块化管理器
 	skillState   *SkillStateManager
 	cacheManager *CacheManager
-	profileMgr   *ProfileManager
+	// profileMgr   *ProfileManager // Disabled: missing model definitions
 
 	// 依赖
 	db          *gorm.DB
@@ -95,16 +95,16 @@ func NewAgentOrchestrator(
 	o.coach = NewCoachAgent(db, llmClient, registry, piiRedactor, redisCache)
 	o.critic = NewCriticAgent(llmClient)
 	o.bkt = NewBKTService(db)
-	o.profile = NewProfileService(db)
+	// o.profile = NewProfileService(db) // Disabled
 	o.assessor = NewAssessorAgent(llmClient)
 	o.evaluator = NewEvaluatorAgent(llmClient)
 
 	// 初始化模块化管理器
 	o.skillState = NewSkillStateManager(o.coach)
 	o.cacheManager = NewCacheManager(redisCache, llmClient)
-	o.profileMgr = NewProfileManager(db, o.bkt, o.profile)
+	// o.profileMgr = NewProfileManager(db, o.bkt, o.profile) // Disabled
 
-	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT, Profile")
+	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT, Assessor, Evaluator")
 	return o
 }
 
@@ -476,14 +476,14 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 
 	// ── Stage 7: 错题本自动归档 (skip in sandbox) ──
 	if !tc.IsSandbox {
-		o.profileMgr.ArchiveErrorIfIncorrect(tc, finalResponse, o.inferCorrectness)
+		// o.profileMgr.ArchiveErrorIfIncorrect(tc, finalResponse, o.inferCorrectness) // Disabled
 	} else {
 		slogOrch.Debug("skipping error notebook for sandbox", "session_id", tc.SessionID)
 	}
 
 	// ── Stage 8: 跨会话学习分析 (skip in sandbox) ──
 	if !tc.IsSandbox {
-		o.profileMgr.UpdateProfile(tc)
+		// o.profileMgr.UpdateProfile(tc) // Disabled
 	}
 
 	elapsed := time.Since(start)
@@ -705,11 +705,11 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 		}
 
 		// 记录支架变化到学习路径日志
-		courseID, _ := o.getCourseIDFromSession(tc.Ctx, tc.SessionID)
-		o.profile.LogScaffoldChange(
-			tc.StudentID, tc.SessionID, courseID, kpID,
-			string(oldScaffold), string(newScaffold), update.NewMastery,
-		)
+		// courseID, _ := o.getCourseIDFromSession(tc.Ctx, tc.SessionID)
+		// o.profile.LogScaffoldChange(
+		// 	tc.StudentID, tc.SessionID, courseID, kpID,
+		// 	string(oldScaffold), string(newScaffold), update.NewMastery,
+		// ) // Disabled
 
 		// 发送 ui_scaffold_change 事件到前端
 		if tc.OnScaffold != nil {
@@ -1311,21 +1311,11 @@ func (o *AgentOrchestrator) archiveErrorIfIncorrect(tc *TurnContext, response *D
 //  2. 刷新全局掌握度统计
 //  3. 更新优势/薄弱领域（每 5 轮更新一次以减少开销）
 func (o *AgentOrchestrator) updateStudentProfile(tc *TurnContext) {
-	// 1. 增量更新交互计数
-	o.profile.IncrementInteraction(tc.StudentID)
+	// Disabled: missing model definitions
+	// o.profile.IncrementInteraction(tc.StudentID)
+	// o.profile.RefreshMasteryStats(tc.StudentID)
+	// o.profile.RefreshStrengthWeakness(tc.StudentID)
 
-	// 2. 刷新全局掌握度统计
-	o.profile.RefreshMasteryStats(tc.StudentID)
-
-	// 3. 每 5 轮交互更新一次优势/薄弱领域（开销较大）
-	var interactionCount int64
-	o.db.WithContext(tc.Ctx).Model(&model.Interaction{}).
-		Where("session_id = ? AND role = ?", tc.SessionID, "student").
-		Count(&interactionCount)
-	if interactionCount%5 == 0 {
-		o.profile.RefreshStrengthWeakness(tc.StudentID)
-	}
-
-	slogOrch.Debug("student profile updated",
+	slogOrch.Debug("student profile update skipped (disabled)",
 		"student_id", tc.StudentID, "session_id", tc.SessionID)
 }
