@@ -433,6 +433,7 @@ go run scripts/benchmark-parallel.go
 - [技能重构指南](docs/SKILL_REFACTORING_GUIDE.md)
 - [技能性能指南](docs/SKILL_PERFORMANCE_GUIDE.md)
 - [技能监控指南](docs/SKILL_MONITORING.md)
+- [Soul 系统 — AI 自进化](docs/SOUL_SYSTEM.md)
 
 前端应用内帮助中心可通过 `/help` 路径访问。
 

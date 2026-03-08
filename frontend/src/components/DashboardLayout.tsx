@@ -35,6 +35,7 @@ const ADMIN_NAV: NavItem[] = [
     { icon: '🏫', label: '学校管理', href: '/admin/schools' },
     { icon: '🏷️', label: '班级管理', href: '/admin/classes' },
     { icon: '👥', label: '账号管理', href: '/admin/users' },
+    { icon: '🧠', label: 'Soul 规则', href: '/admin/soul' },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
