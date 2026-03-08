@@ -107,6 +107,8 @@ func AutoMigrate(db *gorm.DB) error {
 	seedRoles(db)
 	// Seed achievement definitions if not exist
 	seedAchievements(db)
+	// Create performance indexes
+	createPerformanceIndexes(db)
 
 	slogDB.Info("database migration completed")
 	return nil
@@ -151,3 +153,32 @@ func seedAchievements(db *gorm.DB) {
 	}
 	slogDB.Info("achievement definitions seeded")
 }
+
+// createPerformanceIndexes creates indexes for high-frequency queries.
+// These indexes are idempotent (IF NOT EXISTS).
+func createPerformanceIndexes(db *gorm.DB) {
+	indexes := []string{
+		// student_sessions: 高频查询 activity_id + status
+		`CREATE INDEX IF NOT EXISTS idx_sessions_activity_status ON student_sessions(activity_id, status)`,
+		// student_sessions: 学生历史会话查询
+		`CREATE INDEX IF NOT EXISTS idx_sessions_student_created ON student_sessions(student_id, created_at DESC)`,
+		// interactions: 会话消息时间序列查询
+		`CREATE INDEX IF NOT EXISTS idx_interactions_session_created ON interactions(session_id, created_at)`,
+		// interactions: 知识点正确率分析
+		`CREATE INDEX IF NOT EXISTS idx_interactions_kp_correct ON interactions(kp_id, is_correct) WHERE kp_id IS NOT NULL`,
+		// student_kp_masteries: 更新时间排序（已有 idx_student_kp）
+		`CREATE INDEX IF NOT EXISTS idx_mastery_updated ON student_kp_masteries(updated_at DESC)`,
+		// error_notebook_entries: 学生错题查询
+		`CREATE INDEX IF NOT EXISTS idx_error_student_resolved ON error_notebook_entries(student_id, resolved, archived_at DESC)`,
+		// learning_activities: 课程活动列表
+		`CREATE INDEX IF NOT EXISTS idx_activities_course_created ON learning_activities(course_id, created_at DESC)`,
+	}
+
+	for _, sql := range indexes {
+		if err := db.Exec(sql).Error; err != nil {
+			slogDB.Warn("index creation skipped", "err", err)
+		}
+	}
+	slogDB.Info("performance indexes created")
+}
+
