@@ -15,7 +15,7 @@ import {
 } from '@/lib/api';
 import { usePluginRegistry } from '@/lib/plugin/PluginRegistry';
 import { useBuiltinSkillRenderers } from '@/lib/plugin/SkillRendererPlugins';
-import { getMissingRendererSkillIds } from '@/lib/plugin/SkillManifestLoader';
+import { getMissingRendererSkillIds, getRendererBySkillId } from '@/lib/plugin/SkillManifestLoader';
 import type { SkillRendererProps, InteractionEvent } from '@/lib/plugin/types';
 import {
     getCachedResponse,
@@ -96,13 +96,12 @@ export default function SessionPage() {
 
     // -- Plugin System: find matching skill renderer ----------------
 
-    const plugins = usePluginRegistry('student.interaction.main');
     const activeSkill = session?.active_skill || '';
-    const matchedPlugin = useMemo(() => {
+    const matchedRenderer = useMemo(() => {
         if (!activeSkill) return null;
-        return plugins.find(p => p.id === `skill-renderer-${activeSkill}`) || null;
-    }, [plugins, activeSkill]);
-    const activePlugin = matchedPlugin?.Component ? matchedPlugin : null;
+        return getRendererBySkillId(activeSkill) || null;
+    }, [activeSkill]);
+    const activePlugin = matchedRenderer?.Component ? matchedRenderer : null;
 
     // -- WebSocket Event Handler ------------------------------------
 
@@ -235,7 +234,7 @@ export default function SessionPage() {
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toast, matchedPlugin]);
+    }, [toast, matchedRenderer]);
 
     // -- WebSocket Hook ---------------------------------------------
 
