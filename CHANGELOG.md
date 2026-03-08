@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Hanfledge will be documented in this file.
+All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,63 +8,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Cache metrics monitoring API (`GET /api/v1/metrics/cache`)
-- Cache invalidation API (`POST /api/v1/metrics/cache/invalidate`)
-- Standardized error response structure with i18n support
-- Zustand-based toast notification store
-- Performance indexes for high-frequency queries
-- Custom hooks for outline page (useSkillMounting, useActivityPublish, etc.)
-- Modular API structure (api/core.ts, api/auth.ts)
+- **WeKnora Integration (2026-03-08)**
+  - SSO single sign-on with automatic user synchronization
+  - Per-user token management with Redis caching and database persistence
+  - Neo4j graph database support for memory/knowledge graph features
+  - Frontend "Open WeKnora" button in teacher dashboard
+  - Knowledge base binding to courses with search functionality
+  - `/api/v1/weknora/login-token` endpoint for SSO authentication
+  - `WEKNORA_ENCRYPTION_KEY` environment variable for secure password generation
+  - Automatic user registration and login on first access
+  - Token refresh mechanism with 5-minute buffer
+
+- **Performance Optimizations (2026-03-07)**
+  - Parallel agent execution (Strategist + Designer run concurrently)
+  - TTFT (Time To First Token) reduced by ~40%
+  - Neo4j graph context preloading during Strategist analysis
+  - Voice Activity Detection (VAD) using Silero VAD WebAssembly
+  - ASR computation reduced by 50-70% with speech detection
+  - Visual feedback for voice detection (🔴 waiting, 🟢 detected)
 
 ### Changed
-- Refactored `orchestrator.go` into modular components (skill_state, cache_manager, profile_manager)
-- Refactored `coach.go` by extracting skill state management (coach_skill_states.go)
-- Reduced coach.go from 1092 to 447 lines (-59%)
+- WeKnora client initialization now uses empty API key (per-user token mode)
+- TokenManager uses `WEKNORA_ENCRYPTION_KEY` instead of `WEKNORA_API_KEY`
+- Removed WeKnora ping check during initialization (deferred to first user access)
+- Updated docker-compose.yml to use ParadeDB image with pg_search extension
+- Neo4j service now includes health check dependency for WeKnora
 
 ### Fixed
-- All 43 TypeScript type errors in frontend
-- WeKnora service restart issue (documented pg_search extension requirement)
-- Removed unused imports and variables
+- WeKnora knowledge base list API authentication issue
+- SSO auto-login with correct localStorage key (`weknora_token`)
+- User and tenant information persistence in localStorage
+- Token expiration handling with automatic refresh
+- WeKnora frontend token processing and URL parameter cleanup
 
-### Performance
-- Added 7 database indexes for sessions, interactions, and mastery queries
-- Cache hit/miss tracking for performance monitoring
+### Documentation
+- Updated README.md with WeKnora integration details
+- Added SSO login-token API to API reference
+- Added WeKnora optimization section to README
+- Created comprehensive WeKnora integration guides
+- Added quick start guide for WeKnora setup
 
 ## [2.0.0] - 2026-03-07
 
 ### Added
-- Parallel agent execution (Strategist + Designer)
-- Voice Activity Detection (VAD) with Silero WebAssembly
-- Neo4j graph context preloading
+- Multi-agent orchestration with parallel execution
+- Voice Activity Detection (VAD) support
+- Dynamic AI provider configuration
+- Teacher intervention system (takeover & whisper)
+- Custom skill creation and marketplace
+- Achievement system with gamification
+- Error notebook for student learning
+- Learning path analytics
+- Cross-disciplinary knowledge linking
+- Real-time session streaming via WebSocket
+
+### Changed
+- Upgraded to Go 1.25
+- Upgraded to Next.js 16 with React 19
+- Migrated to App Router architecture
+- Improved BKT-driven scaffold fading
+- Enhanced knowledge graph visualization
 
 ### Performance
-- TTFT (Time To First Token) reduced by ~40%
-- ASR computation reduced by 50-70% with VAD
+- 40% reduction in Time To First Token (TTFT)
+- 50-70% reduction in ASR computation
+- Concurrent stress test: 1,155 req/s with 0% error rate
+- Optimized database queries with performance indexes
 
-## [1.0.0] - 2026-03-01
+## [1.0.0] - 2026-01-15
 
 ### Added
-- Multi-agent orchestration (Strategist, Designer, Coach, Critic)
-- KA-RAG pipeline with hybrid retrieval (pgvector + Neo4j)
-- Bayesian Knowledge Tracing (BKT) with scaffold fading
-- 8 pluggable skills (Socratic, Quiz, RolePlay, Fallacy, etc.)
-- Teacher intervention (takeover & whisper)
+- Initial release with core features
 - JWT authentication with RBAC
-- Admin dashboard and teacher dashboard
-- Student learning interface with WebSocket streaming
-- ECharts analytics and knowledge radar
-- WeKnora knowledge base integration (optional)
-- In-app help center with role-based manuals
+- KA-RAG pipeline for knowledge extraction
+- 8 built-in skills (Socratic, Quiz, Role Play, etc.)
+- PostgreSQL with pgvector for semantic search
+- Neo4j for knowledge graph
+- Redis for caching
+- Ollama integration for LLM inference
+- Admin, teacher, and student dashboards
+- ECharts analytics visualization
 - i18n support (zh-CN, en-US)
 
-### Security
-- Prompt injection guard (60 keywords + 14 regex patterns)
-- PII redactor for sensitive information
-- Output safety guardrail
-
-### Infrastructure
-- PostgreSQL with pgvector for embeddings
-- Neo4j for knowledge graph
-- Redis for caching and sessions
-- Ollama integration (qwen2.5:7b, bge-m3)
-- DashScope and Gemini provider support
+[Unreleased]: https://github.com/hflms/hanfledge/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/hflms/hanfledge/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/hflms/hanfledge/releases/tag/v1.0.0

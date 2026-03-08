@@ -297,6 +297,7 @@ Enabled when `WEKNORA_ENABLED=true`. All require TEACHER+ role.
 
 | Method | Path                                      | Description                     |
 |--------|-------------------------------------------|---------------------------------|
+| GET    | `/api/v1/weknora/login-token`             | Get SSO token for WeKnora UI    |
 | GET    | `/api/v1/weknora/knowledge-bases`         | List remote knowledge bases     |
 | GET    | `/api/v1/weknora/knowledge-bases/:kb_id`  | Get KB details                  |
 | GET    | `/api/v1/weknora/knowledge-bases/:kb_id/knowledge` | List KB entries        |
@@ -385,6 +386,13 @@ rate.
 - Only sends audio when voice is detected
 - Reduces backend ASR computation by 50-70%
 - Visual feedback: 🔴 waiting for speech, 🟢 speech detected
+
+**WeKnora Integration (2026-03-08):**
+- SSO single sign-on with automatic user synchronization
+- Per-user token management with Redis caching
+- Neo4j graph database support for memory/knowledge graph features
+- Frontend integration with "Open WeKnora" button in teacher dashboard
+- Seamless knowledge base binding to courses
 
 Run performance benchmark:
 ```bash
