@@ -6,7 +6,7 @@
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: paradedb/paradedb:latest
     container_name: hanfledge-postgres
     restart: unless-stopped
     environment:
@@ -16,7 +16,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hanfledge}" ]
       interval: 5s
@@ -87,12 +87,16 @@ services:
       DB_USER: ${POSTGRES_USER:-hanfledge}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-hanfledge_secret}
       DB_NAME: ${WEKNORA_DB_NAME:-weknora}
-      REDIS_ADDR: redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
       STORAGE_TYPE: local
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       DOCREADER_ADDR: docreader:50051
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - weknora_data:/data

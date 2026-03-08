@@ -118,11 +118,13 @@ To also start the optional WeKnora knowledge base service:
 docker compose -f deployments/docker-compose.yml --profile weknora up -d
 ```
 
-> **Note:** WeKnora requires the `pg_search` PostgreSQL extension which is not
-> included in the standard `pgvector/pgvector:pg16` image. The service will
-> fail to start with migration errors. To use WeKnora, you need a custom
-> PostgreSQL image with `pg_search` installed, or disable WeKnora by not using
-> the `--profile weknora` flag.
+> **Note:** WeKnora requires the `pg_search` PostgreSQL extension (provided by
+> ParadeDB). The PostgreSQL service has been updated to use `paradedb/paradedb:latest`
+> which includes both `pg_search` and `pgvector` extensions. However, WeKnora
+> configuration requires additional environment variables for Redis connectivity.
+> The service is currently under configuration. To use WeKnora, ensure all required
+> environment variables are properly set, or disable WeKnora by not using the
+> `--profile weknora` flag.
 
 | Service    | Image                             | Host port | Purpose             |
 |------------|-----------------------------------|-----------|---------------------|
