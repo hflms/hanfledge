@@ -36,6 +36,11 @@ type AgentOrchestrator struct {
 	assessor   *AssessorAgent
 	evaluator  *EvaluatorAgent
 
+	// 模块化管理器
+	skillState   *SkillStateManager
+	cacheManager *CacheManager
+	profileMgr   *ProfileManager
+
 	// 依赖
 	db          *gorm.DB
 	llm         llm.LLMProvider
@@ -93,6 +98,11 @@ func NewAgentOrchestrator(
 	o.assessor = NewAssessorAgent(llmClient)
 	o.evaluator = NewEvaluatorAgent(llmClient)
 
+	// 初始化模块化管理器
+	o.skillState = NewSkillStateManager(o.coach)
+	o.cacheManager = NewCacheManager(redisCache, llmClient)
+	o.profileMgr = NewProfileManager(db, o.bkt, o.profile)
+
 	slogOrch.Info("orchestrator initialized", "agents", "Strategist, Designer, Coach, Critic, BKT, Profile")
 	return o
 }
@@ -131,12 +141,14 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	})
 
 	// ── Pre-Stage: L2 Semantic Cache Check (§8.1.3) ─────
-	if hit, err := o.checkSemanticCache(tc); err != nil {
+	getCourseID := func(sessionID uint) (uint, error) {
+		return o.getCourseIDFromSession(tc.Ctx, sessionID)
+	}
+	if hit, err := o.cacheManager.CheckSemanticCache(tc, getCourseID); err != nil {
 		slogOrch.Warn("L2 cache check failed", "err", err)
 	} else if hit != nil {
-		// Cache hit — return cached response directly
 		slogOrch.Info("L2 cache hit, skipping pipeline", "similarity", hit.Similarity)
-		return o.returnCachedResponse(tc, hit.Entry.Response, hit.Entry.SkillID, start)
+		return o.cacheManager.ReturnCachedResponse(tc, hit.Entry.Response, hit.Entry.SkillID, start, o.saveInteraction, o.updateMasteryAndFadeScaffold)
 	}
 
 	// ── Stage 1: Strategist + Designer 并行预处理 ──────────────
@@ -433,7 +445,7 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	})
 
 	// ── Stage 5.5: Write L2+L3 Cache ────────────────────
-	o.writeResponseToCache(tc, material, finalResponse)
+	o.cacheManager.WriteToCache(tc, material, finalResponse)
 
 	// ── Stage 6: BKT 掌握度更新 + 支架衰减 (skip in sandbox) ──
 	if !tc.IsSandbox {
@@ -442,28 +454,22 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		slogOrch.Debug("skipping mastery update for sandbox", "session_id", tc.SessionID)
 	}
 
-	// ── Stage 6.5: 谬误侦探阶段推进 (§5.2 Step 2, item 5) ──
-	o.advanceFallacyPhaseIfActive(tc, finalResponse)
+	// ── Stage 6.5-6.8: 技能状态管理 ──
+	o.skillState.AdvanceFallacyIfActive(tc, finalResponse)
+	o.skillState.UpdateRolePlayIfActive(tc, finalResponse)
+	o.skillState.AdvanceQuizIfActive(tc, finalResponse)
+	o.skillState.AdvanceSurveyIfActive(tc, finalResponse)
 
-	// ── Stage 6.6: 角色扮演状态更新 ──
-	o.updateRolePlayStateIfActive(tc, finalResponse)
-
-	// ── Stage 6.7: 自动出题阶段推进 (§7.13) ──
-	o.advanceQuizPhaseIfActive(tc, finalResponse)
-
-	// ── Stage 6.8: 学情问卷诊断阶段推进 ──
-	o.advanceSurveyPhaseIfActive(tc, finalResponse)
-
-	// ── Stage 7: 错题本自动归档 (§5.2 Step 3, item 3; skip in sandbox) ──
+	// ── Stage 7: 错题本自动归档 (skip in sandbox) ──
 	if !tc.IsSandbox {
-		o.archiveErrorIfIncorrect(tc, finalResponse)
+		o.profileMgr.ArchiveErrorIfIncorrect(tc, finalResponse, o.inferCorrectness)
 	} else {
 		slogOrch.Debug("skipping error notebook for sandbox", "session_id", tc.SessionID)
 	}
 
-	// ── Stage 8: 跨会话学习分析 (StudentProfile + LearningPathLog) ──
+	// ── Stage 8: 跨会话学习分析 (skip in sandbox) ──
 	if !tc.IsSandbox {
-		o.updateStudentProfile(tc)
+		o.profileMgr.UpdateProfile(tc)
 	}
 
 	elapsed := time.Since(start)
@@ -712,10 +718,8 @@ func (o *AgentOrchestrator) updateMasteryAndFadeScaffold(tc *TurnContext) {
 // 这是一个启发式方法，后续可替换为更精确的评估模型。
 func (o *AgentOrchestrator) inferCorrectness(tc *TurnContext) bool {
 	if tc.Review != nil {
-		// 基于 Critic 的深度分数判断
 		return tc.Review.DepthScore >= 0.6
 	}
-	// 如果没有 Critic 审查（例如 Critic 失败），默认视为部分正确
 	return true
 }
 
@@ -727,9 +731,9 @@ func scaffoldDirection(old, new_ model.ScaffoldLevel) string {
 		ScaffoldLow:    1,
 	}
 	if order[new_] < order[old] {
-		return "fade" // 支架减弱（进步）
+		return "fade"
 	}
-	return "strengthen" // 支架增强（退步）
+	return "strengthen"
 }
 
 // ── Output Safety Guardrail (§4.1 Layer 3) ──────────────────

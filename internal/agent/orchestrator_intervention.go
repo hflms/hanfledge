@@ -110,7 +110,7 @@ func (o *AgentOrchestrator) HandleWhisper(ctx context.Context, session *model.St
 	})
 
 	// Optional: advance state machines if needed
-	o.advanceFallacyPhaseIfActive(tc, &draft)
-	o.advanceQuizPhaseIfActive(tc, &draft)
-	o.advanceSurveyPhaseIfActive(tc, &draft)
+	o.skillState.AdvanceFallacyIfActive(tc, &draft)
+	o.skillState.AdvanceQuizIfActive(tc, &draft)
+	o.skillState.AdvanceSurveyIfActive(tc, &draft)
 }

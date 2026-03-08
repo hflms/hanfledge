@@ -58,32 +58,46 @@
 
 #### 3. 大文件重构（3 个文件 > 1000 行）
 
-**orchestrator.go (1313 行)**
+#### 3. 重构大文件 ✅ **部分完成**
+
+**后端重构完成:**
+
+**orchestrator.go (1313 → 1317 行)**
+- ✅ 拆分出 `skill_state.go` (227 行) - 技能状态管理
+- ✅ 拆分出 `cache_manager.go` (116 行) - 缓存管理
+- ✅ 拆分出 `profile_manager.go` (101 行) - 学生档案管理
+- 所有测试通过
+
+**coach.go (1092 → 447 行)**
+- ✅ 拆分出 `coach_skill_states.go` (660 行) - Quiz/Survey/RolePlay/Fallacy 状态
+- 减少 59% 代码量
+- 所有测试通过
+
+**前端待重构:**
+
+**api.ts (1198 行, 133 个导出函数)**
 ```
-建议拆分为：
-- orchestrator_core.go      # HandleTurn 核心逻辑
-- orchestrator_mastery.go   # BKT 和支架更新
-- orchestrator_cache.go     # 缓存检查和写入
-- orchestrator_safety.go    # 安全检查和 PII 处理
+建议拆分为模块化结构：
+- api/core.ts        # apiFetch, token 管理
+- api/auth.ts        # login, getMe
+- api/admin.ts       # schools, classes, users
+- api/course.ts      # courses, materials, outline
+- api/skill.ts       # skills, mounting
+- api/activity.ts    # activities, sessions
+- api/dashboard.ts   # analytics, mastery
+- api/weknora.ts     # WeKnora 集成
 ```
 
-**coach.go (1092 行)**
-```
-建议拆分为：
-- coach_core.go             # GenerateResponse 核心
-- coach_quiz.go             # Quiz 技能状态管理
-- coach_survey.go           # Survey 技能状态管理
-- coach_roleplay.go         # RolePlay 技能状态管理
-- coach_fallacy.go          # Fallacy 技能状态管理
-```
-
-**SessionPage (678 行)**
+**outline/page.tsx (1018 行, 92 个变量/函数)**
 ```
 建议拆分为：
 - page.tsx                  # 主组件 + 布局
-- hooks/useSessionState.ts  # 状态管理
-- hooks/useMessageHandler.ts # 消息处理
-- components/PluginRenderer.tsx # 插件渲染逻辑
+- hooks/useOutlineData.ts   # 数据获取
+- hooks/useSkillMounting.ts # 技能挂载逻辑
+- hooks/useActivityPublish.ts # 活动发布逻辑
+- components/ChapterCard.tsx # 章节卡片
+- components/SkillPicker.tsx # 技能选择器
+- components/ActivityForm.tsx # 活动表单
 ```
 
 #### 4. 前端性能优化
