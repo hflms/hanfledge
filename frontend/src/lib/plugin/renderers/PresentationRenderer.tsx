@@ -238,8 +238,12 @@ export default function PresentationRenderer({
                         setSending(false);
                         const prev = streamingContentRef.current;
                         if (prev) {
+                            console.log('[PresentationRenderer] turn_complete, content length:', prev.length);
+                            console.log('[PresentationRenderer] checking for <slides> tag...');
+                            
                             const parsed = parseSlidesFromContent(prev);
                             if (parsed) {
+                                console.log('[PresentationRenderer] ✅ Found slides, length:', parsed.length);
                                 // 找到了 slides 标签
                                 setSlidesMarkdown(parsed);
                                 setPhase('idle');
@@ -247,6 +251,7 @@ export default function PresentationRenderer({
                                 // 只添加 slides 外的介绍文字（如果有）
                                 const intro = stripSlidesTag(prev);
                                 if (intro) {
+                                    console.log('[PresentationRenderer] Adding intro message, length:', intro.length);
                                     setMessages(msgs => [...msgs, {
                                         id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                                         role: 'coach',
@@ -263,6 +268,7 @@ export default function PresentationRenderer({
                                     timestamp: Date.now(),
                                 });
                             } else {
+                                console.log('[PresentationRenderer] ❌ No slides found, adding as regular message');
                                 // 没有 slides 标签，添加完整内容作为普通消息
                                 setMessages(msgs => [...msgs, {
                                     id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -475,7 +481,7 @@ export default function PresentationRenderer({
                         )}
                         <div className={styles.messageContent}>
                             {msg.role === 'coach' ? (
-                                <MarkdownRenderer content={msg.content} />
+                                <MarkdownRenderer content={stripSlidesTag(msg.content)} />
                             ) : (
                                 msg.content
                             )}
