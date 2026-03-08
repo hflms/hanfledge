@@ -69,6 +69,8 @@ func AutoMigrate(db *gorm.DB) error {
 		// 学习活动
 		&model.LearningActivity{},
 		&model.ActivityClassAssignment{},
+		// 教学设计者
+		&model.InstructionalDesigner{},
 		// 交互与学情
 		&model.StudentSession{},
 		&model.Interaction{},
@@ -107,6 +109,8 @@ func AutoMigrate(db *gorm.DB) error {
 	seedRoles(db)
 	// Seed achievement definitions if not exist
 	seedAchievements(db)
+	// Seed instructional designers if not exist
+	seedDesigners(db)
 	// Create performance indexes
 	createPerformanceIndexes(db)
 
@@ -152,6 +156,44 @@ func seedAchievements(db *gorm.DB) {
 		db.FirstOrCreate(&d, model.AchievementDefinition{Type: d.Type, Tier: d.Tier})
 	}
 	slogDB.Info("achievement definitions seeded")
+}
+
+// seedDesigners inserts the predefined instructional designers.
+func seedDesigners(db *gorm.DB) {
+	designers := []model.InstructionalDesigner{
+		{
+			ID:                "socratic-master",
+			Name:              "苏格拉底大师",
+			Description:       "通过连续追问引导学生自主发现答案，避免直接给出结论",
+			InterventionStyle: model.StyleQuestioning,
+			IsBuiltIn:         true,
+		},
+		{
+			ID:                "practical-coach",
+			Name:              "实践教练",
+			Description:       "提供实践建议和反馈，鼓励学生动手尝试和验证",
+			InterventionStyle: model.StyleCoaching,
+			IsBuiltIn:         true,
+		},
+		{
+			ID:                "diagnostic-tutor",
+			Name:              "诊断导师",
+			Description:       "先评估学生当前水平，再针对性补足薄弱环节",
+			InterventionStyle: model.StyleDiagnostic,
+			IsBuiltIn:         true,
+		},
+		{
+			ID:                "facilitator",
+			Name:              "促进者",
+			Description:       "鼓励学生提出假设和验证，教师作为学习促进者",
+			InterventionStyle: model.StyleFacilitation,
+			IsBuiltIn:         true,
+		},
+	}
+	for _, d := range designers {
+		db.FirstOrCreate(&d, model.InstructionalDesigner{ID: d.ID})
+	}
+	slogDB.Info("instructional designers seeded")
 }
 
 // createPerformanceIndexes creates indexes for high-frequency queries.

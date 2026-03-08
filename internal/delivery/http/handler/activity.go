@@ -148,11 +148,11 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 //	@Tags         Activities
 //	@Produce      json
 //	@Security     BearerAuth
-//	@Success      200  {array}  map[string]interface{}
+//	@Success      200  {array}  model.InstructionalDesigner
 //	@Router       /designers [get]
 func (h *ActivityHandler) ListDesigners(c *gin.Context) {
-	designers, err := h.Registry.ListDesigners()
-	if err != nil {
+	var designers []model.InstructionalDesigner
+	if err := h.DB.Order("is_built_in DESC, name ASC").Find(&designers).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取设计者列表失败"})
 		return
 	}

@@ -265,10 +265,15 @@ func (a *CoachAgent) loadSkillConstraints(skillID string) string {
 
 // buildMessages 构建 LLM 消息列表。
 func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMaterial, skillPrompt string) []llm.ChatMessage {
-	// 系统 Prompt = Designer 组装的 + 技能约束 + CoT 推理指令 (§8.2.3)
+	// 系统 Prompt = Designer 组装的 + 技能约束 + 教学设计者风格 + CoT 推理指令
 	systemContent := material.SystemPrompt
 	if skillPrompt != "" {
 		systemContent += "\n" + skillPrompt
+	}
+
+	// 教学设计者干预风格注入
+	if tc.DesignerStrategy != nil {
+		systemContent += a.buildDesignerStylePrompt(tc.DesignerStrategy)
 	}
 
 	// 技能会话状态注入
@@ -395,6 +400,22 @@ func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, limit int)
 	}
 
 	return messages
+}
+
+// buildDesignerStylePrompt 根据教学设计者策略生成风格指令。
+func (a *CoachAgent) buildDesignerStylePrompt(strategy *DesignerStrategy) string {
+	if strategy == nil {
+		return ""
+	}
+
+	styleMap := map[string]string{
+		"questioning":   "\n[教学风格] 采用苏格拉底式追问，通过连续提问引导学生思考，避免直接给出答案。",
+		"coaching":      "\n[教学风格] 采用教练式引导，提供实践建议和反馈，鼓励学生动手尝试。",
+		"diagnostic":    "\n[教学风格] 采用诊断式教学，先评估学生当前水平，再针对性补足薄弱环节。",
+		"facilitation":  "\n[教学风格] 采用促进式引导，鼓励学生提出假设和验证，教师作为学习促进者。",
+	}
+
+	return styleMap[strategy.InterventionStyle]
 }
 
 // estimateTokens 粗略估算 token 数（中文约 1.5 字 / token）。

@@ -9,7 +9,8 @@ import {
     mountSkillToKP, unmountSkillFromKP, updateKPSkillConfig,
     recommendSkills, batchMountSkills,
     listClasses, listTeacherActivities, createActivity, publishActivity,
-    type Course, type Document, type SkillMetadata, type MountedSkill, type RecommendMount, type ClassItem, type LearningActivity
+    listDesigners,
+    type Course, type Document, type SkillMetadata, type MountedSkill, type RecommendMount, type ClassItem, type LearningActivity, type InstructionalDesigner
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { DOCUMENT_STATUS_LABEL, CATEGORY_ICONS } from '@/lib/constants';
@@ -57,7 +58,9 @@ export default function OutlinePage() {
     // -- Activity publish state ----------------------------------------
     const [classes, setClasses] = useState<ClassItem[]>([]);
     const [activities, setActivities] = useState<LearningActivity[]>([]);
+    const [designers, setDesigners] = useState<InstructionalDesigner[]>([]);
     const [activityTitle, setActivityTitle] = useState('');
+    const [activityDesigner, setActivityDesigner] = useState('');
     const [activityDeadline, setActivityDeadline] = useState('');
     const [activityAllowRetry, setActivityAllowRetry] = useState(true);
     const [activityMaxAttempts, setActivityMaxAttempts] = useState(3);
@@ -105,7 +108,16 @@ export default function OutlinePage() {
                 console.error('Failed to load classes', err);
             }
         };
+        const loadDesigners = async () => {
+            try {
+                const res = await listDesigners();
+                setDesigners(res);
+            } catch (err) {
+                console.error('Failed to load designers', err);
+            }
+        };
         loadClasses();
+        loadDesigners();
     }, []);
 
     // Poll document status while any doc is processing
@@ -387,6 +399,7 @@ export default function OutlinePage() {
             await createActivity({
                 course_id: courseId,
                 title: activityTitle.trim(),
+                designer_id: activityDesigner || undefined,
                 kp_ids: Array.from(selectedKP),
                 class_ids: selectedClasses.size > 0 ? Array.from(selectedClasses) : undefined,
                 deadline: activityDeadline || undefined,
@@ -395,6 +408,7 @@ export default function OutlinePage() {
             });
             toast('活动创建成功', 'success');
             setActivityTitle('');
+            setActivityDesigner('');
             setActivityDeadline('');
             setSelectedKP(new Set());
             setSelectedClasses(new Set());
@@ -719,6 +733,21 @@ export default function OutlinePage() {
                                     placeholder="例如：一次函数·课堂探究"
                                     required
                                 />
+                            </div>
+
+                            <div className="form-group">
+                                <label className="label" htmlFor="activity-designer">教学设计者 (可选)</label>
+                                <select
+                                    id="activity-designer"
+                                    className="input"
+                                    value={activityDesigner}
+                                    onChange={(e) => setActivityDesigner(e.target.value)}
+                                >
+                                    <option value="">默认（无特定风格）</option>
+                                    {designers.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name} - {d.description}</option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className={styles.activityRow}>

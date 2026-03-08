@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -16,15 +15,6 @@ import (
 )
 
 var slogStrat = logger.L("Strategist")
-
-// DesignerStrategy 教学设计者策略。
-type DesignerStrategy struct {
-	ID                  string
-	SkillCoordination   string // sequential, parallel, adaptive, cyclic
-	ScaffoldPreference  string // high, medium, low, dynamic
-	InterventionStyle   string // questioning, coaching, diagnostic, facilitation
-	Config              map[string]interface{}
-}
 
 // ============================
 // Strategist Agent — 策略师
@@ -172,10 +162,11 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		InitialScaffold:  scaffoldForMastery(averageMastery(targets)),
 		RecommendedSkill: recommendedSkill,
 		PrereqGaps:       prereqGaps,
+		DesignerStrategy: designerStrategy,
 	}
 
 	slogStrat.Debug("prescription generated",
-		"targets", len(targets), "scaffold", prescription.InitialScaffold, "gaps", len(prereqGaps))
+		"targets", len(targets), "scaffold", prescription.InitialScaffold, "gaps", len(prereqGaps), "designer", activity.DesignerID)
 
 	return prescription, nil
 }
@@ -450,36 +441,23 @@ func (a *StrategistAgent) findDynamicSkill(mastery float64) string {
 
 // loadDesignerStrategy 加载教学设计者策略。
 func (a *StrategistAgent) loadDesignerStrategy(designerID, configJSON string) *DesignerStrategy {
-	data, err := os.ReadFile("plugins/designers/manifest.json")
-	if err != nil {
-		slogStrat.Warn("load designers manifest failed", "err", err)
+	var designer model.InstructionalDesigner
+	if err := a.db.First(&designer, "id = ?", designerID).Error; err != nil {
+		slogStrat.Warn("load designer failed", "id", designerID, "err", err)
 		return nil
 	}
 
-	var designers []map[string]interface{}
-	if err := json.Unmarshal(data, &designers); err != nil {
-		slogStrat.Warn("parse designers manifest failed", "err", err)
-		return nil
+	var config map[string]interface{}
+	if configJSON != "" && configJSON != "{}" {
+		json.Unmarshal([]byte(configJSON), &config)
 	}
 
-	for _, d := range designers {
-		if d["id"] == designerID {
-			strategy := d["strategy"].(map[string]interface{})
-			
-			var config map[string]interface{}
-			if configJSON != "" && configJSON != "{}" {
-				json.Unmarshal([]byte(configJSON), &config)
-			}
-			
-			return &DesignerStrategy{
-				ID:                  designerID,
-				SkillCoordination:   strategy["skill_coordination"].(string),
-				ScaffoldPreference:  strategy["scaffold_preference"].(string),
-				InterventionStyle:   strategy["intervention_style"].(string),
-				Config:              config,
-			}
-		}
+	return &DesignerStrategy{
+		ID:                 designer.ID,
+		Name:               designer.Name,
+		SkillCoordination:  "adaptive",                        // 默认自适应协调
+		ScaffoldPreference: "dynamic",                         // 默认动态支架
+		InterventionStyle:  string(designer.InterventionStyle),
+		Config:             config,
 	}
-	
-	return nil
 }

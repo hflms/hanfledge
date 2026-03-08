@@ -672,13 +672,10 @@ export interface InstructionalDesigner {
   id: string;
   name: string;
   description: string;
-  category: string;
-  config_schema: Record<string, unknown>;
-  strategy: {
-    skill_coordination: string;
-    scaffold_preference: string;
-    intervention_style: string;
-  };
+  intervention_style: string;
+  is_built_in: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export async function listDesigners(): Promise<InstructionalDesigner[]> {

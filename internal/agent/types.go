@@ -39,6 +39,7 @@ type LearningPrescription struct {
 	InitialScaffold  ScaffoldLevel          `json:"initial_scaffold"`
 	RecommendedSkill string                 `json:"recommended_skill"`
 	PrereqGaps       []string               `json:"prereq_gaps"`
+	DesignerStrategy *DesignerStrategy      `json:"designer_strategy,omitempty"`
 }
 
 // KnowledgePointTarget 单个知识点的学习目标。
@@ -48,6 +49,16 @@ type KnowledgePointTarget struct {
 	TargetMastery  float64       `json:"target_mastery"`
 	ScaffoldLevel  ScaffoldLevel `json:"scaffold_level"`
 	SkillID        string        `json:"skill_id"`
+}
+
+// DesignerStrategy 教学设计者策略。
+type DesignerStrategy struct {
+	ID                 string                 `json:"id"`
+	Name               string                 `json:"name"`
+	InterventionStyle  string                 `json:"intervention_style"` // questioning | coaching | diagnostic | facilitation
+	SkillCoordination  string                 `json:"skill_coordination"` // sequential | parallel | adaptive | cyclic
+	ScaffoldPreference string                 `json:"scaffold_preference"` // high | medium | low | dynamic
+	Config             map[string]interface{} `json:"config,omitempty"`
 }
 
 // ── Designer → Coach Channel Type ───────────────────────────
@@ -305,7 +316,8 @@ type TurnContext struct {
 	UserInput        string
 	TeacherWhisper   string // 教师干预指令 (Whisper)
 	Scaffold         ScaffoldLevel
-	IsSandbox        bool // 沙盒预览模式 — 跳过 BKT 掌握度更新和错题本归档 (design.md §5.1 Step 3)
+	DesignerStrategy *DesignerStrategy // 教学设计者策略
+	IsSandbox        bool              // 沙盒预览模式 — 跳过 BKT 掌握度更新和错题本归档 (design.md §5.1 Step 3)
 	ProviderOverride string
 	ModelOverride    string
 

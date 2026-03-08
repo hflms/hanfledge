@@ -205,9 +205,16 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 	prescription := stratResult.prescription
 	tc.Prescription = &prescription
+	tc.DesignerStrategy = prescription.DesignerStrategy
 
 	slogOrch.Info("[DEBUG] strategist done", "session_id", tc.SessionID,
 		"skill", prescription.RecommendedSkill, "scaffold", prescription.InitialScaffold,
+		"designer", func() string {
+			if prescription.DesignerStrategy != nil {
+				return prescription.DesignerStrategy.ID
+			}
+			return "none"
+		}(),
 		"elapsed", time.Since(start))
 
 	slogOrch.Debug("strategist results",
