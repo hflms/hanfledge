@@ -235,13 +235,10 @@ func main() {
 	// ── WeKnora Knowledge Base Client ─────────────────
 	var wkClient *weknora.Client
 	if cfg.WeKnora.Enabled && cfg.WeKnora.BaseURL != "" {
-		wkClient = weknora.NewClient(cfg.WeKnora.BaseURL, cfg.WeKnora.APIKey)
-		if err := wkClient.Ping(context.Background()); err != nil {
-			log.Warn("WeKnora connection failed (non-fatal)", "err", err)
-			wkClient = nil
-		} else {
-			log.Info("WeKnora integration enabled", "url", cfg.WeKnora.BaseURL)
-		}
+		// Use empty API key - we'll use per-user tokens via TokenManager
+		wkClient = weknora.NewClient(cfg.WeKnora.BaseURL, "")
+		// Skip ping check since we don't have a valid token yet
+		log.Info("WeKnora integration enabled", "url", cfg.WeKnora.BaseURL)
 	}
 
 	// ── Router Setup ────────────────────────────────────

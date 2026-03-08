@@ -39,11 +39,14 @@ func NewTokenManager(client *Client, db *gorm.DB, redisCache *cache.RedisCache, 
 // GetToken returns a valid WeKnora access token for the given Hanfledge user.
 // It follows the cascade: Redis → DB → register+login, with automatic refresh.
 func (m *TokenManager) GetToken(ctx context.Context, userID uint) (string, error) {
+	slog.Debug("TokenManager.GetToken", "user_id", userID, "has_secret", m.secret != "")
+	
 	cacheKey := fmt.Sprintf("weknora:token:%d", userID)
 
 	// 1. Try Redis cache
 	if m.cache != nil {
 		if token, err := m.cache.GetString(ctx, cacheKey); err == nil && token != "" {
+			slog.Debug("TokenManager: cache hit", "user_id", userID)
 			return token, nil
 		}
 	}
@@ -54,6 +57,7 @@ func (m *TokenManager) GetToken(ctx context.Context, userID uint) (string, error
 
 	if result.Error == gorm.ErrRecordNotFound {
 		// 3. First time — auto-register and login
+		slog.Debug("TokenManager: first time user, registering", "user_id", userID)
 		return m.registerAndLogin(ctx, userID, cacheKey)
 	}
 	if result.Error != nil {
@@ -63,11 +67,13 @@ func (m *TokenManager) GetToken(ctx context.Context, userID uint) (string, error
 	// 4. Check if token is still valid (with 5-minute buffer)
 	if time.Now().Add(5 * time.Minute).Before(wkToken.ExpiresAt) {
 		// Token is valid — cache it and return
+		slog.Debug("TokenManager: using cached DB token", "user_id", userID)
 		m.cacheToken(ctx, cacheKey, wkToken.Token, time.Until(wkToken.ExpiresAt)-5*time.Minute)
 		return wkToken.Token, nil
 	}
 
 	// 5. Token expired — try refresh
+	slog.Debug("TokenManager: token expired, refreshing", "user_id", userID)
 	return m.refreshAndSave(ctx, userID, &wkToken, cacheKey)
 }
 

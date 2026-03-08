@@ -1,6 +1,7 @@
 package http
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -131,7 +132,12 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 
 	// WeKnora integration (conditional — only when client is available)
 	if deps.WeKnoraClient != nil {
-		tokenMgr := weknora.NewTokenManager(deps.WeKnoraClient, deps.DB, deps.RedisCache, deps.Cfg.WeKnora.APIKey)
+		secret := deps.Cfg.WeKnora.EncryptionKey
+		if secret == "" {
+			secret = deps.Cfg.WeKnora.APIKey // Fallback for backward compatibility
+		}
+		slog.Info("WeKnora TokenManager init", "has_encryption_key", deps.Cfg.WeKnora.EncryptionKey != "", "has_api_key", deps.Cfg.WeKnora.APIKey != "", "secret_len", len(secret))
+		tokenMgr := weknora.NewTokenManager(deps.WeKnoraClient, deps.DB, deps.RedisCache, secret)
 		wkHandler := handler.NewWeKnoraHandler(deps.WeKnoraClient, tokenMgr, deps.DB)
 		registerWeKnoraRoutes(protected, deps.DB, wkHandler)
 		registerWeKnoraCourseRoutes(protected, deps.DB, wkHandler)
