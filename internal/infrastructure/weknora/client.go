@@ -137,6 +137,25 @@ func (c *Client) ListKnowledge(ctx context.Context, kbID string, page, pageSize 
 
 // -- Session & Retrieval APIs ----------------------------------------------
 
+// SearchKnowledge 在指定知识库中搜索相关内容。
+func (c *Client) SearchKnowledge(ctx context.Context, kbID string, query string, topK int) ([]SearchResult, error) {
+	req := map[string]interface{}{
+		"query": query,
+		"top_k": topK,
+	}
+	
+	var resp struct {
+		Data []SearchResult `json:"data"`
+	}
+	
+	path := fmt.Sprintf("/knowledge-bases/%s/search", kbID)
+	if err := c.doPost(ctx, path, req, &resp); err != nil {
+		return nil, fmt.Errorf("search kb %s: %w", kbID, err)
+	}
+	
+	return resp.Data, nil
+}
+
 // CreateSession creates a new conversation session in WeKnora.
 func (c *Client) CreateSession(ctx context.Context, req *CreateSessionRequest) (*Session, error) {
 	var session Session

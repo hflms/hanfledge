@@ -237,7 +237,8 @@ func main() {
 	if cfg.WeKnora.Enabled && cfg.WeKnora.BaseURL != "" {
 		// Use empty API key - we'll use per-user tokens via TokenManager
 		wkClient = weknora.NewClient(cfg.WeKnora.BaseURL, "")
-		// Skip ping check since we don't have a valid token yet
+		// Wire WeKnora client to orchestrator for retrieval
+		orchestrator.SetWeKnoraClient(wkClient)
 		log.Info("WeKnora integration enabled", "url", cfg.WeKnora.BaseURL)
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
 	"github.com/hflms/hanfledge/internal/infrastructure/search"
+	"github.com/hflms/hanfledge/internal/infrastructure/weknora"
 	"github.com/hflms/hanfledge/internal/plugin"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
@@ -114,6 +115,12 @@ func NewAgentOrchestrator(
 func (o *AgentOrchestrator) SetEvalNotifier(fn func(interactionID uint)) {
 	o.evalNotify = fn
 	slogOrch.Info("eval notifier wired")
+}
+
+// SetWeKnoraClient 设置 WeKnora 客户端（可选）。
+func (o *AgentOrchestrator) SetWeKnoraClient(client *weknora.Client) {
+	o.designer.SetWeKnoraClient(client)
+	slogOrch.Info("weknora client wired to designer")
 }
 
 // ── Pipeline Execution ──────────────────────────────────────

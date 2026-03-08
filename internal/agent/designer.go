@@ -10,6 +10,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/search"
+	"github.com/hflms/hanfledge/internal/infrastructure/weknora"
 	neo4jRepo "github.com/hflms/hanfledge/internal/repository/neo4j"
 	"github.com/hflms/hanfledge/internal/usecase"
 	"gorm.io/gorm"
@@ -31,6 +32,7 @@ type DesignerAgent struct {
 	llm        llm.LLMProvider
 	neo4j      *neo4jRepo.Client
 	karag      *usecase.KARAGEngine
+	weknora    *weknora.Client          // WeKnora KB client (nil-safe)
 	truncator  *TokenTruncator          // Token 截断中间件 (§8.2.2)
 	expander   *QueryExpander           // RAG-Fusion 查询扩展 (§8.1.2)
 	gateway    *QualityGateway          // CRAG 质量网关 (§8.1.2)
@@ -45,6 +47,7 @@ func NewDesignerAgent(db *gorm.DB, llmClient llm.LLMProvider, neo4jClient *neo4j
 		llm:        llmClient,
 		neo4j:      neo4jClient,
 		karag:      karag,
+		weknora:    nil, // Set via SetWeKnoraClient
 		truncator:  DefaultTokenTruncator(),
 		expander:   NewQueryExpander(llmClient),
 		gateway:    NewQualityGateway(),
@@ -56,15 +59,21 @@ func NewDesignerAgent(db *gorm.DB, llmClient llm.LLMProvider, neo4jClient *neo4j
 // Name 返回 Agent 名称。
 func (a *DesignerAgent) Name() string { return "Designer" }
 
+// SetWeKnoraClient 设置 WeKnora 客户端（可选）。
+func (a *DesignerAgent) SetWeKnoraClient(client *weknora.Client) {
+	a.weknora = client
+}
+
 // Assemble 根据学习处方检索并组装个性化学习材料。
 // Pipeline (§8.1.1 + §8.1.2):
 // 1. RAG-Fusion 查询扩展 — 原始查询 → N 个变体
 // 2. 多路语义检索 — 每个变体独立检索 Top-50
 // 3. Neo4j 图谱引导检索 Top-50
-// 4. RRF 多路融合排序 → Top-20 (粗排候选池)
-// 4.5. Cross-Encoder 精重排 → Top-5 (§8.1.1 Stage 2)
-// 5. CRAG 质量网关 — 评估检索质量，低质量时触发回退
-// 6. Token 截断 + 图谱上下文 + 系统 Prompt 组装
+// 4. WeKnora 知识库检索 Top-20 (如果课程绑定了 KB)
+// 5. RRF 多路融合排序 → Top-20 (粗排候选池)
+// 5.5. Cross-Encoder 精重排 → Top-5 (§8.1.1 Stage 2)
+// 6. CRAG 质量网关 — 评估检索质量，低质量时触发回退
+// 7. Token 截断 + 图谱上下文 + 系统 Prompt 组装
 func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPrescription, userInput string) (PersonalizedMaterial, error) {
 	slogDesigner.Info("assembling material",
 		"student_id", prescription.StudentID, "kp_targets", len(prescription.TargetKPSequence))
@@ -127,13 +136,24 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	slogDesigner.Info("[DEBUG] semantic+graph search done", "session_id", prescription.SessionID,
 		"semantic_chunks", len(allSemanticChunks), "graph_chunks", len(graphChunks))
 
+	// 3c. WeKnora 知识库检索 Top-20 (如果课程绑定了 KB)
+	var wkChunks []RetrievedChunk
+	if a.weknora != nil {
+		wkChunks, err = a.weknoraSearch(ctx, courseID, enhancedQuery)
+		if err != nil {
+			slogDesigner.Warn("weknora search failed", "err", err)
+		} else if len(wkChunks) > 0 {
+			slogDesigner.Info("weknora search done", "session_id", prescription.SessionID, "chunks", len(wkChunks))
+		}
+	}
+
 	// Step 4: RRF 多路融合排序 → Top-20 (粗排候选池)
-	// 合并所有语义检索变体结果 + 图谱检索结果
-	mergedChunks := rrfMerge(allSemanticChunks, graphChunks, 20)
+	// 合并所有语义检索变体结果 + 图谱检索结果 + WeKnora 检索结果
+	mergedChunks := rrfMergeMulti([][]RetrievedChunk{allSemanticChunks, graphChunks, wkChunks}, 20)
 
 	slogDesigner.Debug("rrf merge complete",
 		"semantic", len(allSemanticChunks), "variants", len(expandedQueries),
-		"graph", len(graphChunks), "merged", len(mergedChunks))
+		"graph", len(graphChunks), "weknora", len(wkChunks), "merged", len(mergedChunks))
 
 	// Step 4.5: Cross-Encoder 精重排 (§8.1.1 Stage 2)
 	// 对 RRF 粗排候选池中的每个 chunk 与原始查询做深度语义评分，精选 Top-5
@@ -590,4 +610,91 @@ func trapTypeLabel(trapType string) string {
 	default:
 		return trapType
 	}
+}
+
+// weknoraSearch 从 WeKnora 知识库中检索相关内容。
+func (a *DesignerAgent) weknoraSearch(ctx context.Context, courseID uint, query string) ([]RetrievedChunk, error) {
+	if a.weknora == nil {
+		return nil, nil
+	}
+
+	// 查询课程绑定的知识库
+	var refs []model.WeKnoraKBRef
+	if err := a.db.WithContext(ctx).Where("course_id = ?", courseID).Find(&refs).Error; err != nil {
+		return nil, fmt.Errorf("query kb refs: %w", err)
+	}
+
+	if len(refs) == 0 {
+		return nil, nil // 没有绑定知识库
+	}
+
+	// 从每个绑定的知识库中搜索
+	// 注意：这里使用的是全局 client，实际应该使用 per-user token
+	// 但在 Designer 层我们没有 user context，所以暂时使用全局 client
+	// TODO: 考虑在 TurnContext 中传递 user-specific WeKnora client
+	var allChunks []RetrievedChunk
+	for _, ref := range refs {
+		// 调用 WeKnora 搜索 API
+		results, err := a.weknora.SearchKnowledge(ctx, ref.KBID, query, 10)
+		if err != nil {
+			slogDesigner.Warn("weknora search failed", "kb_id", ref.KBID, "err", err)
+			continue
+		}
+
+		for _, r := range results {
+			allChunks = append(allChunks, RetrievedChunk{
+				Content:    r.Content,
+				Source:     "weknora",
+				Score:      r.Score,
+				ChunkIndex: 0,
+			})
+		}
+	}
+
+	return allChunks, nil
+}
+
+// rrfMergeMulti 使用 RRF 算法合并多路检索结果。
+func rrfMergeMulti(sources [][]RetrievedChunk, topK int) []RetrievedChunk {
+	scoreMap := make(map[string]float64)
+	chunkMap := make(map[string]RetrievedChunk)
+
+	for _, source := range sources {
+		for rank, chunk := range source {
+			key := chunk.Content
+			rrfScore := 1.0 / float64(rrfK+rank+1)
+			scoreMap[key] += rrfScore
+
+			if _, exists := chunkMap[key]; !exists {
+				chunkMap[key] = chunk
+			}
+		}
+	}
+
+	// 按 RRF 分数排序
+	type scoredChunk struct {
+		chunk RetrievedChunk
+		score float64
+	}
+	var scored []scoredChunk
+	for key, score := range scoreMap {
+		chunk := chunkMap[key]
+		chunk.Score = score
+		scored = append(scored, scoredChunk{chunk, score})
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	// 取 Top-K
+	if len(scored) > topK {
+		scored = scored[:topK]
+	}
+
+	result := make([]RetrievedChunk, len(scored))
+	for i, s := range scored {
+		result[i] = s.chunk
+	}
+	return result
 }
