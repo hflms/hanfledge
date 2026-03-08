@@ -85,6 +85,8 @@ services:
       APP_HOST: weknora
       APP_PORT: 8080
       APP_SCHEME: http
+    volumes:
+      - ./weknora-frontend-index.html:/usr/share/nginx/html/index.html:ro
     depends_on:
       - weknora
     profiles:
