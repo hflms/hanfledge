@@ -152,3 +152,23 @@ type WKTenant struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
+
+// CreateKBRequest 创建知识库请求。
+type CreateKBRequest struct {
+	Name           string `json:"name" binding:"required"`
+	Description    string `json:"description"`
+	EmbeddingModel string `json:"embedding_model"`
+}
+
+// CreateKBResponse 创建知识库响应。
+type CreateKBResponse struct {
+	Success bool           `json:"success"`
+	Message string         `json:"message"`
+	Data    *KnowledgeBase `json:"data"`
+}
+
+// DeleteKBResponse 删除知识库响应。
+type DeleteKBResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}

@@ -338,3 +338,59 @@ func (h *WeKnoraHandler) SearchKnowledgeBase(c *gin.Context) {
 
 	c.JSON(http.StatusOK, retrievalResp)
 }
+
+// CreateKnowledgeBase creates a new knowledge base in WeKnora.
+//
+//	@Summary      创建 WeKnora 知识库
+//	@Description  在 WeKnora 中创建新的知识库
+//	@Tags         WeKnora
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        request body weknora.CreateKBRequest true "创建知识库请求"
+//	@Success      201 {object}  weknora.KnowledgeBase
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      500 {object}  ErrorResponse
+//	@Router       /weknora/knowledge-bases [post]
+func (h *WeKnoraHandler) CreateKnowledgeBase(c *gin.Context) {
+	slogWeKnora.Info("CreateKnowledgeBase called")
+	var req weknora.CreateKBRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
+		return
+	}
+
+	client := h.getUserClient(c)
+	kb, err := client.CreateKnowledgeBase(c.Request.Context(), &req)
+	if err != nil {
+		slogWeKnora.Error("failed to create knowledge base", "error", err)
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "failed to create knowledge base: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, kb)
+}
+
+// DeleteKnowledgeBase deletes a knowledge base from WeKnora.
+//
+//	@Summary      删除 WeKnora 知识库
+//	@Description  从 WeKnora 中删除指定知识库
+//	@Tags         WeKnora
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        kb_id path string true "WeKnora 知识库 ID"
+//	@Success      200 {object}  map[string]string
+//	@Failure      500 {object}  ErrorResponse
+//	@Router       /weknora/knowledge-bases/{kb_id} [delete]
+func (h *WeKnoraHandler) DeleteKnowledgeBase(c *gin.Context) {
+	kbID := c.Param("kb_id")
+	client := h.getUserClient(c)
+
+	if err := client.DeleteKnowledgeBase(c.Request.Context(), kbID); err != nil {
+		slogWeKnora.Error("failed to delete knowledge base", "kb_id", kbID, "error", err)
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "failed to delete knowledge base: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "knowledge base deleted successfully"})
+}

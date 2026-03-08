@@ -100,6 +100,24 @@ func (c *Client) GetKnowledgeBase(ctx context.Context, id string) (*KnowledgeBas
 	return &kb, nil
 }
 
+// CreateKnowledgeBase creates a new knowledge base in WeKnora.
+func (c *Client) CreateKnowledgeBase(ctx context.Context, req *CreateKBRequest) (*KnowledgeBase, error) {
+	var resp CreateKBResponse
+	if err := c.doPost(ctx, "/knowledge-bases", req, &resp); err != nil {
+		return nil, fmt.Errorf("create knowledge base: %w", err)
+	}
+	return resp.Data, nil
+}
+
+// DeleteKnowledgeBase deletes a knowledge base by ID.
+func (c *Client) DeleteKnowledgeBase(ctx context.Context, id string) error {
+	var resp DeleteKBResponse
+	if err := c.doDelete(ctx, "/knowledge-bases/"+id, &resp); err != nil {
+		return fmt.Errorf("delete knowledge base %s: %w", id, err)
+	}
+	return nil
+}
+
 // -- Knowledge (Document/File) APIs ----------------------------------------
 
 // ListKnowledge returns knowledge entries (files/documents) in a knowledge base.
@@ -209,6 +227,35 @@ func (c *Client) doPost(ctx context.Context, path string, body interface{}, out 
 	}
 	c.setAuth(req)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		slog.Error("WeKnora API error", "status", resp.StatusCode, "path", path, "body", string(respBody))
+		return fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+	}
+	return nil
+}
+
+// doDelete performs an authenticated DELETE request and decodes the response.
+func (c *Client) doDelete(ctx context.Context, path string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	c.setAuth(req)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)

@@ -22,9 +22,11 @@ func registerWeKnoraRoutes(
 	wk := protected.Group("/weknora")
 	wk.Use(teacherRoles)
 	{
+		wk.POST("/knowledge-bases", wkHandler.CreateKnowledgeBase)
 		wk.GET("/knowledge-bases", wkHandler.ListKnowledgeBases)
 		wk.GET("/knowledge-bases/:kb_id", wkHandler.GetKnowledgeBase)
 		wk.GET("/knowledge-bases/:kb_id/knowledge", wkHandler.ListKnowledge)
+		wk.DELETE("/knowledge-bases/:kb_id", wkHandler.DeleteKnowledgeBase)
 	}
 }
 
