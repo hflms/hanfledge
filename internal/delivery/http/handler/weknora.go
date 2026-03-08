@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -430,8 +431,14 @@ func (h *WeKnoraHandler) GetWeKnoraLoginToken(c *gin.Context) {
 		return
 	}
 
+	// Get WeKnora frontend URL from config
+	wkFrontendURL := os.Getenv("WEKNORA_FRONTEND_URL")
+	if wkFrontendURL == "" {
+		wkFrontendURL = "http://localhost:9381" // Default for development
+	}
+	
 	c.JSON(http.StatusOK, gin.H{
-		"token": loginResp.Token,
-		"weknora_url": h.client.BaseURL(),
+		"token":       loginResp.Token,
+		"weknora_url": wkFrontendURL,
 	})
 }

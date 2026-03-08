@@ -74,6 +74,27 @@ services:
 
   # WeKnora Knowledge Base Service (optional)
   # Enable by setting WEKNORA_ENABLED=true in .env
+  weknora-frontend:
+    image: wechatopenai/weknora-ui:latest
+    container_name: hanfledge-weknora-frontend
+    restart: unless-stopped
+    ports:
+      - "${WEKNORA_FRONTEND_PORT:-9381}:80"
+    environment:
+      MAX_FILE_SIZE_MB: 50
+      APP_HOST: weknora
+      APP_PORT: 8080
+      APP_SCHEME: http
+    depends_on:
+      - weknora
+    profiles:
+      - weknora
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+
   weknora:
     image: wechatopenai/weknora-app:latest
     container_name: hanfledge-weknora
