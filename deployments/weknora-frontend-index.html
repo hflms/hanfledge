@@ -25,20 +25,41 @@
     const ssoToken = urlParams.get('token');
     
     if (ssoToken) {
-        // Save token to localStorage
-        localStorage.setItem('token', ssoToken);
+        console.log('[SSO] Received token from Hanfledge');
         
-        // Remove token from URL
-        const url = new URL(window.location.href);
-        url.searchParams.delete('token');
-        window.history.replaceState({}, '', url.toString());
-        
-        // Redirect to home page
-        if (window.location.pathname === '/') {
-            window.location.reload();
-        } else {
-            window.location.href = '/';
-        }
+        // Fetch user info with the token
+        fetch('/api/v1/auth/me', {
+            headers: {
+                'Authorization': 'Bearer ' + ssoToken
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.data) {
+                // Save token and user info
+                localStorage.setItem('weknora_token', ssoToken);
+                localStorage.setItem('weknora_user', JSON.stringify(data.data));
+                if (data.data.tenant_id) {
+                    localStorage.setItem('weknora_tenant', JSON.stringify({id: data.data.tenant_id}));
+                }
+                
+                console.log('[SSO] Login state saved, reloading...');
+                
+                // Remove token from URL and reload
+                const url = new URL(window.location.href);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, '', url.toString());
+                
+                setTimeout(() => {
+                    window.location.reload();
+                }, 100);
+            } else {
+                console.error('[SSO] Failed to fetch user info');
+            }
+        })
+        .catch(err => {
+            console.error('[SSO] Error:', err);
+        });
     }
 })();
 </script>

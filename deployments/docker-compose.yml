@@ -115,6 +115,7 @@ services:
       REDIS_PORT: 6379
       REDIS_DB: 0
       SECRET_KEY: ${WEKNORA_SECRET_KEY:-hanfledge-weknora-secret-32b}
+      ENCRYPTION_KEY: ${WEKNORA_ENCRYPTION_KEY:-hanfledge-weknora-encrypt-32b}
       STORAGE_TYPE: local
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       DOCREADER_ADDR: docreader:50051
