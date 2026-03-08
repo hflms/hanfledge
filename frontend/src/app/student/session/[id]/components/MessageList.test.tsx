@@ -4,7 +4,7 @@ import MessageList, { type ChatMessage } from './MessageList';
 
 // Mock next/dynamic components to render synchronously in tests
 vi.mock('next/dynamic', () => ({
-    default: (dynamicImport: any) => {
+    default: (_dynamicImport: () => Promise<{ default: React.ComponentType }>) => {
         // Return a dummy component for MarkdownRenderer
         return function MockMarkdown({ content }: { content: string }) {
             return <div data-testid="markdown-mock">{content}</div>;
@@ -65,7 +65,7 @@ describe('MessageList Component', () => {
 
     it('should call scrollIntoView on update', () => {
         // Reset mock to ensure we start counting from 0
-        (window.HTMLElement.prototype.scrollIntoView as any).mockClear();
+        (window.HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
 
         const { rerender } = render(
             <MessageList messages={[]} streamingContent="" thinkingStatus={null} />

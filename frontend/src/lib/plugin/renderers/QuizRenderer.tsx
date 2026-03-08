@@ -102,6 +102,7 @@ export default function QuizRenderer({
     const { historyItems, addEntry, getEntry } = useSkillHistory<{ results: GradedQuestion[]; score: { correct: number; total: number } }>();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentQuizId, setCurrentQuizId] = useState<string | null>(null);
+    const quizCountRef = useRef(0);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -169,12 +170,14 @@ export default function QuizRenderer({
                                         setPhase('reviewing');
                                         
                                         // 添加到历史记录
+                                        quizCountRef.current += 1;
                                         const quizId = addEntry(
                                             'quiz',
-                                            `测验 ${historyItems.filter(i => i.type === 'quiz').length + 1} (${score.correct}/${score.total})`,
+                                            `测验 ${quizCountRef.current} (${score.correct}/${score.total})`,
                                             { results: gradedResults, score },
                                             '📝'
                                         );
+                                        setCurrentQuizId(quizId);
                                         
                                         // 添加查看按钮
                                         setMessages(msgs => [...msgs, {

@@ -161,11 +161,16 @@ export default function SessionPage() {
             case 'ui_scaffold_change': {
                 const payload = event.payload as {
                     action: string;
-                    data: any; // Allow mixed types
+                    data: {
+                        new_skill?: string;
+                        new_level?: string;
+                        mastery?: number;
+                        direction?: string;
+                    };
                 };
 
                 if (payload.action === 'skill_change') {
-                    const newSkill = payload.data.new_skill;
+                    const newSkill = payload.data.new_skill as string;
                     setSession(prev => prev ? { ...prev, active_skill: newSkill } : null);
                     toast(`系统已根据您的掌握度自动切换到技能: ${newSkill}`, 'success');
                     break;
@@ -176,12 +181,13 @@ export default function SessionPage() {
 
                 const direction = payload.data.direction === 'fade' ? '降低' : '增强';
                 const newLabel = SCAFFOLD_LABELS[payload.data.new_level as ScaffoldLevel];
+                const mastery = payload.data.mastery ?? 0;
                 setMessages(prev => [
                     ...prev,
                     {
                         id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                         role: 'system',
-                        content: `支架已${direction}至 ${newLabel} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
+                        content: `支架已${direction}至 ${newLabel} (掌握度: ${(mastery * 100).toFixed(0)}%)`,
                         timestamp: Date.now(),
                     },
                 ]);
@@ -499,7 +505,7 @@ export default function SessionPage() {
         });
 
         agentChannel.send(JSON.stringify(event));
-    }, [input, sending, sessionId, wsStatus, agentChannel, providerOverride, modelOverride, toast]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [input, sending, sessionId, wsStatus, agentChannel, providerOverride, modelOverride, toast]);  
 
     // -- Render Skill Renderer (plugin mode) ------------------------
 

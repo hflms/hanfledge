@@ -13,9 +13,9 @@ export const swrFetcher = async <Data>(url: string): Promise<Data> => {
  * @param url The API endpoint (e.g. '/courses') or null if not ready to fetch.
  * @param options SWR configuration options.
  */
-export function useApi<Data = any, Error = any>(
+export function useApi<Data = unknown, Error = unknown>(
     url: string | null,
     options?: SWRConfiguration<Data, Error>
 ) {
-    return useSWR<Data, Error>(url, swrFetcher as any, options);
+    return useSWR<Data, Error>(url, swrFetcher<Data>, options);
 }

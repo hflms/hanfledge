@@ -24,9 +24,9 @@ const rehypePluginsList = [rehypeRaw, rehypeKatex];
 // -- Component ---------------------------------------------------
 
 const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
-    const markdownComponents: Components = useMemo(() => ({
+    const markdownComponents = useMemo(() => ({
         // Code blocks and inline code
-        code({ className, children, ...props }: any) {
+        code({ className, children }: { className?: string; children?: React.ReactNode }) {
             const isBlock = className?.startsWith('language-');
             const language = className?.replace('language-', '') || '';
 
@@ -53,7 +53,7 @@ const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStrea
                             </div>
                         )}
                         <pre className={styles.pre}>
-                            <code className={styles.code} {...props}>
+                            <code className={styles.code}>
                                 {children}
                             </code>
                         </pre>
@@ -62,54 +62,54 @@ const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStrea
             }
 
             return (
-                <code className={styles.inlineCode} {...props}>
+                <code className={styles.inlineCode}>
                     {children}
                 </code>
             );
         },
 
         // Block-level elements
-        p({ children }: any) {
+        p({ children }: { children?: React.ReactNode }) {
             return <p className={styles.paragraph}>{children}</p>;
         },
-        h1({ children }: any) {
+        h1({ children }: { children?: React.ReactNode }) {
             return <h1 className={styles.heading}>{children}</h1>;
         },
-        h2({ children }: any) {
+        h2({ children }: { children?: React.ReactNode }) {
             return <h2 className={styles.heading}>{children}</h2>;
         },
-        h3({ children }: any) {
+        h3({ children }: { children?: React.ReactNode }) {
             return <h3 className={styles.heading}>{children}</h3>;
         },
-        ul({ children }: any) {
+        ul({ children }: { children?: React.ReactNode }) {
             return <ul className={styles.list}>{children}</ul>;
         },
-        ol({ children }: any) {
+        ol({ children }: { children?: React.ReactNode }) {
             return <ol className={styles.list}>{children}</ol>;
         },
-        li({ children }: any) {
+        li({ children }: { children?: React.ReactNode }) {
             return <li className={styles.listItem}>{children}</li>;
         },
-        blockquote({ children }: any) {
+        blockquote({ children }: { children?: React.ReactNode }) {
             return <blockquote className={styles.blockquote}>{children}</blockquote>;
         },
-        table({ children }: any) {
+        table({ children }: { children?: React.ReactNode }) {
             return (
                 <div className={styles.tableWrapper}>
                     <table className={styles.table}>{children}</table>
                 </div>
             );
         },
-        th({ children }: any) {
+        th({ children }: { children?: React.ReactNode }) {
             return <th className={styles.th}>{children}</th>;
         },
-        td({ children }: any) {
+        td({ children }: { children?: React.ReactNode }) {
             return <td className={styles.td}>{children}</td>;
         },
         hr() {
             return <hr className={styles.hr} />;
         },
-        a({ href, children }: any) {
+        a({ href, children }: { href?: string; children?: React.ReactNode }) {
             return (
                 <a
                     className={styles.link}
@@ -121,7 +121,7 @@ const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStrea
                 </a>
             );
         },
-        strong({ children }: any) {
+        strong({ children }: { children?: React.ReactNode }) {
             return <strong className={styles.strong}>{children}</strong>;
         },
     }), []);

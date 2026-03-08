@@ -11,9 +11,15 @@ interface RevealDeckProps {
     fullscreen?: boolean;
 }
 
+interface SlideChangeEvent {
+    indexh: number;
+    indexv: number;
+}
+
 export default function RevealDeck({ markdown, onSlideChange, fullscreen = false }: RevealDeckProps) {
     const deckRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const revealInstance = useRef<any>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const onSlideChangeRef = useRef(onSlideChange);
@@ -79,6 +85,7 @@ export default function RevealDeck({ markdown, onSlideChange, fullscreen = false
 
             await revealInstance.current.initialize();
             
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             revealInstance.current.on('slidechanged', (event: any) => {
                 if (onSlideChangeRef.current) {
                     onSlideChangeRef.current(event.indexh, event.indexv);

@@ -9,7 +9,19 @@ vi.mock('@/lib/api', () => ({
 }));
 
 describe('useSessionWebSocket', () => {
-    let mockWebSocket: any;
+    interface MockWebSocket {
+        send: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+        addEventListener: ReturnType<typeof vi.fn>;
+        removeEventListener: ReturnType<typeof vi.fn>;
+        readyState: number;
+        onopen?: () => void;
+        onclose?: () => void;
+        onmessage?: (event: { data: string }) => void;
+        onerror?: () => void;
+    }
+    
+    let mockWebSocket: MockWebSocket;
 
     beforeEach(() => {
         // Mock global WebSocket
@@ -23,13 +35,13 @@ describe('useSessionWebSocket', () => {
 
         const MockWebSocketConstructor = vi.fn(function() {
             return mockWebSocket;
-        });
-        MockWebSocketConstructor.OPEN = 1;
-        MockWebSocketConstructor.CONNECTING = 0;
-        MockWebSocketConstructor.CLOSING = 2;
-        MockWebSocketConstructor.CLOSED = 3;
+        }) as unknown as typeof WebSocket;
+        (MockWebSocketConstructor as unknown as Record<string, number>).OPEN = 1;
+        (MockWebSocketConstructor as unknown as Record<string, number>).CONNECTING = 0;
+        (MockWebSocketConstructor as unknown as Record<string, number>).CLOSING = 2;
+        (MockWebSocketConstructor as unknown as Record<string, number>).CLOSED = 3;
 
-        global.WebSocket = MockWebSocketConstructor as any;
+        global.WebSocket = MockWebSocketConstructor;
 
         vi.useFakeTimers();
     });

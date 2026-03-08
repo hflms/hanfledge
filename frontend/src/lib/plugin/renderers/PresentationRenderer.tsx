@@ -135,6 +135,7 @@ export default function PresentationRenderer({
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [currentPresentationId, setCurrentPresentationId] = useState<string | null>(null);
+    const presentationCountRef = useRef(0);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const hasTriggeredRef = useRef(false);
@@ -182,9 +183,10 @@ export default function PresentationRenderer({
         setTimeout(() => {
             setMessages(parsedMessages);
             if (foundSlides) {
+                presentationCountRef.current += 1;
                 const presentationId = addEntry(
                     'presentation',
-                    '演示文稿 1',
+                    `演示文稿 ${presentationCountRef.current}`,
                     foundSlides,
                     '📊'
                 );
@@ -300,9 +302,10 @@ export default function PresentationRenderer({
                                 console.log('[PresentationRenderer] ✅ Found slides, length:', parsed.length);
                                 
                                 // 添加到历史记录
+                                presentationCountRef.current += 1;
                                 const presentationId = addEntry(
                                     'presentation',
-                                    `演示文稿 ${historyItems.filter(i => i.type === 'presentation').length + 1}`,
+                                    `演示文稿 ${presentationCountRef.current}`,
                                     parsed,
                                     '📊'
                                 );

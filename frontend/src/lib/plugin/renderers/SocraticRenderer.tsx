@@ -80,20 +80,19 @@ export default function SocraticRenderer({
             hasTriggeredRef.current = true;
             setTimeout(() => {
                 setSending(true);
+                // 添加用户消息
+                setMessages([{
+                    id: `student-sys-${Date.now()}`,
+                    role: 'student',
+                    content: '你好，我已经准备好进行本知识点的学习了，请开始。',
+                    timestamp: Date.now()
+                }]);
             }, 0);
             agentChannel.send(JSON.stringify({
                 event: 'user_message',
                 payload: { text: '你好，我已经准备好进行本知识点的学习了，请开始。' },
                 timestamp: Math.floor(Date.now() / 1000),
             }));
-            
-            // Optionally add the user message locally so they see it
-            setMessages([{
-                id: `student-sys-${Date.now()}`,
-                role: 'student',
-                content: '你好，我已经准备好进行本知识点的学习了，请开始。',
-                timestamp: Date.now()
-            }]);
         }
     }, [messages.length, sending, streamingContent, agentChannel]);
 
@@ -114,9 +113,18 @@ export default function SocraticRenderer({
                         break;
                     }
                     case 'ui_scaffold_change': {
-                        const payload = event.payload as any;
+                        interface ScaffoldPayload {
+                            action?: string;
+                            data: {
+                                question?: string;
+                                new_level?: string;
+                                mastery?: number;
+                                direction?: string;
+                            };
+                        }
+                        const payload = event.payload as ScaffoldPayload;
                         if (payload.action === 'skill_test_start') {
-                            setSkillTestQuestion(payload.data.question);
+                            setSkillTestQuestion(payload.data.question || null);
                             break;
                         }
                         if (payload.action === 'skill_test_result') {
@@ -128,11 +136,13 @@ export default function SocraticRenderer({
 
                         const direction = payload.data.direction === 'fade' ? '降低' : '增强';
                         const labels: Record<string, string> = { high: '高支架', medium: '中支架', low: '低支架' };
-                        const newLevelLabel = labels[payload.data.new_level] || payload.data.new_level;
+                        const newLevel = payload.data.new_level as string | undefined;
+                        const newLevelLabel = (newLevel && labels[newLevel]) || newLevel || '未知';
+                        const mastery = (payload.data.mastery as number | undefined) ?? 0;
                         setMessages(prev => [...prev, {
                             id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
                             role: 'system',
-                            content: `支架已${direction}至 ${newLevelLabel} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
+                            content: `支架已${direction}至 ${newLevelLabel} (掌握度: ${(mastery * 100).toFixed(0)}%)`,
                             timestamp: Date.now(),
                         }]);
 

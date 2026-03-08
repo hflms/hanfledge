@@ -78,8 +78,8 @@ function InterventionPanel({ sessionId, onSent }: { sessionId: number, onSent: (
             setContent('');
             onSent(); // Refresh data
             alert('发送成功');
-        } catch (err: any) {
-            alert('发送失败: ' + err.message);
+        } catch (err) {
+            alert('发送失败: ' + (err instanceof Error ? err.message : String(err)));
         } finally {
             setSending(false);
         }

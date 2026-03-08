@@ -31,9 +31,9 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
                     setSvg(renderedSvg);
                     setError('');
                 }
-            } catch (err: any) {
+            } catch (err) {
                 if (isMounted) {
-                    setError(err?.message || 'Failed to render diagram');
+                    setError(err instanceof Error ? err.message : 'Failed to render diagram');
                 }
             }
         };

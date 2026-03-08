@@ -45,7 +45,7 @@ export default function TextSelectionTooltip({ onAsk }: Props) {
       }, 10);
     };
 
-    const handleMouseDown = (e: MouseEvent) => {
+    const handleMouseDown = () => {
       // If clicking outside the tooltip, hide it
       // The tooltip itself handles stopping propagation in its own mousedown
       setPosition(null);

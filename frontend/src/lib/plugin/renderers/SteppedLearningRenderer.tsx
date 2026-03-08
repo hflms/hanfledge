@@ -6,8 +6,6 @@ import remarkGfm from 'remark-gfm';
 import styles from './SteppedLearning.module.css';
 
 export default function SteppedLearningRenderer({
-    studentContext,
-    knowledgePoint,
     agentChannel,
 }: SkillRendererProps) {
     const [pages, setPages] = useState<{ id: string; content: string }[]>([]);

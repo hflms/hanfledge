@@ -3,7 +3,7 @@
 // Shared helpers for keyboard navigation, focus trapping, and
 // ARIA-compliant interactive elements.
 
-import { useEffect, useRef, useCallback, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 // -- Modal Focus Trap & ESC Close -----------------------------
 

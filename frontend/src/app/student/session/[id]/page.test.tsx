@@ -10,11 +10,11 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('next/link', () => ({
-    default: ({ children }: any) => <a>{children}</a>,
+    default: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
 }));
 
 vi.mock('next/dynamic', () => ({
-    default: (fn: any) => {
+    default: (fn: () => Promise<{ default: React.ComponentType }>) => {
         return function MockDynamicComponent() {
             return <div data-testid="mock-dynamic">Dynamic</div>;
         };
@@ -25,7 +25,7 @@ vi.mock('@/lib/api', () => ({
     getSession: vi.fn(),
 }));
 
-const mockPlugins: any[] = [];
+const mockPlugins: unknown[] = [];
 vi.mock('@/lib/plugin/PluginRegistry', () => ({
     usePluginRegistry: () => mockPlugins,
 }));
@@ -43,17 +43,22 @@ vi.mock('@/lib/cache/indexedDBCache', () => ({
 const mockToast = vi.fn();
 vi.mock('@/components/Toast', () => ({
     useToast: () => ({ toast: mockToast }),
-    ToastProvider: ({ children }: any) => <>{children}</>,
+    ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('./hooks/useSessionWebSocket', () => ({
     useSessionWebSocket: vi.fn(),
 }));
 
+interface MockMessage {
+    id: string;
+    content: string;
+}
+
 vi.mock('./components/MessageList', () => ({
-    default: ({ messages, streamingContent }: any) => (
+    default: ({ messages, streamingContent }: { messages: MockMessage[]; streamingContent?: string }) => (
         <div data-testid="mock-message-list">
-            {messages.map((m: any) => (
+            {messages.map((m) => (
                 <div key={m.id}>{m.content}</div>
             ))}
             {streamingContent && <div>{streamingContent}</div>}
@@ -68,7 +73,7 @@ vi.mock('./components/ScaffoldPanel', () => ({
 }));
 
 vi.mock('./components/SessionInput', () => ({
-    default: ({ input, setInput, onSend }: any) => (
+    default: ({ input, setInput, onSend }: { input: string; setInput: (v: string) => void; onSend: () => void }) => (
         <div data-testid="mock-session-input">
             <input 
                 data-testid="input-field"
@@ -84,8 +89,15 @@ vi.mock('./components/SessionInput', () => ({
 import { getSession } from '@/lib/api';
 import { useSessionWebSocket } from './hooks/useSessionWebSocket';
 
+interface MockAgentChannel {
+    send: ReturnType<typeof vi.fn>;
+    onMessage: ReturnType<typeof vi.fn>;
+    onClose: ReturnType<typeof vi.fn>;
+    close: ReturnType<typeof vi.fn>;
+}
+
 describe('SessionPage', () => {
-    let mockAgentChannel: any;
+    let mockAgentChannel: MockAgentChannel;
 
     beforeEach(() => {
         mockAgentChannel = {
@@ -95,7 +107,7 @@ describe('SessionPage', () => {
             close: vi.fn(),
         };
 
-        (getSession as any).mockResolvedValue({
+        (getSession as ReturnType<typeof vi.fn>).mockResolvedValue({
             session: {
                 id: 1,
                 course_id: 1,
@@ -109,7 +121,7 @@ describe('SessionPage', () => {
             interactions: []
         });
 
-        (useSessionWebSocket as any).mockReturnValue({
+        (useSessionWebSocket as ReturnType<typeof vi.fn>).mockReturnValue({
             wsStatus: 'connected',
             reconnectCount: 0,
             agentChannel: mockAgentChannel,
@@ -160,8 +172,10 @@ describe('SessionPage', () => {
     });
 
     it('should handle incoming websocket events (stream_start, token, stream_end)', async () => {
-        let capturedOnEvent: any;
-        (useSessionWebSocket as any).mockImplementation(({ onEvent }: any) => {
+        type WSEventHandler = (event: { event: string; payload?: unknown; timestamp: number }) => void;
+        let capturedOnEvent: WSEventHandler | undefined;
+        
+        (useSessionWebSocket as ReturnType<typeof vi.fn>).mockImplementation(({ onEvent }: { onEvent: WSEventHandler }) => {
             capturedOnEvent = onEvent;
             return {
                 wsStatus: 'connected',
@@ -182,15 +196,15 @@ describe('SessionPage', () => {
 
         // Simulate incoming stream events
         await act(async () => {
-            capturedOnEvent({ event: 'agent_thinking', payload: { status: 'thinking' }, timestamp: Date.now() });
+            capturedOnEvent?.({ event: 'agent_thinking', payload: { status: 'thinking' }, timestamp: Date.now() });
         });
 
         await act(async () => {
-            capturedOnEvent({ event: 'token_delta', payload: { text: 'Response text' }, timestamp: Date.now() });
+            capturedOnEvent?.({ event: 'token_delta', payload: { text: 'Response text' }, timestamp: Date.now() });
         });
 
         await act(async () => {
-            capturedOnEvent({ event: 'turn_complete', payload: {}, timestamp: Date.now() });
+            capturedOnEvent?.({ event: 'turn_complete', payload: {}, timestamp: Date.now() });
         });
 
         // The final message should be appended to the list
