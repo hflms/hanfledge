@@ -440,6 +440,7 @@ Technical documentation:
 - [Skill Optimization Analysis](docs/SKILL_OPTIMIZATION.md)
 - [Skill Refactoring Guide](docs/SKILL_REFACTORING_GUIDE.md)
 - [Skill Performance Guide](docs/SKILL_PERFORMANCE_GUIDE.md)
+- [Skill Monitoring Guide](docs/SKILL_MONITORING.md)
 
 An in-app help center is also accessible from the frontend at `/help`.
 
