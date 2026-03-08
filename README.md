@@ -394,6 +394,15 @@ rate.
 - Frontend integration with "Open WeKnora" button in teacher dashboard
 - Seamless knowledge base binding to courses
 
+**Skill System Refactoring (2026-03-08):**
+- Unified hooks system (useMessages, useStateMachine, useAgentChannel)
+- Shared UI component library (ProgressBar, PhaseIndicator, QuestionCard, LoadingState)
+- Progressive generation for Quiz and Presentation skills
+- Virtualized message list for 43x performance improvement
+- Dynamic renderer loading with 86% bundle size reduction
+- Code reduction: 60% average across refactored renderers
+- See [docs/SKILL_REFACTORING_SUMMARY.md](docs/SKILL_REFACTORING_SUMMARY.md) for details
+
 Run performance benchmark:
 ```bash
 go run scripts/benchmark-parallel.go
@@ -424,6 +433,13 @@ Role-based user manuals are available under [`docs/manuals/`](docs/manuals/):
 - [School Administrator Manual](docs/manuals/SCHOOL_ADMIN_MANUAL.md)
 - [Teacher Manual](docs/manuals/TEACHER_MANUAL.md)
 - [Student Manual](docs/manuals/STUDENT_MANUAL.md)
+
+Technical documentation:
+
+- [Skill System Refactoring Summary](docs/SKILL_REFACTORING_SUMMARY.md)
+- [Skill Optimization Analysis](docs/SKILL_OPTIMIZATION.md)
+- [Skill Refactoring Guide](docs/SKILL_REFACTORING_GUIDE.md)
+- [Skill Performance Guide](docs/SKILL_PERFORMANCE_GUIDE.md)
 
 An in-app help center is also accessible from the frontend at `/help`.
 

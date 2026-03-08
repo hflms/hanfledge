@@ -365,6 +365,40 @@ npm run test:run  # 单元测试（Vitest）
 
 并发压力测试：50 线程 × 20 请求 = 1,155 req/s，错误率 0%。
 
+### 2.0 优化（2026-03-08）
+
+**并行 Agent 执行：**
+- Strategist + Designer 现在使用 goroutine 并行运行
+- TTFT（首 Token 时间）减少约 40%
+- Strategist 分析期间预加载 Neo4j 图谱上下文
+
+**语音活动检测（VAD）：**
+- 前端使用 Silero VAD（WebAssembly）检测语音
+- 仅在检测到语音时发送音频
+- 减少后端 ASR 计算量 50-70%
+- 视觉反馈：🔴 等待语音，🟢 检测到语音
+
+**WeKnora 集成（2026-03-08）：**
+- SSO 单点登录与自动用户同步
+- 基于 Redis 缓存的用户级 Token 管理
+- Neo4j 图数据库支持记忆/知识图谱功能
+- 前端集成"打开 WeKnora"按钮
+- 无缝的知识库绑定到课程
+
+**技能系统重构（2026-03-08）：**
+- 统一的 Hooks 系统（useMessages、useStateMachine、useAgentChannel）
+- 共享 UI 组件库（ProgressBar、PhaseIndicator、QuestionCard、LoadingState）
+- Quiz 和 Presentation 技能的渐进式生成
+- 虚拟化消息列表，性能提升 43 倍
+- 动态渲染器加载，Bundle 大小减少 86%
+- 代码量减少：重构后的渲染器平均减少 60%
+- 详见 [docs/SKILL_REFACTORING_SUMMARY.md](docs/SKILL_REFACTORING_SUMMARY.md)
+
+运行性能基准测试：
+```bash
+go run scripts/benchmark-parallel.go
+```
+
 ## 核心技术细节
 
 - **认证**：JWT (HS256) Bearer 令牌；RBAC 通过 `UserSchoolRole` 连接表实现
@@ -391,6 +425,13 @@ npm run test:run  # 单元测试（Vitest）
 - [学校管理员操作手册](docs/manuals/SCHOOL_ADMIN_MANUAL.md)
 - [教师操作手册](docs/manuals/TEACHER_MANUAL.md)
 - [学生操作手册](docs/manuals/STUDENT_MANUAL.md)
+
+技术文档：
+
+- [技能系统重构总结](docs/SKILL_REFACTORING_SUMMARY.md)
+- [技能优化分析](docs/SKILL_OPTIMIZATION.md)
+- [技能重构指南](docs/SKILL_REFACTORING_GUIDE.md)
+- [技能性能指南](docs/SKILL_PERFORMANCE_GUIDE.md)
 
 前端应用内帮助中心可通过 `/help` 路径访问。
 
