@@ -1,21 +1,18 @@
 'use client';
 
 /**
- * Quiz Generation Skill Renderer.
- *
- * Form-style UI with question cards (MCQ single/multiple + fill-blank),
- * per design.md §7.13 — Assessment sub-category.
- *
+ * Quiz Generation Skill Renderer (Refactored).
+ * 
+ * Uses shared hooks and components for cleaner code.
  * Phases: generating → answering → grading → reviewing
- * Supports <quiz>JSON</quiz> parsing from coach responses.
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ChatInputArea from '@/components/ChatInputArea';
-import SkillHistoryDrawer, { type SkillHistoryItem } from '@/components/SkillHistoryDrawer';
-import SkillModal from '@/components/SkillModal';
-import { useSkillHistory } from '@/lib/plugin/useSkillHistory';
+import { ProgressBar, PhaseIndicator, QuestionCard, LoadingState } from '@/components/skill-ui';
+import { useMessages, useStateMachine, useAgentChannel } from '@/lib/plugin/hooks';
+import { parseSkillOutput, stripSkillOutput } from '@/lib/plugin/parsers';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import styles from './QuizRenderer.module.css';
 
@@ -23,650 +20,288 @@ const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
 
 // -- Types -------------------------------------------------------
 
-interface ChatMessage {
-    id: string;
-    role: 'student' | 'coach' | 'system';
-    content: string;
-    timestamp: number;
-}
-
 type QuizPhase = 'generating' | 'answering' | 'grading' | 'reviewing';
 
 interface QuizOption {
-    key: string;
-    text: string;
+  key: string;
+  text: string;
 }
 
 interface QuizQuestion {
-    id: number;
-    type: 'mcq_single' | 'mcq_multiple' | 'fill_blank';
-    stem: string;
-    options?: QuizOption[];
-    answer: string[];
-    blanks?: string[];
-    explanation: string;
+  id: number;
+  type: 'mcq_single' | 'mcq_multiple' | 'fill_blank';
+  stem: string;
+  options?: QuizOption[];
+  answer: string[];
+  explanation: string;
 }
 
 interface QuizData {
-    questions: QuizQuestion[];
+  questions: QuizQuestion[];
 }
 
 interface GradedQuestion extends QuizQuestion {
-    studentAnswer: string[];
-    correct: boolean;
+  studentAnswer: string[];
+  correct: boolean;
 }
 
 const PHASE_LABELS: Record<QuizPhase, string> = {
-    generating: '出题中',
-    answering: '作答中',
-    grading: '批改中',
-    reviewing: '查看结果',
+  generating: '出题中',
+  answering: '作答中',
+  grading: '批改中',
+  reviewing: '查看结果',
 };
 
-// -- Quiz JSON Parser --------------------------------------------
-
-function parseQuizFromContent(content: string): QuizData | null {
-    const match = content.match(/<quiz>([\s\S]*?)<\/quiz>/);
-    if (!match) return null;
-    try {
-        return JSON.parse(match[1]) as QuizData;
-    } catch {
-        return null;
-    }
-}
-
-function stripQuizTag(content: string): string {
-    return content.replace(/<quiz>[\s\S]*?<\/quiz>/, '').trim();
-}
+const PHASE_TRANSITIONS: Record<QuizPhase, QuizPhase[]> = {
+  generating: ['answering'],
+  answering: ['grading'],
+  grading: ['reviewing'],
+  reviewing: ['generating'],
+};
 
 // -- Component ---------------------------------------------------
 
-export default function QuizRenderer({
-    agentChannel,
-    onInteractionEvent,
-}: SkillRendererProps) {
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [input, setInput] = useState('');
-    const [sending, setSending] = useState(false);
-    const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
-    const [streamingContent, setStreamingContent] = useState('');
+export default function QuizRendererRefactored({ agentChannel }: SkillRendererProps) {
+  const { messages, addMessage, messagesEndRef } = useMessages();
+  const { phase, transitionTo } = useStateMachine<QuizPhase>({
+    initialPhase: 'generating',
+    transitions: PHASE_TRANSITIONS,
+  });
 
-    // Quiz-specific state
-    const [phase, setPhase] = useState<QuizPhase>('generating');
-    const [quizData, setQuizData] = useState<QuizData | null>(null);
-    const [studentAnswers, setStudentAnswers] = useState<Record<number, string[]>>({});
-    const [gradedResults, setGradedResults] = useState<GradedQuestion[]>([]);
-    const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
-    
-    // History management
-    const { historyItems, addEntry, getEntry } = useSkillHistory<{ results: GradedQuestion[]; score: { correct: number; total: number } }>();
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [currentQuizId, setCurrentQuizId] = useState<string | null>(null);
-    const quizCountRef = useRef(0);
+  const [quizData, setQuizData] = useState<QuizData | null>(null);
+  const [studentAnswers, setStudentAnswers] = useState<Record<number, string[]>>({});
+  const [gradedResults, setGradedResults] = useState<GradedQuestion[]>([]);
+  const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
 
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    // -- Scroll to bottom ----------------------------------------
-
-    const scrollToBottom = useCallback(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, []);
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, streamingContent, thinkingStatus, quizData, gradedResults, scrollToBottom]);
-
-    // -- WebSocket message handling ------------------------------
-
-    useEffect(() => {
-        const unsubscribeMessage = agentChannel.onMessage((data: string) => {
-            try {
-                const event = JSON.parse(data);
-                switch (event.event) {
-                    case 'agent_thinking': {
-                        setThinkingStatus(event.payload?.status || '出题中...');
-                        break;
-                    }
-                    case 'token_delta': {
-                        setThinkingStatus(null);
-                        setStreamingContent(prev => prev + (event.payload?.text || ''));
-                        break;
-                    }
-                    case 'turn_complete': {
-                        setThinkingStatus(null);
-                        setSending(false);
-                        setStreamingContent(prev => {
-                            if (prev) {
-                                // Try to parse quiz data from the response
-                                const parsed = parseQuizFromContent(prev);
-                                if (parsed && parsed.questions.length > 0) {
-                                    setQuizData(parsed);
-                                    setStudentAnswers({});
-                                    setGradedResults([]);
-                                    setScore(null);
-                                    setPhase('answering');
-
-                                    // Store the intro text (before <quiz>) as a message
-                                    const intro = stripQuizTag(prev);
-                                    if (intro) {
-                                        setMessages(msgs => [...msgs, {
-                                            id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                                            role: 'coach',
-                                            content: intro,
-                                            timestamp: Date.now(),
-                                        }]);
-                                    }
-                                } else {
-                                    // Regular coach message (grading feedback, etc.)
-                                    setMessages(msgs => [...msgs, {
-                                        id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                                        role: 'coach',
-                                        content: prev,
-                                        timestamp: Date.now(),
-                                    }]);
-
-                                    // If we were in grading phase, move to reviewing and save to history
-                                    if (phase === 'grading' && gradedResults.length > 0 && score) {
-                                        setPhase('reviewing');
-                                        
-                                        // 添加到历史记录
-                                        quizCountRef.current += 1;
-                                        const quizId = addEntry(
-                                            'quiz',
-                                            `测验 ${quizCountRef.current} (${score.correct}/${score.total})`,
-                                            { results: gradedResults, score },
-                                            '📝'
-                                        );
-                                        setCurrentQuizId(quizId);
-                                        
-                                        // 添加查看按钮
-                                        setMessages(msgs => [...msgs, {
-                                            id: quizId,
-                                            role: 'system',
-                                            content: '📝 测验结果已保存',
-                                            timestamp: Date.now(),
-                                        }]);
-                                    }
-                                }
-                            }
-                            return '';
-                        });
-                        break;
-                    }
-                    case 'ui_scaffold_change': {
-                        const payload = event.payload as {
-                            data: { new_level: string; mastery: number; direction: string };
-                        };
-                        const direction = payload.data.direction === 'fade' ? '降低' : '增强';
-                        const labels = { high: '高支架', medium: '中支架', low: '低支架' };
-                        const label = labels[payload.data.new_level as keyof typeof labels] || payload.data.new_level;
-                        setMessages(prev => [...prev, {
-                            id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                            role: 'system',
-                            content: `支架已${direction}至 ${label} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
-                            timestamp: Date.now(),
-                        }]);
-                        break;
-                    }
-                    case 'error': {
-                        setThinkingStatus(null);
-                        setSending(false);
-                        setMessages(prev => [...prev, {
-                            id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                            role: 'system',
-                            content: event.payload?.message || '发生错误',
-                            timestamp: Date.now(),
-                        }]);
-                        break;
-                    }
-                }
-            } catch {
-                // Ignore parse errors
-            }
-        });
-
-        const unsubscribeClose = agentChannel.onClose(() => {
-            setMessages(prev => [...prev, {
-                id: `sys-close-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                role: 'system',
-                content: '连接已断开',
-                timestamp: Date.now(),
-            }]);
-        });
-        return () => {
-            unsubscribeMessage();
-            unsubscribeClose();
-        };
-    }, [agentChannel, phase, onInteractionEvent]);
-
-    // -- MCQ answer handling -------------------------------------
-
-    const handleMCQSelect = useCallback((questionId: number, optionKey: string, isMultiple: boolean) => {
-        setStudentAnswers(prev => {
-            const current = prev[questionId] || [];
-            if (isMultiple) {
-                // Toggle selection for multiple choice
-                const idx = current.indexOf(optionKey);
-                if (idx >= 0) {
-                    return { ...prev, [questionId]: current.filter(k => k !== optionKey) };
-                }
-                return { ...prev, [questionId]: [...current, optionKey] };
-            }
-            // Single choice: replace
-            return { ...prev, [questionId]: [optionKey] };
-        });
-    }, []);
-
-    // -- Fill-blank answer handling ------------------------------
-
-    const handleBlankInput = useCallback((questionId: number, blankIndex: number, value: string) => {
-        setStudentAnswers(prev => {
-            const current = prev[questionId] || [];
-            const updated = [...current];
-            updated[blankIndex] = value;
-            return { ...prev, [questionId]: updated };
-        });
-    }, []);
-
-    // -- Submit answers -----------------------------------------
-
-    const handleSubmitAnswers = useCallback(() => {
-        if (!quizData) return;
-
-        // Grade locally for immediate feedback
-        const graded: GradedQuestion[] = quizData.questions.map(q => {
-            const studentAns = studentAnswers[q.id] || [];
-            let correct = false;
-
-            if (q.type === 'fill_blank') {
-                // Fill-blank: compare each blank (case-insensitive, trimmed)
-                const expected = q.blanks || q.answer;
-                correct = expected.length === studentAns.length &&
-                    expected.every((exp, i) =>
-                        studentAns[i]?.trim().toLowerCase() === exp.trim().toLowerCase()
-                    );
-            } else {
-                // MCQ: compare sorted answer arrays
-                const sortedExpected = [...q.answer].sort();
-                const sortedStudent = [...studentAns].sort();
-                correct = sortedExpected.length === sortedStudent.length &&
-                    sortedExpected.every((v, i) => v === sortedStudent[i]);
-            }
-
-            return { ...q, studentAnswer: studentAns, correct };
-        });
-
-        setGradedResults(graded);
-        const correctCount = graded.filter(g => g.correct).length;
-        setScore({ correct: correctCount, total: graded.length });
-        setPhase('grading');
-
-        // Send answers to backend for full grading with explanations
-        const answerText = quizData.questions.map(q => {
-            const ans = studentAnswers[q.id] || [];
-            if (q.type === 'fill_blank') {
-                return `第${q.id}题: ${ans.join(', ') || '(未作答)'}`;
-            }
-            return `第${q.id}题: ${ans.join('') || '(未作答)'}`;
-        }).join('\n');
-
-        agentChannel.send(JSON.stringify({
-            event: 'user_message',
-            payload: { text: `我的答案:\n${answerText}` },
-            timestamp: Math.floor(Date.now() / 1000),
-        }));
-
-        setSending(true);
-        setStreamingContent('');
-
-        onInteractionEvent({
-            type: 'quiz_submitted',
-            payload: {
-                skillId: 'general_assessment_quiz',
-                questionCount: graded.length,
-                correctCount,
-            },
+  // WebSocket handling
+  const { send, sending, thinkingStatus, streamingContent } = useAgentChannel(agentChannel, {
+    onMessage: (content) => {
+      // Try parse quiz data
+      const parsed = parseSkillOutput<QuizData>(content, 'quiz');
+      
+      if (parsed && parsed.questions.length > 0) {
+        setQuizData(parsed);
+        setStudentAnswers({});
+        transitionTo('answering');
+        
+        const intro = stripSkillOutput(content, 'quiz');
+        if (intro) {
+          addMessage({
+            id: `coach-${Date.now()}`,
+            role: 'coach',
+            content: intro,
             timestamp: Date.now(),
-        });
-    }, [quizData, studentAnswers, agentChannel, onInteractionEvent]);
-
-    // -- Request more questions ----------------------------------
-
-    const handleRequestMore = useCallback(() => {
-        setPhase('generating');
-        setQuizData(null);
-        setGradedResults([]);
-        setScore(null);
-
-        agentChannel.send(JSON.stringify({
-            event: 'user_message',
-            payload: { text: '请再出一批题目' },
-            timestamp: Math.floor(Date.now() / 1000),
-        }));
-
-        setSending(true);
-        setStreamingContent('');
-    }, [agentChannel]);
-
-    // -- Free-form message send ---------------------------------
-
-    const handleSend = useCallback(() => {
-        const text = input.trim();
-        if (!text || sending) return;
-
-        setMessages(prev => [...prev, {
-            id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            role: 'student',
-            content: text,
-            timestamp: Date.now(),
-        }]);
-
-        agentChannel.send(JSON.stringify({
-            event: 'user_message',
-            payload: { text },
-            timestamp: Math.floor(Date.now() / 1000),
-        }));
-
-        setInput('');
-        setSending(true);
-        setStreamingContent('');
-    }, [input, sending, agentChannel]);
-
-    // -- Handle history item click -------------------------------
-
-    const handleHistoryItemClick = useCallback((item: SkillHistoryItem) => {
-        if (item.type === 'quiz') {
-            const entry = getEntry(item.id);
-            if (entry) {
-                setCurrentQuizId(item.id);
-                setIsModalOpen(true);
-            }
+          });
         }
-    }, [getEntry]);
+      } else {
+        // Regular message
+        addMessage({
+          id: `coach-${Date.now()}`,
+          role: 'coach',
+          content,
+          timestamp: Date.now(),
+        });
+        
+        if (phase === 'grading') {
+          transitionTo('reviewing');
+        }
+      }
+    },
+  });
 
+  // Submit quiz answers
+  const handleSubmitQuiz = useCallback(async () => {
+    if (!quizData) return;
     
+    // Grade locally
+    const graded: GradedQuestion[] = quizData.questions.map(q => {
+      const studentAns = studentAnswers[q.id] || [];
+      const correct = JSON.stringify(studentAns.sort()) === JSON.stringify(q.answer.sort());
+      return { ...q, studentAnswer: studentAns, correct };
+    });
+    
+    setGradedResults(graded);
+    const correctCount = graded.filter(q => q.correct).length;
+    setScore({ correct: correctCount, total: graded.length });
+    
+    transitionTo('grading');
+    
+    // Send to AI for feedback
+    const summary = graded.map((q, i) => 
+      `题${i + 1}: ${q.correct ? '✓' : '✗'}`
+    ).join(', ');
+    
+    await send(`我已完成作答。${summary}。请给我详细的反馈和解析。`);
+  }, [quizData, studentAnswers, send, transitionTo]);
 
-    // -- Render question card -----------------------------------
+  // Answer handlers
+  const handleSingleChoice = (qid: number, key: string) => {
+    setStudentAnswers(prev => ({ ...prev, [qid]: [key] }));
+  };
 
-    const renderQuestion = (q: QuizQuestion, graded?: GradedQuestion) => {
-        const isGraded = !!graded;
-        const selected = studentAnswers[q.id] || [];
-        const isMultiple = q.type === 'mcq_multiple';
+  const handleMultipleChoice = (qid: number, key: string) => {
+    setStudentAnswers(prev => {
+      const current = prev[qid] || [];
+      const updated = current.includes(key)
+        ? current.filter(k => k !== key)
+        : [...current, key];
+      return { ...prev, [qid]: updated };
+    });
+  };
 
-        return (
-            <div key={q.id} className={`${styles.questionCard} ${isGraded ? (graded.correct ? styles.cardCorrect : styles.cardIncorrect) : ''}`}>
-                <div className={styles.questionHeader}>
-                    <span className={styles.questionNumber}>第 {q.id} 题</span>
-                    <span className={styles.questionType}>
-                        {q.type === 'mcq_single' ? '单选题' : q.type === 'mcq_multiple' ? '多选题' : '填空题'}
-                    </span>
-                    {isGraded && (
-                        <span className={graded.correct ? styles.resultCorrect : styles.resultIncorrect}>
-                            {graded.correct ? '正确' : '错误'}
-                        </span>
-                    )}
-                </div>
+  const handleFillBlank = (qid: number, value: string) => {
+    setStudentAnswers(prev => ({ ...prev, [qid]: [value] }));
+  };
 
-                <div className={styles.questionStem}>{q.stem}</div>
+  // Start new quiz
+  const handleNewQuiz = () => {
+    setQuizData(null);
+    setGradedResults([]);
+    setScore(null);
+    transitionTo('generating');
+    send('请再出一套新题目。');
+  };
 
-                {/* MCQ options */}
-                {q.options && (
-                    <div className={styles.optionsList}>
-                        {q.options.map(opt => {
-                            const isSelected = selected.includes(opt.key);
-                            const isCorrectAnswer = isGraded && q.answer.includes(opt.key);
-                            let optionClass = styles.option;
-                            if (isGraded) {
-                                if (isCorrectAnswer) optionClass += ` ${styles.optionCorrect}`;
-                                else if (isSelected) optionClass += ` ${styles.optionIncorrect}`;
-                            } else if (isSelected) {
-                                optionClass += ` ${styles.optionSelected}`;
-                            }
+  // Initial quiz generation
+  useEffect(() => {
+    if (phase === 'generating' && !quizData && !sending) {
+      send('请根据当前知识点生成测验题目。');
+    }
+  }, [phase, quizData, sending, send]);
 
-                            return (
-                                <button
-                                    key={opt.key}
-                                    className={optionClass}
-                                    onClick={() => !isGraded && handleMCQSelect(q.id, opt.key, isMultiple)}
-                                    disabled={isGraded || phase !== 'answering'}
-                                >
-                                    <span className={styles.optionKey}>{opt.key}</span>
-                                    <span className={styles.optionText}>{opt.text}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
+  // -- Render ------------------------------------------------------
+
+  return (
+    <div className={styles.container}>
+      <PhaseIndicator
+        phases={['generating', 'answering', 'grading', 'reviewing'] as const}
+        currentPhase={phase}
+        labels={PHASE_LABELS}
+      />
+
+      <div className={styles.messages}>
+        {messages.map(msg => (
+          <div key={msg.id} className={`${styles.message} ${styles[msg.role]}`}>
+            <MarkdownRenderer content={msg.content} />
+          </div>
+        ))}
+
+        {thinkingStatus && <LoadingState message={thinkingStatus} />}
+
+        {phase === 'answering' && quizData && (
+          <div className={styles.quizContainer}>
+            <ProgressBar
+              current={Object.keys(studentAnswers).length}
+              total={quizData.questions.length}
+              label="答题进度"
+            />
+
+            {quizData.questions.map((q, idx) => (
+              <QuestionCard
+                key={q.id}
+                number={idx + 1}
+                stem={q.stem}
+                status={studentAnswers[q.id] ? 'answered' : 'unanswered'}
+              >
+                {q.type === 'mcq_single' && q.options && (
+                  <div className={styles.options}>
+                    {q.options.map(opt => (
+                      <label key={opt.key} className={styles.option}>
+                        <input
+                          type="radio"
+                          name={`q${q.id}`}
+                          checked={studentAnswers[q.id]?.[0] === opt.key}
+                          onChange={() => handleSingleChoice(q.id, opt.key)}
+                        />
+                        <span>{opt.key}. {opt.text}</span>
+                      </label>
+                    ))}
+                  </div>
                 )}
 
-                {/* Fill-blank inputs */}
+                {q.type === 'mcq_multiple' && q.options && (
+                  <div className={styles.options}>
+                    {q.options.map(opt => (
+                      <label key={opt.key} className={styles.option}>
+                        <input
+                          type="checkbox"
+                          checked={studentAnswers[q.id]?.includes(opt.key)}
+                          onChange={() => handleMultipleChoice(q.id, opt.key)}
+                        />
+                        <span>{opt.key}. {opt.text}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
                 {q.type === 'fill_blank' && (
-                    <div className={styles.blanksList}>
-                        {(q.blanks || q.answer).map((_, idx) => (
-                            <div key={idx} className={styles.blankRow}>
-                                <span className={styles.blankLabel}>空 {idx + 1}:</span>
-                                <input
-                                    className={`${styles.blankInput} ${
-                                        isGraded
-                                            ? (graded.studentAnswer[idx]?.trim().toLowerCase() === (q.blanks || q.answer)[idx]?.trim().toLowerCase()
-                                                ? styles.blankCorrect
-                                                : styles.blankIncorrect)
-                                            : ''
-                                    }`}
-                                    value={selected[idx] || ''}
-                                    onChange={e => !isGraded && handleBlankInput(q.id, idx, e.target.value)}
-                                    placeholder="输入答案"
-                                    disabled={isGraded || phase !== 'answering'}
-                                />
-                                {isGraded && !graded.correct && (
-                                    <span className={styles.correctAnswer}>
-                                        正确答案: {(q.blanks || q.answer)[idx]}
-                                    </span>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+                  <input
+                    type="text"
+                    className={styles.fillInput}
+                    value={studentAnswers[q.id]?.[0] || ''}
+                    onChange={(e) => handleFillBlank(q.id, e.target.value)}
+                    placeholder="请输入答案"
+                  />
                 )}
+              </QuestionCard>
+            ))}
 
-                {/* Explanation (shown after grading) */}
-                {isGraded && q.explanation && (
-                    <div className={styles.explanation}>
-                        <div className={styles.explanationLabel}>解析</div>
-                        <MarkdownRenderer content={q.explanation} />
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    // -- Render thinking indicator --------------------------------
-
-    const renderThinking = () => {
-        if (!thinkingStatus) return null;
-        return (
-            <div className={styles.thinkingIndicator}>
-                <div className={styles.thinkingDots}>
-                    <div className={styles.thinkingDot} />
-                    <div className={styles.thinkingDot} />
-                    <div className={styles.thinkingDot} />
-                </div>
-                <span>{thinkingStatus}</span>
-            </div>
-        );
-    };
-
-    // -- Check if all questions answered -------------------------
-
-    const allAnswered = quizData?.questions.every(q => {
-        const ans = studentAnswers[q.id] || [];
-        if (q.type === 'fill_blank') {
-            return (q.blanks || q.answer).every((_, idx) => ans[idx]?.trim());
-        }
-        return ans.length > 0;
-    }) ?? false;
-
-    // -- Main render ---------------------------------------------
-
-    const renderQuizModal = () => {
-        if (!currentQuizId) return null;
-        const entry = getEntry(currentQuizId);
-        if (!entry) return null;
-
-        return (
-            <SkillModal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title="📝 测验结果"
+            <button
+              className={styles.submitBtn}
+              onClick={handleSubmitQuiz}
+              disabled={Object.keys(studentAnswers).length < quizData.questions.length}
             >
-                <div className={styles.quizCards}>
-                    <div className={styles.scoreCard}>
-                        <div className={styles.scoreNumber}>
-                            {entry.data.score.correct} / {entry.data.score.total}
-                        </div>
-                        <div className={styles.scoreLabel}>
-                            正确率: {Math.round((entry.data.score.correct / entry.data.score.total) * 100)}%
-                        </div>
-                    </div>
-                    {entry.data.results.map(g => renderQuestion(g, g))}
+              提交答案
+            </button>
+          </div>
+        )}
+
+        {phase === 'reviewing' && gradedResults.length > 0 && score && (
+          <div className={styles.results}>
+            <div className={styles.scoreCard}>
+              <h3>测验结果</h3>
+              <div className={styles.scoreDisplay}>
+                {score.correct} / {score.total}
+              </div>
+              <ProgressBar
+                current={score.correct}
+                total={score.total}
+                label="正确率"
+              />
+            </div>
+
+            {gradedResults.map((q, idx) => (
+              <QuestionCard
+                key={q.id}
+                number={idx + 1}
+                stem={q.stem}
+                status={q.correct ? 'correct' : 'incorrect'}
+              >
+                <div className={styles.answerReview}>
+                  <p><strong>你的答案：</strong>{q.studentAnswer.join(', ')}</p>
+                  <p><strong>正确答案：</strong>{q.answer.join(', ')}</p>
+                  <div className={styles.explanation}>
+                    <strong>解析：</strong>
+                    <MarkdownRenderer content={q.explanation} />
+                  </div>
                 </div>
-            </SkillModal>
-        );
-    };
+              </QuestionCard>
+            ))}
 
-    return (
-        <div className={styles.quizContainer}>
-            {/* History Drawer */}
-            <SkillHistoryDrawer 
-                items={historyItems}
-                onItemClick={handleHistoryItemClick}
-            />
-            
-            {/* Phase indicator */}
-            <div className={styles.phaseBar}>
-                {(Object.entries(PHASE_LABELS) as [QuizPhase, string][]).map(([p, label]) => (
-                    <div
-                        key={p}
-                        className={`${styles.phaseStep} ${p === phase ? styles.phaseActive : ''} ${
-                            (Object.keys(PHASE_LABELS).indexOf(p) < Object.keys(PHASE_LABELS).indexOf(phase))
-                                ? styles.phaseCompleted : ''
-                        }`}
-                    >
-                        {label}
-                    </div>
-                ))}
-            </div>
+            <button className={styles.newQuizBtn} onClick={handleNewQuiz}>
+              开始新测验
+            </button>
+          </div>
+        )}
 
-            {/* Messages area */}
-            <div className={styles.messagesArea}>
-                {messages.map(msg => (
-                    <div
-                        key={msg.id}
-                        className={`${styles.messageBubble} ${
-                            msg.role === 'student' ? styles.messageStudent :
-                            msg.role === 'coach' ? styles.messageCoach :
-                            styles.messageSystem
-                        }`}
-                    >
-                        {msg.role !== 'system' && (
-                            <div className={styles.messageHeader}>
-                                <span className={`${styles.roleIcon} ${
-                                    msg.role === 'student' ? styles.roleStudent : styles.roleCoach
-                                }`}>
-                                    {msg.role === 'student' ? 'S' : 'AI'}
-                                </span>
-                                <span className={styles.roleLabel}>
-                                    {msg.role === 'student' ? '我' : 'AI 导师'}
-                                </span>
-                            </div>
-                        )}
-                        <div className={styles.messageContent}>
-                            {msg.role === 'system' && msg.content.includes('测验结果已保存') ? (
-                                <button 
-                                    className={styles.openQuizBtn}
-                                    onClick={() => {
-                                        setCurrentQuizId(msg.id);
-                                        setIsModalOpen(true);
-                                    }}
-                                >
-                                    📝 查看测验结果
-                                </button>
-                            ) : msg.role === 'coach' ? (
-                                <MarkdownRenderer content={msg.content} />
-                            ) : (
-                                msg.content
-                            )}
-                        </div>
-                    </div>
-                ))}
+        <div ref={messagesEndRef} />
+      </div>
 
-                {/* Streaming content */}
-                {streamingContent && (
-                    <div className={`${styles.messageBubble} ${styles.messageCoach}`}>
-                        <div className={styles.messageHeader}>
-                            <span className={`${styles.roleIcon} ${styles.roleCoach}`}>AI</span>
-                            <span className={styles.roleLabel}>AI 导师</span>
-                        </div>
-                        <div className={styles.messageContent}>
-                            <MarkdownRenderer content={streamingContent} isStreaming />
-                        </div>
-                    </div>
-                )}
-
-                {renderThinking()}
-
-                {/* Quiz cards */}
-                {quizData && phase === 'answering' && (
-                    <div className={styles.quizCards}>
-                        {quizData.questions.map(q => renderQuestion(q))}
-                        <button
-                            className={styles.submitBtn}
-                            onClick={handleSubmitAnswers}
-                            disabled={!allAnswered || sending}
-                        >
-                            {allAnswered ? '提交答案' : '请完成所有题目'}
-                        </button>
-                    </div>
-                )}
-
-                {/* Graded results */}
-                {gradedResults.length > 0 && (phase === 'grading' || phase === 'reviewing') && (
-                    <div className={styles.quizCards}>
-                        {score && (
-                            <div className={styles.scoreCard}>
-                                <div className={styles.scoreNumber}>
-                                    {score.correct} / {score.total}
-                                </div>
-                                <div className={styles.scoreLabel}>
-                                    正确率: {Math.round((score.correct / score.total) * 100)}%
-                                </div>
-                            </div>
-                        )}
-                        {gradedResults.map(g => renderQuestion(g, g))}
-                        {phase === 'reviewing' && (
-                            <button
-                                className={styles.moreBtn}
-                                onClick={handleRequestMore}
-                                disabled={sending}
-                            >
-                                继续出题
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <ChatInputArea
-                input={input}
-                setInput={setInput}
-                sending={sending}
-                onSend={() => handleSend()}
-                placeholder={sending ? '批改中...' : '输入你的回答...'}
-            />
-            
-            {/* Quiz Results Modal */}
-            {renderQuizModal()}
+      {phase === 'answering' && (
+        <div className={styles.inputDisabled}>
+          <p>请先完成答题后再提交...</p>
         </div>
-    );
+      )}
+    </div>
+  );
 }
