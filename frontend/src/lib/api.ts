@@ -1177,17 +1177,23 @@ export interface WeKnoraKBRef {
 }
 
 export async function listWeKnoraKnowledgeBases(): Promise<WeKnoraKB[]> {
-  return apiFetch<WeKnoraKB[]>('/weknora/knowledge-bases');
+  const resp = await apiFetch<{ data: WeKnoraKB[] }>('/weknora/knowledge-bases');
+  return resp.data || [];
 }
 
 export async function getCourseWeKnoraRefs(courseId: number): Promise<WeKnoraKBRef[]> {
-  return apiFetch<WeKnoraKBRef[]>(`/courses/${courseId}/weknora-refs`);
+  const resp = await apiFetch<{ data: WeKnoraKBRef[] }>(`/courses/${courseId}/weknora-refs`);
+  return resp.data || [];
 }
 
-export async function bindWeKnoraKnowledgeBase(courseId: number, kbId: string): Promise<WeKnoraKBRef> {
+export async function bindWeKnoraKnowledgeBase(
+  courseId: number,
+  kbId: string,
+  kbName: string
+): Promise<WeKnoraKBRef> {
   return apiFetch<WeKnoraKBRef>(`/courses/${courseId}/weknora-refs`, {
     method: 'POST',
-    body: JSON.stringify({ kb_id: kbId }),
+    body: JSON.stringify({ kb_id: kbId, kb_name: kbName }),
   });
 }
 

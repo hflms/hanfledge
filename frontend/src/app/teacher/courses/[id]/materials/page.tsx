@@ -261,7 +261,9 @@ export default function MaterialsPage() {
     const handleBindKb = async (kbId: string) => {
         setBindingKbId(kbId);
         try {
-            await bindWeKnoraKnowledgeBase(courseId, kbId);
+            const kb = weknoraKBs.find(k => k.id === kbId);
+            if (!kb) throw new Error('Knowledge base not found');
+            await bindWeKnoraKnowledgeBase(courseId, kbId, kb.name);
             toast('知识库绑定成功', 'success');
             await fetchWeKnora();
         } catch {
