@@ -229,7 +229,8 @@ export default function PresentationRenderer({
                         setThinkingStatus(null);
                         const newText = event.payload?.text || '';
                         streamingContentRef.current += newText;
-                        setStreamingContent(streamingContentRef.current);
+                        // 不显示流式内容，只累积
+                        // setStreamingContent(streamingContentRef.current);
                         break;
                     }
                     case 'turn_complete': {
@@ -481,22 +482,6 @@ export default function PresentationRenderer({
                         </div>
                     </div>
                 ))}
-
-                {/* Streaming content */}
-                {streamingContent && (
-                    <div className={`${styles.messageBubble} ${styles.messageCoach}`}>
-                        <div className={styles.messageHeader}>
-                            <span className={`${styles.roleIcon} ${styles.roleCoach}`}>AI</span>
-                            <span className={styles.roleLabel}>AI 导师</span>
-                        </div>
-                        <div className={styles.messageContent}>
-                            <MarkdownRenderer 
-                                content={stripSlidesTag(streamingContent)} 
-                                isStreaming 
-                            />
-                        </div>
-                    </div>
-                )}
 
                 {renderThinking()}
 
