@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -393,4 +394,44 @@ func (h *WeKnoraHandler) DeleteKnowledgeBase(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "knowledge base deleted successfully"})
+}
+
+// GetWeKnoraLoginToken generates a temporary token for SSO to WeKnora.
+//
+//	@Summary      获取 WeKnora 登录令牌
+//	@Description  生成临时令牌用于跳转到 WeKnora 并自动登录
+//	@Tags         WeKnora
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Success      200 {object}  map[string]string
+//	@Failure      500 {object}  ErrorResponse
+//	@Router       /weknora/login-token [get]
+func (h *WeKnoraHandler) GetWeKnoraLoginToken(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	
+	// Get user info
+	var user model.User
+	if err := h.db.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "user not found"})
+		return
+	}
+	
+	// Login to WeKnora with synced credentials
+	email := fmt.Sprintf("%s@hanfledge.local", user.Phone)
+	password := user.Phone // Synced password is the phone number
+	
+	loginResp, err := h.client.Login(c.Request.Context(), &weknora.LoginRequest{
+		Email:    email,
+		Password: password,
+	})
+	if err != nil {
+		slogWeKnora.Error("failed to login to WeKnora", "user_id", userID, "error", err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to login to WeKnora"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token": loginResp.Token,
+		"weknora_url": h.client.BaseURL(),
+	})
 }

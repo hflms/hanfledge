@@ -65,11 +65,19 @@ func main() {
 		}
 
 		// Sync user to WeKnora
+		// Use phone as plaintext password for WeKnora
+		plaintextPassword := user.Phone
+		hashedPassword, hashErr := hashPassword(plaintextPassword)
+		if hashErr != nil {
+			log.Printf("failed to hash password for %s: %v", user.Phone, hashErr)
+			continue
+		}
+		
 		wkUser := WeKnoraUser{
 			ID:                  uuid.New().String(),
 			Username:            user.Phone, // Use phone as username
 			Email:               fmt.Sprintf("%s@hanfledge.local", user.Phone),
-			PasswordHash:        user.PasswordHash, // Reuse bcrypt hash
+			PasswordHash:        hashedPassword, // Hash the phone number
 			IsActive:            true,
 			CanAccessAllTenants: isAdmin, // Admin users can access all tenants
 		}

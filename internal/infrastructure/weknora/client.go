@@ -49,6 +49,11 @@ func (c *Client) WithToken(token string) *Client {
 	}
 }
 
+// BaseURL returns the WeKnora base URL.
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
 // -- Authentication APIs ---------------------------------------------------
 
 // Register creates a new user account in WeKnora.

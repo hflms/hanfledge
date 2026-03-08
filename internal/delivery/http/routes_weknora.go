@@ -22,6 +22,7 @@ func registerWeKnoraRoutes(
 	wk := protected.Group("/weknora")
 	wk.Use(teacherRoles)
 	{
+		wk.GET("/login-token", wkHandler.GetWeKnoraLoginToken)
 		wk.POST("/knowledge-bases", wkHandler.CreateKnowledgeBase)
 		wk.GET("/knowledge-bases", wkHandler.ListKnowledgeBases)
 		wk.GET("/knowledge-bases/:kb_id", wkHandler.GetKnowledgeBase)

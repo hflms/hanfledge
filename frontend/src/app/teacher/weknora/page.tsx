@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
     listWeKnoraKnowledgeBases,
+    getWeKnoraLoginToken,
     type WeKnoraKB,
 } from '@/lib/api';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -30,6 +31,18 @@ export default function WeKnoraPage() {
         fetchData();
     }, []);
 
+    const handleOpenWeKnora = async () => {
+        try {
+            const { token, weknora_url } = await getWeKnoraLoginToken();
+            // 跳转到 WeKnora 并携带 token
+            const url = `${weknora_url.replace('/api/v1', '')}?token=${token}`;
+            window.open(url, '_blank');
+        } catch (err) {
+            console.error('Failed to get WeKnora login token', err);
+            alert('无法打开 WeKnora，请稍后重试');
+        }
+    };
+
     if (loading) {
         return <LoadingSpinner />;
     }
@@ -43,6 +56,9 @@ export default function WeKnoraPage() {
                         查看可用的 WeKnora 知识库，并在课程中进行绑定使用。
                     </p>
                 </div>
+                <button onClick={handleOpenWeKnora} className={styles.openButton}>
+                    打开 WeKnora 管理界面
+                </button>
             </div>
 
             {knowledgeBases.length === 0 ? (

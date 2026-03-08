@@ -1202,3 +1202,7 @@ export async function unbindWeKnoraKnowledgeBase(courseId: number, refId: number
     method: 'DELETE',
   });
 }
+
+export async function getWeKnoraLoginToken(): Promise<{ token: string; weknora_url: string }> {
+  return apiFetch<{ token: string; weknora_url: string }>('/weknora/login-token');
+}
