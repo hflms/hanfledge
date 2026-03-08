@@ -65,16 +65,28 @@ function parseSlidesFromContent(content: string): string | null {
 }
 
 /**
- * Strips the <slides> tag and <reasoning> tags from a message, returning any surrounding text.
+ * Strips the <slides> tag and slide content from a message, returning any surrounding text.
  *
  * @param content - Raw coach response string
- * @returns The content with the <slides> and <reasoning> blocks removed
+ * @returns The content with the slides and reasoning blocks removed
  */
 function stripSlidesTag(content: string): string {
-    let result = content.replace(/<slides>[\s\S]*?<\/slides>/, '');
+    let result = content;
+    
+    // Remove <slides> tag content
+    result = result.replace(/<slides>[\s\S]*?<\/slides>/, '');
+    
+    // If no <slides> tag but has Reveal.js format, remove it
+    if (content.includes('---') && (content.includes('##') || content.includes('#'))) {
+        // This is likely a direct Reveal.js format, remove all of it
+        result = '';
+    }
+    
+    // Remove reasoning tags
     result = result.replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '');
     result = result.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
     result = result.replace(/<analysis>[\s\S]*?<\/analysis>/g, '');
+    
     return result.trim();
 }
 
