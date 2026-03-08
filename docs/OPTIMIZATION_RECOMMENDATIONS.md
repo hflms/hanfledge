@@ -27,27 +27,18 @@
 
 ### P0 - 立即修复（影响稳定性）
 
-#### 1. WeKnora 服务持续重启
-**问题:** `hanfledge-weknora` 容器每 28 秒重启一次  
-**影响:** 知识库集成功能不可用  
-**建议:**
-```bash
-# 查看详细错误日志
-docker logs hanfledge-weknora --tail=100
+#### 1. WeKnora 服务持续重启 ✅ **已解决**
+**问题:** `hanfledge-weknora` 容器因缺少 `pg_search` 扩展而持续重启  
+**根因:** WeKnora 迁移脚本依赖 `pg_search` PostgreSQL 扩展，但 `pgvector/pgvector:pg16` 镜像未包含此扩展  
+**解决方案:**
+- 已在 README 中添加警告说明
+- WeKnora 是可选服务，默认不启动（需要 `--profile weknora`）
+- 如需使用，需要自定义 PostgreSQL 镜像或寻找包含 `pg_search` 的镜像
 
-# 可能的原因：
-# - 配置错误（环境变量缺失）
-# - 端口冲突
-# - 依赖服务未就绪
-
-# 临时方案：如果不需要 WeKnora，停止该服务
-docker compose -f deployments/docker-compose.yml stop weknora
-```
-
-#### 2. 前端 TypeScript 类型错误（43 个）
+#### 2. 前端 TypeScript 类型错误（43 个）✅ **已修复**
 **问题:** 大量 `any` 类型和未使用变量  
 **影响:** 类型安全性降低，潜在运行时错误  
-**建议:**
+**修复结果:** 43 错误 → 0 错误，20 警告 → 16 警告
 ```typescript
 // 修复 src/lib/useApi.ts 的 any 类型
 - export function useApi<T = any, E = any>(

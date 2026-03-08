@@ -81,20 +81,16 @@ services:
     ports:
       - "${WEKNORA_PORT:-9380}:9380"
     environment:
-      - WEKNORA_DB_HOST=postgres
-      - WEKNORA_DB_PORT=5432
-      - WEKNORA_DB_USER=${POSTGRES_USER:-hanfledge}
-      - WEKNORA_DB_PASSWORD=${POSTGRES_PASSWORD:-hanfledge_secret}
-      - DB_DRIVER=postgres
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:-hanfledge}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-hanfledge_secret}
-      - DB_NAME=${WEKNORA_DB_NAME:-weknora}
-      - REDIS_ADDR=redis:6379
-      - STORAGE_TYPE=local
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - DOCREADER_ADDR=docreader:50051
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-hanfledge}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-hanfledge_secret}
+      DB_NAME: ${WEKNORA_DB_NAME:-weknora}
+      REDIS_ADDR: redis:6379
+      STORAGE_TYPE: local
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      DOCREADER_ADDR: docreader:50051
     depends_on:
       postgres:
         condition: service_healthy
