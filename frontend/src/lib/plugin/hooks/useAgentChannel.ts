@@ -26,7 +26,12 @@ export function useAgentChannel(
   // at the time turn_complete fired because the effect kept re-running.
   const streamingContentRef = useRef('');
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+
+  // Sync the options ref inside an effect to satisfy React Compiler's
+  // "no ref writes during render" rule (react-hooks/refs).
+  useEffect(() => {
+    optionsRef.current = options;
+  });
 
   useEffect(() => {
     const unsubscribe = agentChannel.onMessage((data: string) => {
