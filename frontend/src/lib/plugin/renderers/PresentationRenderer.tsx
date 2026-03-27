@@ -58,14 +58,49 @@ export default function PresentationRendererRefactored({
   // WebSocket handling with progressive updates
   const { send, sending, thinkingStatus, streamingContent } = useAgentChannel(agentChannel, {
     onMessage: (content) => {
-      // Try parse slides data
+      // Try structured output formats first:
+      //   1. <skill_output type="presentation">  (unified)
+      //   2. <presentation>{JSON}</presentation> (legacy JSON)
+      //   3. <skill_output type="presentation_generator"> (progressive.go)
+      let slides: string | null = null;
+
       const parsed = parseSkillOutput<SlidesData>(content, 'presentation');
-      
-      if (parsed && parsed.slides) {
-        setSlidesMarkdown(parsed.slides);
+      if (parsed?.slides) {
+        slides = parsed.slides;
+      }
+
+      if (!slides) {
+        const parsedAlt = parseSkillOutput<SlidesData>(content, 'presentation_generator');
+        if (parsedAlt?.slides) {
+          slides = parsedAlt.slides;
+        }
+      }
+
+      // Try raw <slides>...</slides> tags (SKILL.md instructs LLM to use this format)
+      if (!slides) {
+        const slidesMatch = content.match(/<slides>([\s\S]*?)<\/slides>/);
+        if (slidesMatch) {
+          slides = slidesMatch[1].trim();
+        }
+      }
+
+      // Fallback: detect bare Reveal.js markdown (no wrapping tags) using --- separators
+      if (!slides) {
+        const separatorCount = (content.match(/\n---\n/g) || []).length;
+        if (separatorCount >= 2) {
+          slides = content.trim();
+        }
+      }
+
+      if (slides) {
+        setSlidesMarkdown(slides);
         transitionTo('viewing');
         
-        const intro = stripSkillOutput(content, 'presentation');
+        // Extract any intro text outside the slides tags
+        const intro = stripSkillOutput(content, 'presentation')
+          .replace(/<slides>[\s\S]*?<\/slides>/g, '')
+          .replace(/<skill_output[^>]*>[\s\S]*?<\/skill_output>/g, '')
+          .trim();
         if (intro) {
           addMessage({
             id: `coach-${Date.now()}`,
@@ -75,7 +110,7 @@ export default function PresentationRendererRefactored({
           });
         }
       } else {
-        // Regular message
+        // Regular message (no slides detected)
         addMessage({
           id: `coach-${Date.now()}`,
           role: 'coach',
