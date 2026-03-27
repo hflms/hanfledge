@@ -18,19 +18,24 @@ export default function NotificationBell() {
   const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    const loadNotifications = async () => {
+      try {
+        const data = await apiFetch<{ notifications: Notification[] }>('/notifications/unread');
+        if (mounted) {
+          setNotifications(data.notifications || []);
+        }
+      } catch (err) {
+        console.error('Failed to load notifications:', err);
+      }
+    };
     loadNotifications();
     const interval = setInterval(loadNotifications, 60000); // 每分钟刷新
-    return () => clearInterval(interval);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
-
-  const loadNotifications = async () => {
-    try {
-      const data = await apiFetch<{ notifications: Notification[] }>('/notifications/unread');
-      setNotifications(data.notifications || []);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-    }
-  };
 
   const markAsRead = async (id: number) => {
     try {
