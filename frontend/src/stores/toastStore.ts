@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand';
+import { generateId } from '@/lib/utils';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -22,7 +23,7 @@ interface ToastStore {
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
   addToast: (message, type) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const id = generateId('toast');
     set((state) => ({
       toasts: [...state.toasts, { id, message, type }],
     }));

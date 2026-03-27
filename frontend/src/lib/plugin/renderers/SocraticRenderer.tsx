@@ -16,6 +16,7 @@ import ChatInputArea from '@/components/ChatInputArea';
 import SkillTestOverlay from '@/components/SkillTestOverlay';
 import TextSelectionTooltip from '@/components/TextSelectionTooltip';
 import type { SkillRendererProps } from '@/lib/plugin/types';
+import { generateId } from '@/lib/utils';
 import styles from './SocraticRenderer.module.css';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
@@ -47,7 +48,7 @@ export default function SocraticRenderer({
     const [messages, setMessages] = useState<ChatMessage[]>(() => {
         // Initialize with initialMessages immediately to avoid hydration flicker
         return initialMessages.map(msg => ({
-            id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            id: msg.id || generateId('msg'),
             role: msg.role as 'student' | 'coach' | 'system' | 'teacher',
             content: msg.content,
             timestamp: msg.timestamp || Date.now()
@@ -140,7 +141,7 @@ export default function SocraticRenderer({
                         const newLevelLabel = (newLevel && labels[newLevel]) || newLevel || '未知';
                         const mastery = (payload.data.mastery as number | undefined) ?? 0;
                         setMessages(prev => [...prev, {
-                            id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                            id: generateId('sys'),
                             role: 'system',
                             content: `支架已${direction}至 ${newLevelLabel} (掌握度: ${(mastery * 100).toFixed(0)}%)`,
                             timestamp: Date.now(),
@@ -155,7 +156,7 @@ export default function SocraticRenderer({
                         setStreamingContent(prev => {
                             if (prev) {
                                 setMessages(msgs => [...msgs, {
-                                    id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                                    id: generateId('coach'),
                                     role: 'coach',
                                     content: prev,
                                     timestamp: Date.now(),
@@ -173,7 +174,7 @@ export default function SocraticRenderer({
                         setThinkingStatus(null);
                         setSending(false);
                         setMessages(prev => [...prev, {
-                            id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                            id: generateId('err'),
                             role: 'system',
                             content: event.payload?.message || '发生错误',
                             timestamp: Date.now(),
@@ -188,7 +189,7 @@ export default function SocraticRenderer({
 
         const unsubscribeClose = agentChannel.onClose(() => {
             setMessages(prev => [...prev, {
-                id: `sys-close-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                id: generateId('sys-close'),
                 role: 'system',
                 content: '连接已断开',
                 timestamp: Date.now(),
@@ -214,7 +215,7 @@ export default function SocraticRenderer({
         if (!text || sending) return;
 
         setMessages(prev => [...prev, {
-            id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            id: generateId('student'),
             role: 'student',
             content: text,
             timestamp: Date.now(),
@@ -411,7 +412,7 @@ export default function SocraticRenderer({
                         setSkillTestQuestion(null);
                         
                         setMessages(prev => [...prev, {
-                            id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                            id: generateId('student'),
                             role: 'student',
                             content: `[提交测试] ${answer}`,
                             timestamp: Date.now(),
