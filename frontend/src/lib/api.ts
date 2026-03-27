@@ -487,8 +487,10 @@ export interface LearningActivity {
   course_id: number;
   teacher_id: number;
   title: string;
+  type: 'autonomous' | 'guided';
   designer_id?: string;
   designer_config?: string;
+  steps_config?: string;
   kp_ids: string;
   skill_config: string;
   deadline?: string;
@@ -653,8 +655,10 @@ export async function listTeacherActivities(courseId?: number, pg?: PaginationPa
 export async function createActivity(data: {
   course_id: number;
   title: string;
+  type?: 'autonomous' | 'guided';
   designer_id?: string;
   designer_config?: Record<string, unknown>;
+  steps_config?: unknown[];
   kp_ids: number[];
   class_ids?: number[];
   deadline?: string;

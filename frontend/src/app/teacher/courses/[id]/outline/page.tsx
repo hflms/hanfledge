@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
     getCourseOutline, uploadMaterial, getDocuments,
-    listSkills, mountSkill, unmountSkill, updateSkillConfig,
+    listSkills, mountSkill,
     mountSkillToKP, unmountSkillFromKP, updateKPSkillConfig,
     recommendSkills, batchMountSkills,
     listClasses, listTeacherActivities, createActivity, publishActivity,
@@ -60,6 +60,8 @@ export default function OutlinePage() {
     const [activities, setActivities] = useState<LearningActivity[]>([]);
     const [designers, setDesigners] = useState<InstructionalDesigner[]>([]);
     const [activityTitle, setActivityTitle] = useState('');
+    const [activityType, setActivityType] = useState<'autonomous' | 'guided'>('autonomous');
+    const [activityStepsConfig, setActivityStepsConfig] = useState<Array<{ title: string; scaffold_level: string; description: string }>>([]);
     const [activityDesigner, setActivityDesigner] = useState('');
     const [activityDeadline, setActivityDeadline] = useState('');
     const [activityAllowRetry, setActivityAllowRetry] = useState(true);
@@ -394,11 +396,17 @@ export default function OutlinePage() {
             toast('请选择至少一个知识点', 'warning');
             return;
         }
+        if (activityType === 'guided' && activityStepsConfig.length === 0) {
+            toast('请至少添加一个定制环节', 'warning');
+            return;
+        }
         setCreatingActivity(true);
         try {
             await createActivity({
                 course_id: courseId,
                 title: activityTitle.trim(),
+                type: activityType,
+                steps_config: activityType === 'guided' ? activityStepsConfig : undefined,
                 designer_id: activityDesigner || undefined,
                 kp_ids: Array.from(selectedKP),
                 class_ids: selectedClasses.size > 0 ? Array.from(selectedClasses) : undefined,
@@ -408,6 +416,8 @@ export default function OutlinePage() {
             });
             toast('活动创建成功', 'success');
             setActivityTitle('');
+            setActivityType('autonomous');
+            setActivityStepsConfig([]);
             setActivityDesigner('');
             setActivityDeadline('');
             setSelectedKP(new Set());
@@ -420,6 +430,22 @@ export default function OutlinePage() {
         } finally {
             setCreatingActivity(false);
         }
+    };
+
+    const addActivityStep = () => {
+        setActivityStepsConfig([...activityStepsConfig, { title: '', scaffold_level: 'high', description: '' }]);
+    };
+
+    const updateActivityStep = (index: number, field: string, value: string) => {
+        const newSteps = [...activityStepsConfig];
+        newSteps[index] = { ...newSteps[index], [field]: value };
+        setActivityStepsConfig(newSteps);
+    };
+
+    const removeActivityStep = (index: number) => {
+        const newSteps = [...activityStepsConfig];
+        newSteps.splice(index, 1);
+        setActivityStepsConfig(newSteps);
     };
 
     const handlePublishActivity = async (activityId: number) => {
@@ -736,19 +762,93 @@ export default function OutlinePage() {
                             </div>
 
                             <div className="form-group">
-                                <label className="label" htmlFor="activity-designer">教学设计者 (可选)</label>
-                                <select
-                                    id="activity-designer"
-                                    className="input"
-                                    value={activityDesigner}
-                                    onChange={(e) => setActivityDesigner(e.target.value)}
-                                >
-                                    <option value="">默认（无特定风格）</option>
-                                    {designers.map(d => (
-                                        <option key={d.id} value={d.id}>{d.name} - {d.description}</option>
-                                    ))}
-                                </select>
+                                <label className="label">活动类型</label>
+                                <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input
+                                            type="radio"
+                                            name="activity-type"
+                                            value="autonomous"
+                                            checked={activityType === 'autonomous'}
+                                            onChange={() => setActivityType('autonomous')}
+                                        />
+                                        <span>全自主学习 (依赖已挂载的 Skills)</span>
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input
+                                            type="radio"
+                                            name="activity-type"
+                                            value="guided"
+                                            checked={activityType === 'guided'}
+                                            onChange={() => setActivityType('guided')}
+                                        />
+                                        <span>教师规定环节 (高定制化)</span>
+                                    </label>
+                                </div>
                             </div>
+
+                            {activityType === 'autonomous' && (
+                                <div className="form-group">
+                                    <label className="label" htmlFor="activity-designer">教学设计者 (可选)</label>
+                                    <select
+                                        id="activity-designer"
+                                        className="input"
+                                        value={activityDesigner}
+                                        onChange={(e) => setActivityDesigner(e.target.value)}
+                                    >
+                                        <option value="">默认（无特定风格）</option>
+                                        {designers.map(d => (
+                                            <option key={d.id} value={d.id}>{d.name} - {d.description}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {activityType === 'guided' && (
+                                <div className="form-group">
+                                    <label className="label">定制环节配置</label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+                                        {activityStepsConfig.map((step, index) => (
+                                            <div key={index} style={{ padding: '12px', border: '1px solid var(--color-border)', borderRadius: '8px', background: 'var(--color-bg-secondary)' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                    <strong>环节 {index + 1}</strong>
+                                                    <button type="button" onClick={() => removeActivityStep(index)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>删除</button>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
+                                                    <input
+                                                        type="text"
+                                                        className="input"
+                                                        placeholder="环节名称 (如: 引入、探究...)"
+                                                        value={step.title}
+                                                        onChange={(e) => updateActivityStep(index, 'title', e.target.value)}
+                                                        required
+                                                    />
+                                                    <select
+                                                        className="input"
+                                                        value={step.scaffold_level}
+                                                        onChange={(e) => updateActivityStep(index, 'scaffold_level', e.target.value)}
+                                                        style={{ width: '120px' }}
+                                                    >
+                                                        <option value="high">高支架</option>
+                                                        <option value="medium">中支架</option>
+                                                        <option value="low">低支架</option>
+                                                    </select>
+                                                </div>
+                                                <textarea
+                                                    className="input"
+                                                    placeholder="环节说明或 AI 引导提示词..."
+                                                    value={step.description}
+                                                    onChange={(e) => updateActivityStep(index, 'description', e.target.value)}
+                                                    rows={2}
+                                                />
+                                            </div>
+                                        ))}
+                                        <button type="button" onClick={addActivityStep} className="btn btn-secondary" style={{ alignSelf: 'flex-start' }}>
+                                            + 添加环节
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className={styles.activityRow}>
                                 <div className="form-group">
@@ -859,7 +959,12 @@ export default function OutlinePage() {
                                     {activities.map((activity) => (
                                         <div key={activity.id} className={styles.activityItem}>
                                             <div>
-                                                <div className={styles.activityName}>{activity.title}</div>
+                                                <div className={styles.activityName}>
+                                                    {activity.title}
+                                                    <span className={styles.scaffoldBadge} style={{ marginLeft: '8px' }}>
+                                                        {activity.type === 'guided' ? '定制化' : '全自主'}
+                                                    </span>
+                                                </div>
                                                 <div className={styles.activityMeta}>
                                                     状态：{activity.status}
                                                     {activity.published_at ? ` · 发布于 ${new Date(activity.published_at).toLocaleDateString('zh-CN')}` : ''}

@@ -46,8 +46,10 @@ func (h *ActivityHandler) publishEvent(ctx context.Context, hook plugin.HookPoin
 type CreateActivityRequest struct {
 	CourseID       uint                   `json:"course_id" binding:"required"`
 	Title          string                 `json:"title" binding:"required"`
+	Type           model.ActivityType     `json:"type,omitempty"`
 	DesignerID     string                 `json:"designer_id,omitempty"`
 	DesignerConfig map[string]interface{} `json:"designer_config,omitempty"`
+	StepsConfig    []interface{}          `json:"steps_config,omitempty"`
 	KPIDS          []uint                 `json:"kp_ids" binding:"required"`
 	SkillConfig    map[string]interface{} `json:"skill_config,omitempty"`
 	Deadline       *string                `json:"deadline,omitempty"`
@@ -104,12 +106,29 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 		designerConfigJSON = string(data)
 	}
 
+	stepsConfigJSON := "[]"
+	if req.StepsConfig != nil {
+		data, err := json.Marshal(req.StepsConfig)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "环节配置序列化失败"})
+			return
+		}
+		stepsConfigJSON = string(data)
+	}
+
+	activityType := req.Type
+	if activityType == "" {
+		activityType = model.ActivityTypeAutonomous
+	}
+
 	activity := model.LearningActivity{
 		CourseID:       req.CourseID,
 		TeacherID:      teacherID,
 		Title:          req.Title,
+		Type:           activityType,
 		DesignerID:     req.DesignerID,
 		DesignerConfig: designerConfigJSON,
+		StepsConfig:    stepsConfigJSON,
 		KPIDS:          string(kpIDsJSON),
 		SkillConfig:    skillConfigJSON,
 		Deadline:       req.Deadline,
