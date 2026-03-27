@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, FormEvent } from 'react';
+import { useEffect, useState, useCallback, useMemo, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { listCourses, createCourse, type Course } from '@/lib/api';
 import { COURSE_STATUS_MAP } from '@/lib/constants';
@@ -147,9 +147,17 @@ export default function CoursesPage() {
                          ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="create-course-title" tabIndex={-1}>
                         <h2 className={styles.modalTitle} id="create-course-title">创建新课程</h2>
                         <form onSubmit={handleCreate}>
-                            {userSchools.length > 1 && (
-                                <div className="form-group">
-                                    <label className="label" htmlFor="school">所属学校</label>
+                            <div className="form-group">
+                                <label className="label" htmlFor="school">所属学校</label>
+                                {userSchools.length === 0 ? (
+                                    <div className="input" style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}>
+                                        暂无关联学校，请联系管理员
+                                    </div>
+                                ) : userSchools.length === 1 ? (
+                                    <div className="input" style={{ background: 'var(--color-bg-secondary)', cursor: 'not-allowed' }}>
+                                        {userSchools[0].name}
+                                    </div>
+                                ) : (
                                     <select
                                         id="school"
                                         className="input"
@@ -162,8 +170,8 @@ export default function CoursesPage() {
                                             <option key={s.id} value={s.id}>{s.name}</option>
                                         ))}
                                     </select>
-                                </div>
-                            )}
+                                )}
+                            </div>
                             <div className="form-group">
                                 <label className="label" htmlFor="title">课程名称</label>
                                 <input id="title" className="input" placeholder="例：高一数学（上）"
@@ -186,7 +194,7 @@ export default function CoursesPage() {
                             </div>
                             <div className={styles.modalActions}>
                                 <button type="button" className="btn btn-secondary" onClick={closeModal}>取消</button>
-                                <button type="submit" className="btn btn-primary" disabled={creating}>
+                                <button type="submit" className="btn btn-primary" disabled={creating || form.school_id === 0}>
                                     {creating ? '创建中...' : '创建'}
                                 </button>
                             </div>
