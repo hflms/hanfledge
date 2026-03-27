@@ -20,7 +20,13 @@ export function useAgentChannel(
   const [sending, setSending] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState('');
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Use refs to avoid re-subscribing on every state/callback change.
+  // This fixes the stale-closure bug where streamingContent was always ''
+  // at the time turn_complete fired because the effect kept re-running.
+  const streamingContentRef = useRef('');
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   useEffect(() => {
     const unsubscribe = agentChannel.onMessage((data: string) => {
@@ -31,28 +37,34 @@ export function useAgentChannel(
           case 'agent_thinking': {
             const status = event.payload?.status || '思考中...';
             setThinkingStatus(status);
-            options.onThinking?.(status);
+            optionsRef.current.onThinking?.(status);
             break;
           }
           
           case 'token_delta': {
-            const text = event.payload?.text || '';
+            const text = event.payload?.text || event.payload?.content || event.payload?.delta || '';
+            if (!text) break;
             setThinkingStatus(null);
-            setStreamingContent(prev => prev + text);
+            setStreamingContent(prev => {
+              const next = prev + text;
+              streamingContentRef.current = next;
+              return next;
+            });
             break;
           }
           
           case 'turn_complete': {
-            const content = streamingContent || event.payload?.content || '';
+            const content = streamingContentRef.current || event.payload?.content || '';
+            streamingContentRef.current = '';
             setStreamingContent('');
             setSending(false);
-            options.onMessage?.(content);
-            options.onComplete?.();
+            optionsRef.current.onMessage?.(content);
+            optionsRef.current.onComplete?.();
             break;
           }
           
           case 'ui_scaffold_change': {
-            options.onScaffoldChange?.(event.payload);
+            optionsRef.current.onScaffoldChange?.(event.payload);
             break;
           }
         }
@@ -61,18 +73,25 @@ export function useAgentChannel(
       }
     });
 
-    unsubscribeRef.current = unsubscribe;
     return () => unsubscribe();
-  }, [agentChannel, streamingContent, options]);
+  }, [agentChannel]);
 
-  const send = useCallback(async (message: string) => {
+  const send = useCallback((text: string) => {
     if (sending) return;
     
     setSending(true);
     setStreamingContent('');
+    streamingContentRef.current = '';
+
+    // Wrap raw text into the WSEvent JSON format the backend expects.
+    const wsEvent = JSON.stringify({
+      event: 'user_message',
+      payload: { text },
+      timestamp: Math.floor(Date.now() / 1000),
+    });
     
     try {
-      await agentChannel.send(message);
+      agentChannel.send(wsEvent);
     } catch (err) {
       console.error('[useAgentChannel] Send error:', err);
       setSending(false);
