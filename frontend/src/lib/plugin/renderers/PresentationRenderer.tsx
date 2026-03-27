@@ -45,8 +45,11 @@ const PHASE_TRANSITIONS: Record<PresentationPhase, PresentationPhase[]> = {
 export default function PresentationRendererRefactored({
   agentChannel,
   knowledgePoint,
+  initialMessages,
 }: SkillRendererProps) {
-  const { messages, addMessage, messagesEndRef } = useMessages();
+  const { messages, addMessage, messagesEndRef } = useMessages({
+    initialMessages: initialMessages as Array<{ role: 'student' | 'coach' | 'system' | 'teacher'; content: string; id: string; timestamp: number }>,
+  });
   const { phase, transitionTo } = useStateMachine<PresentationPhase>({
     initialPhase: 'generating',
     transitions: PHASE_TRANSITIONS,
@@ -98,14 +101,18 @@ export default function PresentationRendererRefactored({
 
   // Progressive generation simulation
   useEffect(() => {
+    let timeout: NodeJS.Timeout;
     if (phase === 'generating' && streamingContent) {
-      // Check for partial slides in streaming content
-      const partialMatch = streamingContent.match(/---/g);
-      if (partialMatch) {
-        const slideCount = partialMatch.length;
-        setGenerationProgress(Math.min(30 + slideCount * 10, 90));
-      }
+      timeout = setTimeout(() => {
+        // Check for partial slides in streaming content
+        const partialMatch = streamingContent.match(/---/g);
+        if (partialMatch) {
+          const slideCount = partialMatch.length;
+          setGenerationProgress(Math.min(30 + slideCount * 10, 90));
+        }
+      }, 0);
     }
+    return () => clearTimeout(timeout);
   }, [phase, streamingContent]);
 
   // Generate new presentation
@@ -116,16 +123,38 @@ export default function PresentationRendererRefactored({
     send(`请为知识点"${knowledgePoint.title}"生成一份新的演示文稿。`);
   }, [knowledgePoint.title, send, transitionTo]);
 
-  // Initial generation
+  // Restore from history or Initial generation
   useEffect(() => {
+    let timeout: NodeJS.Timeout;
     if (phase === 'generating' && !slidesMarkdown && !sending) {
-      send(`请为知识点"${knowledgePoint.title}"生成演示文稿。要求：
+      timeout = setTimeout(() => {
+        // Look for a past presentation in history
+        const pastPresentation = [...messages].reverse().find(m => {
+          if (m.role === 'coach') {
+            const parsed = parseSkillOutput<SlidesData>(m.content, 'presentation');
+            return parsed && parsed.slides;
+          }
+          return false;
+        });
+
+        if (pastPresentation) {
+          const parsed = parseSkillOutput<SlidesData>(pastPresentation.content, 'presentation');
+          if (parsed && parsed.slides) {
+            setSlidesMarkdown(parsed.slides);
+            transitionTo('viewing');
+            return;
+          }
+        }
+
+        send(`请为知识点"${knowledgePoint.title}"生成演示文稿。要求：
 - 5-8 张幻灯片
 - 包含标题、要点、示例、总结
 - 使用 Reveal.js Markdown 格式
 - 每张幻灯片用 --- 分隔`);
+      }, 0);
     }
-  }, [phase, slidesMarkdown, sending, send, knowledgePoint.title]);
+    return () => clearTimeout(timeout);
+  }, [phase, slidesMarkdown, sending, send, knowledgePoint.title, messages, transitionTo]);
 
   // -- Render ------------------------------------------------------
 
