@@ -35,14 +35,24 @@ const (
 	ActivityStatusClosed    ActivityStatus = "closed"
 )
 
+// ActivityType 学习活动类型枚举。
+type ActivityType string
+
+const (
+	ActivityTypeAutonomous ActivityType = "autonomous" // 全自主学习 (skills组织)
+	ActivityTypeGuided     ActivityType = "guided"     // 教师规定环节，定制化
+)
+
 // LearningActivity 学习活动表。
 type LearningActivity struct {
 	ID              uint           `gorm:"primaryKey" json:"id"`
 	CourseID        uint           `gorm:"not null;index" json:"course_id"`
 	TeacherID       uint           `gorm:"not null;index" json:"teacher_id"`
 	Title           string         `gorm:"size:200;not null" json:"title"`
+	Type            ActivityType   `gorm:"size:50;default:autonomous" json:"type"` // 活动类型
 	DesignerID      string         `gorm:"size:100" json:"designer_id,omitempty"`
 	DesignerConfig  string         `gorm:"type:jsonb" json:"designer_config,omitempty"`
+	StepsConfig     string         `gorm:"type:jsonb" json:"steps_config,omitempty"` // 规定环节/支架配置
 	KPIDS           string         `gorm:"type:jsonb" json:"kp_ids"`
 	SkillConfig     string         `gorm:"type:jsonb" json:"skill_config"`
 	Deadline        *string        `json:"deadline,omitempty"`
