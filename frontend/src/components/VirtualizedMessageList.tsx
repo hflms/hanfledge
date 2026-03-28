@@ -20,6 +20,7 @@ export default function VirtualizedMessageList({
 }: VirtualizedMessageListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => parentRef.current,

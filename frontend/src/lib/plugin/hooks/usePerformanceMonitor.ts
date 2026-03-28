@@ -25,10 +25,10 @@ export function usePerformanceMonitor(componentName: string, enabled = false) {
     if (!enabled) return;
 
     renderStartRef.current = performance.now();
+    const metrics = metricsRef.current;
 
     return () => {
       const renderTime = performance.now() - renderStartRef.current;
-      const metrics = metricsRef.current;
 
       metrics.renderCount++;
       metrics.lastRenderTime = renderTime;
