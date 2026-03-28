@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -158,7 +160,7 @@ func Load() *Config {
 			URL: getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		},
 		JWT: JWTConfig{
-			Secret:      getEnv("JWT_SECRET", "dev-secret-change-me"),
+			Secret:      getEnv("JWT_SECRET", generateEphemeralSecret()),
 			ExpiryHours: getEnvInt("JWT_EXPIRY_HOURS", 24),
 		},
 		LLM: LLMConfig{
@@ -253,6 +255,22 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+// generateEphemeralSecret generates a secure, random 32-byte hex string.
+// This is used as a fallback for JWT_SECRET when no environment variable is provided,
+// preventing the use of predictable, hardcoded secrets. Note that because this
+// generates a new secret each time the application starts, any existing JWT tokens
+// will become invalid upon restart.
+func generateEphemeralSecret() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		slogConfig.Error("failed to generate random JWT secret, falling back to insecure default", "error", err)
+		return "dev-secret-change-me"
+	}
+	secret := hex.EncodeToString(b)
+	slogConfig.Warn("using generated ephemeral JWT secret. User sessions will not survive restart. Set JWT_SECRET in production.")
+	return secret
 }
 
 // getEnvInt reads an integer environment variable with a fallback.
