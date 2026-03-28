@@ -298,8 +298,12 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		}
 
 		// Parse incoming event
+		if len(msgBytes) == 0 {
+			continue // skip empty frames silently
+		}
 		var event agent.WSEvent
 		if err := json.Unmarshal(msgBytes, &event); err != nil {
+			slogSession.Warn("bad ws message", "session", sessionID, "raw", truncateStr(string(msgBytes), 120), "err", err)
 			h.sendWSError(ws, "消息格式错误")
 			continue
 		}

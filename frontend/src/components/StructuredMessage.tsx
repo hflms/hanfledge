@@ -48,6 +48,19 @@ interface MessagePartQuiz {
 
 type MessagePart = MessagePartText | MessagePartSurvey | MessagePartQuiz;
 
+// Tags used by skills/agents that should never be rendered as HTML.
+// Matches both complete tags and incomplete (streaming) opening tags.
+const STRIP_TAGS = ['slides', 'presentation', 'reasoning', 'thinking', 'analysis', 'skill_output'];
+const STRIP_COMPLETE_REGEX = new RegExp(
+    `<(?:${STRIP_TAGS.join('|')})[^>]*>[\\s\\S]*?</(?:${STRIP_TAGS.join('|')})>`,
+    'g'
+);
+// During streaming an opening tag may arrive without its closing tag yet.
+// Remove trailing incomplete tags so rehype-raw doesn't try to render them.
+const STRIP_INCOMPLETE_REGEX = new RegExp(
+    `<(?:${STRIP_TAGS.join('|')}|suggestions)[^>]*>[^<]*$`
+);
+
 function parseStructuredParts(content: string): { parts: MessagePart[], suggestions: string[] } {
     let suggestions: string[] = [];
     let cleanContent = content;
@@ -66,6 +79,12 @@ function parseStructuredParts(content: string): { parts: MessagePart[], suggesti
         }
         cleanContent = cleanContent.replace(suggMatch[0], '');
     }
+
+    // Strip skill-specific structured tags (complete pairs)
+    cleanContent = cleanContent.replace(STRIP_COMPLETE_REGEX, '');
+
+    // Strip trailing incomplete opening tags (mid-stream)
+    cleanContent = cleanContent.replace(STRIP_INCOMPLETE_REGEX, '');
 
     const parts: MessagePart[] = [];
     

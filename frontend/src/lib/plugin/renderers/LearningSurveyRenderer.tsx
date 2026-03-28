@@ -94,11 +94,13 @@ export default function LearningSurveyRendererRefactored({
         });
       }
     },
-    onScaffoldChange: (data: any) => {
+    onScaffoldChange: (raw: unknown) => {
+      const data = raw as Record<string, Record<string, number> | string | undefined> | undefined;
       if (data?.action === 'survey_questions') {
+        const inner = data.data as Record<string, number> | undefined;
         setProgress({
-          completed: data.data?.completed_dims || 0,
-          total: data.data?.total_dims || 6,
+          completed: inner?.completed_dims || 0,
+          total: inner?.total_dims || 6,
         });
       } else if (data?.action === 'survey_analysis') {
         transitionTo('analyzing');

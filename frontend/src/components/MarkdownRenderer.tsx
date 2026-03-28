@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -21,10 +21,22 @@ interface MarkdownRendererProps {
 const remarkPluginsList = [remarkGfm, remarkMath];
 const rehypePluginsList = [rehypeRaw, rehypeKatex];
 
+// Custom tags emitted by the AI that should never reach the DOM.
+// If one slips through stripping, render its children as-is.
+const CUSTOM_TAGS = ['slides', 'suggestions', 'presentation', 'reasoning', 'thinking', 'analysis', 'skill_output'] as const;
+type CustomTag = typeof CUSTOM_TAGS[number];
+
+function PassthroughTag({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>;
+}
+
 // -- Component ---------------------------------------------------
 
 const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
     const markdownComponents = useMemo(() => ({
+        // Suppress unknown custom tags from AI output
+        ...Object.fromEntries(CUSTOM_TAGS.map(tag => [tag, PassthroughTag])) as Record<CustomTag, typeof PassthroughTag>,
+
         // Code blocks and inline code
         code({ className, children }: { className?: string; children?: React.ReactNode }) {
             const isBlock = className?.startsWith('language-');

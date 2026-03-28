@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+import { generateId } from '@/lib/utils';
 
 interface MermaidDiagramProps {
     chart: string;
@@ -25,7 +26,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
         const renderChart = async () => {
             try {
                 if (!chart) return;
-                const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
+                const id = generateId('mermaid');
                 const { svg: renderedSvg } = await mermaid.render(id, chart);
                 if (isMounted) {
                     setSvg(renderedSvg);

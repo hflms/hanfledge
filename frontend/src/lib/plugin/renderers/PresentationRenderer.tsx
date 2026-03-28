@@ -7,7 +7,7 @@
  * Phases: generating → viewing
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { LoadingState, PhaseIndicator } from '@/components/skill-ui';
 import { useMessages, useStateMachine, useAgentChannel } from '@/lib/plugin/hooks';
@@ -61,14 +61,49 @@ export default function PresentationRendererRefactored({
   // WebSocket handling with progressive updates
   const { send, sending, thinkingStatus, streamingContent } = useAgentChannel(agentChannel, {
     onMessage: (content) => {
-      // Try parse slides data
+      // Try structured output formats first:
+      //   1. <skill_output type="presentation">  (unified)
+      //   2. <presentation>{JSON}</presentation> (legacy JSON)
+      //   3. <skill_output type="presentation_generator"> (progressive.go)
+      let slides: string | null = null;
+
       const parsed = parseSkillOutput<SlidesData>(content, 'presentation');
-      
-      if (parsed && parsed.slides) {
-        setSlidesMarkdown(parsed.slides);
+      if (parsed?.slides) {
+        slides = parsed.slides;
+      }
+
+      if (!slides) {
+        const parsedAlt = parseSkillOutput<SlidesData>(content, 'presentation_generator');
+        if (parsedAlt?.slides) {
+          slides = parsedAlt.slides;
+        }
+      }
+
+      // Try raw <slides>...</slides> tags (SKILL.md instructs LLM to use this format)
+      if (!slides) {
+        const slidesMatch = content.match(/<slides>([\s\S]*?)<\/slides>/);
+        if (slidesMatch) {
+          slides = slidesMatch[1].trim();
+        }
+      }
+
+      // Fallback: detect bare Reveal.js markdown (no wrapping tags) using --- separators
+      if (!slides) {
+        const separatorCount = (content.match(/\n---\n/g) || []).length;
+        if (separatorCount >= 2) {
+          slides = content.trim();
+        }
+      }
+
+      if (slides) {
+        setSlidesMarkdown(slides);
         transitionTo('viewing');
         
-        const intro = stripSkillOutput(content, 'presentation');
+        // Extract any intro text outside the slides tags
+        const intro = stripSkillOutput(content, 'presentation')
+          .replace(/<slides>[\s\S]*?<\/slides>/g, '')
+          .replace(/<skill_output[^>]*>[\s\S]*?<\/skill_output>/g, '')
+          .trim();
         if (intro) {
           addMessage({
             id: `coach-${Date.now()}`,
@@ -78,7 +113,7 @@ export default function PresentationRendererRefactored({
           });
         }
       } else {
-        // Regular message
+        // Regular message (no slides detected)
         addMessage({
           id: `coach-${Date.now()}`,
           role: 'coach',
@@ -99,21 +134,18 @@ export default function PresentationRendererRefactored({
     },
   });
 
-  // Progressive generation simulation
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    if (phase === 'generating' && streamingContent) {
-      timeout = setTimeout(() => {
-        // Check for partial slides in streaming content
-        const partialMatch = streamingContent.match(/---/g);
-        if (partialMatch) {
-          const slideCount = partialMatch.length;
-          setGenerationProgress(Math.min(30 + slideCount * 10, 90));
-        }
-      }, 0);
+  // Derive streaming progress from content instead of setting state in an effect.
+  const streamingProgress = useMemo(() => {
+    if (phase !== 'generating' || !streamingContent) return 0;
+    const partialMatch = streamingContent.match(/---/g);
+    if (partialMatch) {
+      return Math.min(30 + partialMatch.length * 10, 90);
     }
-    return () => clearTimeout(timeout);
+    return 0;
   }, [phase, streamingContent]);
+
+  // Combined progress: max of thinking-based progress and streaming-based progress
+  const effectiveProgress = Math.max(generationProgress, streamingProgress);
 
   // Generate new presentation
   const handleNewPresentation = useCallback(() => {
@@ -169,12 +201,12 @@ export default function PresentationRendererRefactored({
       {phase === 'generating' && (
         <LoadingState
           message={thinkingStatus || '正在生成演示文稿...'}
-          progress={generationProgress}
+          progress={effectiveProgress}
         >
           <div className={styles.progressHints}>
-            {generationProgress >= 20 && <p>✓ 大纲已生成</p>}
-            {generationProgress >= 50 && <p>✓ 幻灯片内容已生成</p>}
-            {generationProgress >= 80 && <p>✓ 正在完善细节...</p>}
+            {effectiveProgress >= 20 && <p>✓ 大纲已生成</p>}
+            {effectiveProgress >= 50 && <p>✓ 幻灯片内容已生成</p>}
+            {effectiveProgress >= 80 && <p>✓ 正在完善细节...</p>}
           </div>
         </LoadingState>
       )}

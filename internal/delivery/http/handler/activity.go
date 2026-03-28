@@ -3,15 +3,20 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
+	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/plugin"
 	"gorm.io/gorm"
 )
@@ -28,11 +33,12 @@ type ActivityHandler struct {
 	Orchestrator *agent.AgentOrchestrator
 	EventBus     *plugin.EventBus
 	Registry     *plugin.Registry
+	Storage      storage.FileStorage
 }
 
 // NewActivityHandler creates a new ActivityHandler.
-func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus, registry *plugin.Registry) *ActivityHandler {
-	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus, Registry: registry}
+func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus, registry *plugin.Registry, fs storage.FileStorage) *ActivityHandler {
+	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus, Registry: registry, Storage: fs}
 }
 
 // publishEvent fires an EventBus event if the bus is available (nil-safe).
@@ -160,15 +166,282 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 	c.JSON(http.StatusCreated, activity)
 }
 
-// ListDesigners returns available instructional designers.
+// GetActivity returns a single activity with its steps.
 //
-//	@Summary      获取教学设计者列表
-//	@Description  返回可用的教学设计者风格（苏格拉底式、项目式、精熟式、探究式）
+//	@Summary      获取活动详情
+//	@Description  返回指定活动的完整信息，包括环节列表
 //	@Tags         Activities
 //	@Produce      json
 //	@Security     BearerAuth
-//	@Success      200  {array}  model.InstructionalDesigner
-//	@Router       /designers [get]
+//	@Param        id  path      int  true  "活动 ID"
+//	@Success      200 {object}  model.LearningActivity
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /activities/{id} [get]
+func (h *ActivityHandler) GetActivity(c *gin.Context) {
+	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的活动 ID"})
+		return
+	}
+
+	teacherID := middleware.GetUserID(c)
+
+	var activity model.LearningActivity
+	if err := h.DB.Preload("Steps", func(db *gorm.DB) *gorm.DB {
+		return db.Order("sort_order ASC")
+	}).Preload("AssignedClasses").First(&activity, activityID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "学习活动不存在"})
+		return
+	}
+
+	if activity.TeacherID != teacherID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权访问此活动"})
+		return
+	}
+
+	c.JSON(http.StatusOK, activity)
+}
+
+// UpdateActivityRequest 更新学习活动请求。
+type UpdateActivityRequest struct {
+	Title          *string                `json:"title,omitempty"`
+	Description    *string                `json:"description,omitempty"`
+	Type           *model.ActivityType    `json:"type,omitempty"`
+	DesignerID     *string                `json:"designer_id,omitempty"`
+	DesignerConfig map[string]interface{} `json:"designer_config,omitempty"`
+	KPIDS          []uint                 `json:"kp_ids,omitempty"`
+	SkillConfig    map[string]interface{} `json:"skill_config,omitempty"`
+	Deadline       *string                `json:"deadline,omitempty"`
+	AllowRetry     *bool                  `json:"allow_retry,omitempty"`
+	MaxAttempts    *int                   `json:"max_attempts,omitempty"`
+	ClassIDs       []uint                 `json:"class_ids,omitempty"`
+}
+
+// UpdateActivity updates an existing draft activity.
+//
+//	@Summary      更新学习活动
+//	@Description  更新草稿状态的学习活动信息
+//	@Tags         Activities
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id    path      int                   true  "活动 ID"
+//	@Param        body  body      UpdateActivityRequest true  "更新参数"
+//	@Success      200   {object}  model.LearningActivity
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      403   {object}  ErrorResponse
+//	@Failure      404   {object}  ErrorResponse
+//	@Router       /activities/{id} [put]
+func (h *ActivityHandler) UpdateActivity(c *gin.Context) {
+	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的活动 ID"})
+		return
+	}
+
+	teacherID := middleware.GetUserID(c)
+
+	var activity model.LearningActivity
+	if err := h.DB.First(&activity, activityID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "学习活动不存在"})
+		return
+	}
+
+	if activity.TeacherID != teacherID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权操作此活动"})
+		return
+	}
+
+	if activity.Status != model.ActivityStatusDraft {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "只有草稿状态的活动可以编辑"})
+		return
+	}
+
+	var req UpdateActivityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	updates := map[string]interface{}{
+		"updated_at": time.Now().Format(time.RFC3339),
+	}
+
+	if req.Title != nil {
+		updates["title"] = *req.Title
+	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.Type != nil {
+		updates["type"] = *req.Type
+	}
+	if req.DesignerID != nil {
+		updates["designer_id"] = *req.DesignerID
+	}
+	if req.DesignerConfig != nil {
+		data, _ := json.Marshal(req.DesignerConfig)
+		updates["designer_config"] = string(data)
+	}
+	if req.KPIDS != nil {
+		data, _ := json.Marshal(req.KPIDS)
+		updates["kp_ids"] = string(data)
+	}
+	if req.SkillConfig != nil {
+		data, _ := json.Marshal(req.SkillConfig)
+		updates["skill_config"] = string(data)
+	}
+	if req.Deadline != nil {
+		updates["deadline"] = *req.Deadline
+	}
+	if req.AllowRetry != nil {
+		updates["allow_retry"] = *req.AllowRetry
+	}
+	if req.MaxAttempts != nil {
+		updates["max_attempts"] = *req.MaxAttempts
+	}
+
+	if err := h.DB.Model(&activity).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新学习活动失败"})
+		return
+	}
+
+	// Update class assignments if provided
+	if req.ClassIDs != nil {
+		h.DB.Where("activity_id = ?", activityID).Delete(&model.ActivityClassAssignment{})
+		for _, classID := range req.ClassIDs {
+			h.DB.Create(&model.ActivityClassAssignment{
+				ActivityID: uint(activityID),
+				ClassID:    classID,
+			})
+		}
+	}
+
+	// Reload with associations
+	h.DB.Preload("Steps", func(db *gorm.DB) *gorm.DB {
+		return db.Order("sort_order ASC")
+	}).Preload("AssignedClasses").First(&activity, activityID)
+
+	c.JSON(http.StatusOK, activity)
+}
+
+// ── Activity Steps CRUD ─────────────────────────────────────
+
+// SaveStepsRequest 批量保存环节请求。
+type SaveStepsRequest struct {
+	Steps []StepData `json:"steps" binding:"required"`
+}
+
+// StepData 单个环节数据。
+type StepData struct {
+	ID            uint   `json:"id,omitempty"`
+	Title         string `json:"title" binding:"required"`
+	Description   string `json:"description,omitempty"`
+	SortOrder     int    `json:"sort_order"`
+	ContentBlocks string `json:"content_blocks,omitempty"` // JSON string
+	Duration      int    `json:"duration,omitempty"`
+}
+
+// SaveSteps 批量保存活动环节（全量替换策略）。
+// 前端传入完整的环节列表（含排序），后端删旧建新。
+//
+//	@Summary      批量保存环节
+//	@Description  全量保存活动的环节列表，支持排序
+//	@Tags         Activities
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id    path  int              true  "活动 ID"
+//	@Param        body  body  SaveStepsRequest true  "环节列表"
+//	@Success      200   {array}  model.ActivityStep
+//	@Router       /activities/{id}/steps [put]
+func (h *ActivityHandler) SaveSteps(c *gin.Context) {
+	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的活动 ID"})
+		return
+	}
+
+	teacherID := middleware.GetUserID(c)
+
+	var activity model.LearningActivity
+	if err := h.DB.First(&activity, activityID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "学习活动不存在"})
+		return
+	}
+
+	if activity.TeacherID != teacherID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权操作此活动"})
+		return
+	}
+
+	if activity.Status != model.ActivityStatusDraft {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "只有草稿状态的活动可以编辑环节"})
+		return
+	}
+
+	var req SaveStepsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	now := time.Now().Format(time.RFC3339)
+
+	// Use transaction for atomic replace
+	tx := h.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Delete existing steps
+	if err := tx.Where("activity_id = ?", activityID).Delete(&model.ActivityStep{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "清除旧环节失败"})
+		return
+	}
+
+	// Insert new steps
+	steps := make([]model.ActivityStep, 0, len(req.Steps))
+	for i, s := range req.Steps {
+		contentBlocks := s.ContentBlocks
+		if contentBlocks == "" {
+			contentBlocks = "[]"
+		}
+		step := model.ActivityStep{
+			ActivityID:    uint(activityID),
+			Title:         s.Title,
+			Description:   s.Description,
+			SortOrder:     i, // Enforce sequential ordering from array position
+			ContentBlocks: contentBlocks,
+			Duration:      s.Duration,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+		if err := tx.Create(&step).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "保存环节失败"})
+			return
+		}
+		steps = append(steps, step)
+	}
+
+	tx.Commit()
+
+	c.JSON(http.StatusOK, steps)
+}
+
+// @Summary      获取教学设计者列表
+// @Description  返回可用的教学设计者风格（苏格拉底式、项目式、精熟式、探究式）
+// @Tags         Activities
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}  model.InstructionalDesigner
+// @Router       /designers [get]
 func (h *ActivityHandler) ListDesigners(c *gin.Context) {
 	var designers []model.InstructionalDesigner
 	if err := h.DB.Order("is_built_in DESC, name ASC").Find(&designers).Error; err != nil {
@@ -588,4 +861,97 @@ func (h *ActivityHandler) UpdateSessionStep(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "会话步骤更新成功"})
+}
+
+// ── Activity File Upload ────────────────────────────────────
+
+// allowedMimeTypes maps allowed MIME types for activity asset uploads.
+var allowedMimeTypes = map[string]bool{
+	"image/jpeg":      true,
+	"image/png":       true,
+	"image/gif":       true,
+	"image/webp":      true,
+	"video/mp4":       true,
+	"video/webm":      true,
+	"application/pdf": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true, // .docx
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true, // .pptx
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true, // .xlsx
+}
+
+// maxAssetSize is the maximum file size for activity assets (100 MB).
+const maxAssetSize = 100 * 1024 * 1024
+
+// UploadAsset handles file uploads for activity step content.
+//
+//	@Summary      上传活动资源文件
+//	@Description  为活动环节上传图片、视频、文档等资源文件
+//	@Tags         Activities
+//	@Accept       multipart/form-data
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id    path  int   true  "活动 ID"
+//	@Param        file  formData  file  true  "资源文件"
+//	@Success      200   {object}  map[string]interface{}
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      413   {object}  ErrorResponse
+//	@Router       /activities/{id}/upload [post]
+func (h *ActivityHandler) UploadAsset(c *gin.Context) {
+	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的活动 ID"})
+		return
+	}
+
+	teacherID := middleware.GetUserID(c)
+
+	// Verify ownership
+	var activity model.LearningActivity
+	if err := h.DB.First(&activity, activityID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "学习活动不存在"})
+		return
+	}
+	if activity.TeacherID != teacherID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权操作此活动"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请上传文件"})
+		return
+	}
+	defer file.Close()
+
+	if header.Size > maxAssetSize {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "文件大小不能超过 100 MB"})
+		return
+	}
+
+	// Detect content type from extension
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	contentType := header.Header.Get("Content-Type")
+	if !allowedMimeTypes[contentType] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("不支持的文件类型: %s", contentType)})
+		return
+	}
+
+	// Storage key: activities/{activityID}/{uuid}{ext}
+	storageKey := fmt.Sprintf("activities/%d/%s%s", activityID, uuid.New().String(), ext)
+
+	if err := h.Storage.Upload(c.Request.Context(), storageKey, file, contentType); err != nil {
+		slogActivity.Error("文件上传失败", "key", storageKey, "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件上传失败"})
+		return
+	}
+
+	fileURL, _ := h.Storage.URL(c.Request.Context(), storageKey)
+
+	c.JSON(http.StatusOK, gin.H{
+		"file_name": header.Filename,
+		"file_url":  fileURL,
+		"file_size": header.Size,
+		"mime_type": contentType,
+		"key":       storageKey,
+	})
 }

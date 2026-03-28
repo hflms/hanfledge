@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic';
 import ChatInputArea from '@/components/ChatInputArea';
 import type { SkillRendererProps } from '@/lib/plugin/types';
 import { useModalA11y, cardA11yProps } from '@/lib/a11y';
+import { generateId } from '@/lib/utils';
 import styles from './RolePlayRenderer.module.css';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'));
@@ -113,7 +114,7 @@ export default function RolePlayRenderer({
                         setStreamingContent(prev => {
                             if (prev) {
                                 setMessages(msgs => [...msgs, {
-                                    id: `coach-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                                    id: generateId('coach'),
                                     role: 'coach',
                                     content: prev,
                                     timestamp: Date.now(),
@@ -154,7 +155,7 @@ export default function RolePlayRenderer({
                         const labels = { high: '高支架', medium: '中支架', low: '低支架' };
                         const label = labels[payload.data.new_level as keyof typeof labels] || payload.data.new_level;
                         setMessages(prev => [...prev, {
-                            id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                            id: generateId('sys'),
                             role: 'system',
                             content: `支架已${direction}至 ${label} (掌握度: ${(payload.data.mastery * 100).toFixed(0)}%)`,
                             timestamp: Date.now(),
@@ -165,7 +166,7 @@ export default function RolePlayRenderer({
                         setThinkingStatus(null);
                         setSending(false);
                         setMessages(prev => [...prev, {
-                            id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                            id: generateId('err'),
                             role: 'system',
                             content: event.payload?.message || '发生错误',
                             timestamp: Date.now(),
@@ -180,7 +181,7 @@ export default function RolePlayRenderer({
 
         const unsubscribeClose = agentChannel.onClose(() => {
             setMessages(prev => [...prev, {
-                id: `sys-close-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                id: generateId('sys-close'),
                 role: 'system',
                 content: '连接已断开',
                 timestamp: Date.now(),
@@ -237,7 +238,7 @@ export default function RolePlayRenderer({
         if (!text || sending || !isActive) return;
 
         setMessages(prev => [...prev, {
-            id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            id: generateId('student'),
             role: 'student',
             content: text,
             timestamp: Date.now(),
