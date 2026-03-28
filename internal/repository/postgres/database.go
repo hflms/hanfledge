@@ -69,6 +69,7 @@ func AutoMigrate(db *gorm.DB) error {
 		// 学习活动
 		&model.LearningActivity{},
 		&model.ActivityClassAssignment{},
+		&model.ActivityStep{},
 		// 教学设计者
 		&model.InstructionalDesigner{},
 		// 交互与学情
@@ -225,4 +226,3 @@ func createPerformanceIndexes(db *gorm.DB) {
 	}
 	slogDB.Info("performance indexes created")
 }
-

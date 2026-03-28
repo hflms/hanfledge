@@ -45,26 +45,29 @@ const (
 
 // LearningActivity 学习活动表。
 type LearningActivity struct {
-	ID              uint           `gorm:"primaryKey" json:"id"`
-	CourseID        uint           `gorm:"not null;index" json:"course_id"`
-	TeacherID       uint           `gorm:"not null;index" json:"teacher_id"`
-	Title           string         `gorm:"size:200;not null" json:"title"`
-	Type            ActivityType   `gorm:"size:50;default:autonomous" json:"type"` // 活动类型
-	DesignerID      string         `gorm:"size:100" json:"designer_id,omitempty"`
-	DesignerConfig  string         `gorm:"type:jsonb" json:"designer_config,omitempty"`
-	StepsConfig     string         `gorm:"type:jsonb" json:"steps_config,omitempty"` // 规定环节/支架配置
-	KPIDS           string         `gorm:"type:jsonb" json:"kp_ids"`
-	SkillConfig     string         `gorm:"type:jsonb" json:"skill_config"`
-	Deadline        *string        `json:"deadline,omitempty"`
-	AllowRetry      bool           `gorm:"default:true" json:"allow_retry"`
-	MaxAttempts     int            `gorm:"default:3" json:"max_attempts"`
-	Status          ActivityStatus `gorm:"size:20;default:draft" json:"status"`
-	CreatedAt       string         `json:"created_at"`
-	PublishedAt     *string        `json:"published_at,omitempty"`
+	ID             uint           `gorm:"primaryKey" json:"id"`
+	CourseID       uint           `gorm:"not null;index" json:"course_id"`
+	TeacherID      uint           `gorm:"not null;index" json:"teacher_id"`
+	Title          string         `gorm:"size:200;not null" json:"title"`
+	Description    string         `gorm:"size:2000" json:"description,omitempty"`
+	Type           ActivityType   `gorm:"size:50;default:autonomous" json:"type"` // 活动类型
+	DesignerID     string         `gorm:"size:100" json:"designer_id,omitempty"`
+	DesignerConfig string         `gorm:"type:jsonb" json:"designer_config,omitempty"`
+	StepsConfig    string         `gorm:"type:jsonb" json:"steps_config,omitempty"` // 旧版简易环节配置(向后兼容)
+	KPIDS          string         `gorm:"type:jsonb" json:"kp_ids"`
+	SkillConfig    string         `gorm:"type:jsonb" json:"skill_config"`
+	Deadline       *string        `json:"deadline,omitempty"`
+	AllowRetry     bool           `gorm:"default:true" json:"allow_retry"`
+	MaxAttempts    int            `gorm:"default:3" json:"max_attempts"`
+	Status         ActivityStatus `gorm:"size:20;default:draft" json:"status"`
+	CreatedAt      string         `json:"created_at"`
+	UpdatedAt      string         `json:"updated_at,omitempty"`
+	PublishedAt    *string        `json:"published_at,omitempty"`
 
 	Course          Course                    `gorm:"foreignKey:CourseID" json:"-"`
 	Teacher         User                      `gorm:"foreignKey:TeacherID" json:"-"`
 	AssignedClasses []ActivityClassAssignment `gorm:"foreignKey:ActivityID" json:"assigned_classes,omitempty"`
+	Steps           []ActivityStep            `gorm:"foreignKey:ActivityID;constraint:OnDelete:CASCADE" json:"steps,omitempty"`
 }
 
 // ActivityClassAssignment 学习活动-班级发布关联。
@@ -72,6 +75,32 @@ type ActivityClassAssignment struct {
 	ID         uint `gorm:"primaryKey" json:"id"`
 	ActivityID uint `gorm:"not null;index" json:"activity_id"`
 	ClassID    uint `gorm:"not null;index" json:"class_id"`
+}
+
+// ContentBlockType 内容块类型枚举。
+type ContentBlockType string
+
+const (
+	ContentBlockMarkdown ContentBlockType = "markdown"
+	ContentBlockFile     ContentBlockType = "file"
+	ContentBlockVideo    ContentBlockType = "video"
+	ContentBlockImage    ContentBlockType = "image"
+)
+
+// ActivityStep 学习活动环节表。
+// 每个环节包含标题、描述和一组有序的内容块。
+type ActivityStep struct {
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	ActivityID  uint   `gorm:"not null;index" json:"activity_id"`
+	Title       string `gorm:"size:200;not null" json:"title"`
+	Description string `gorm:"size:2000" json:"description,omitempty"`
+	SortOrder   int    `gorm:"not null;default:0" json:"sort_order"`
+	// ContentBlocks 存储环节的展示内容，为 JSON 数组。
+	// 每个元素: { "type": "markdown|file|video|image", "content": "...", "file_name": "...", "file_url": "...", "file_size": 0 }
+	ContentBlocks string `gorm:"type:jsonb;default:'[]'" json:"content_blocks"`
+	Duration      int    `gorm:"default:0" json:"duration,omitempty"` // 建议时长(分钟)
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 // ============================
