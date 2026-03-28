@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, FormEvent } from 'react';
+import { useEffect, useState, useCallback, useMemo, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { listCourses, createCourse, type Course } from '@/lib/api';
 import { COURSE_STATUS_MAP } from '@/lib/constants';

@@ -123,7 +123,6 @@ type SearchConfig struct {
 type WeKnoraConfig struct {
 	Enabled       bool   // Whether WeKnora integration is enabled
 	BaseURL       string // WeKnora API base URL (e.g., "http://localhost:9380/api/v1")
-	APIKey        string // API Key for authentication (deprecated, use EncryptionKey)
 	EncryptionKey string // Shared secret for generating user passwords
 }
 
@@ -203,7 +202,6 @@ func Load() *Config {
 		WeKnora: WeKnoraConfig{
 			Enabled:       getEnv("WEKNORA_ENABLED", "false") == "true",
 			BaseURL:       getEnv("WEKNORA_BASE_URL", "http://localhost:9380/api/v1"),
-			APIKey:        getEnv("WEKNORA_API_KEY", ""),
 			EncryptionKey: getEnv("WEKNORA_ENCRYPTION_KEY", ""),
 		},
 	}
