@@ -1,0 +1,3 @@
+## 2024-05-18 - Accessible Icon Buttons with Dynamic Badges
+**Learning:** When using icon-only buttons that feature dynamic visual badges (like an unread notification count badge), simply adding an `aria-label` to the button can create conflicting/duplicate announcements if the inner badge text is also read by screen readers. Furthermore, the visual icon itself does not provide context to non-visual users.
+**Action:** Move the semantic meaning to the parent button's `aria-label` (e.g., `aria-label={count > 0 ? \`Notifications (${count} unread)\` : 'Notifications'}`) and explicitly hide the purely visual children (both the icon and the badge text) from screen readers by adding `aria-hidden="true"` to them.

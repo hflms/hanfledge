@@ -487,6 +487,7 @@ export interface LearningActivity {
   course_id: number;
   teacher_id: number;
   title: string;
+  description?: string;
   type: 'autonomous' | 'guided';
   designer_id?: string;
   designer_config?: string;
@@ -498,10 +499,49 @@ export interface LearningActivity {
   max_attempts: number;
   status: string;
   created_at: string;
+  updated_at?: string;
   published_at?: string;
   has_session?: boolean;
   session_id?: number;
   session_status?: string;
+  steps?: ActivityStep[];
+  assigned_classes?: ActivityClassAssignment[];
+}
+
+export type ContentBlockType = 'markdown' | 'file' | 'video' | 'image';
+
+export interface ContentBlock {
+  type: ContentBlockType;
+  content: string;
+  file_name?: string;
+  file_url?: string;
+  mime_type?: string;
+}
+
+export interface ActivityStep {
+  id: number;
+  activity_id: number;
+  title: string;
+  description: string;
+  sort_order: number;
+  content_blocks: string; // JSON string of ContentBlock[]
+  duration: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActivityClassAssignment {
+  id: number;
+  activity_id: number;
+  class_id: number;
+}
+
+export interface UploadAssetResponse {
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  mime_type: string;
+  key: string;
 }
 
 export interface StudentSession {
@@ -689,6 +729,63 @@ export async function listDesigners(): Promise<InstructionalDesigner[]> {
 export async function publishActivity(activityId: number): Promise<{ message: string }> {
   return apiFetch<{ message: string }>(`/activities/${activityId}/publish`, {
     method: 'POST',
+  });
+}
+
+export async function getActivity(activityId: number): Promise<LearningActivity> {
+  return apiFetch<LearningActivity>(`/activities/${activityId}`);
+}
+
+export async function updateActivity(
+  activityId: number,
+  data: {
+    title?: string;
+    description?: string;
+    type?: 'autonomous' | 'guided';
+    designer_id?: string;
+    designer_config?: Record<string, unknown>;
+    kp_ids?: number[];
+    skill_config?: Record<string, unknown>;
+    deadline?: string;
+    allow_retry?: boolean;
+    max_attempts?: number;
+    class_ids?: number[];
+  },
+): Promise<LearningActivity> {
+  return apiFetch<LearningActivity>(`/activities/${activityId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export interface SaveStepData {
+  id?: number;
+  title: string;
+  description?: string;
+  sort_order: number;
+  content_blocks?: string;
+  duration?: number;
+}
+
+export async function saveActivitySteps(
+  activityId: number,
+  steps: SaveStepData[],
+): Promise<ActivityStep[]> {
+  return apiFetch<ActivityStep[]>(`/activities/${activityId}/steps`, {
+    method: 'PUT',
+    body: JSON.stringify({ steps }),
+  });
+}
+
+export async function uploadActivityAsset(
+  activityId: number,
+  file: File,
+): Promise<UploadAssetResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiFetch<UploadAssetResponse>(`/activities/${activityId}/upload`, {
+    method: 'POST',
+    body: formData,
   });
 }
 

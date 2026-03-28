@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -307,12 +308,12 @@ func (r *Registry) ListDesigners() ([]map[string]interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read designers manifest: %w", err)
 	}
-	
+
 	var designers []map[string]interface{}
 	if err := json.Unmarshal(data, &designers); err != nil {
 		return nil, fmt.Errorf("parse designers manifest: %w", err)
 	}
-	
+
 	return designers, nil
 }
 
@@ -492,10 +493,7 @@ func (r *Registry) ResolveDependencies() ([]string, error) {
 
 // containsIgnoreCase checks if a string slice contains a target (case-insensitive).
 func containsIgnoreCase(slice []string, target string) bool {
-	for _, s := range slice {
-		if strings.EqualFold(s, target) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(slice, func(s string) bool {
+		return strings.EqualFold(s, target)
+	})
 }

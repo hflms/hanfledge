@@ -7,7 +7,7 @@
  * Phases: generating → viewing
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { LoadingState, PhaseIndicator } from '@/components/skill-ui';
 import { useMessages, useStateMachine, useAgentChannel } from '@/lib/plugin/hooks';
@@ -45,8 +45,11 @@ const PHASE_TRANSITIONS: Record<PresentationPhase, PresentationPhase[]> = {
 export default function PresentationRendererRefactored({
   agentChannel,
   knowledgePoint,
+  initialMessages,
 }: SkillRendererProps) {
-  const { messages, addMessage, messagesEndRef } = useMessages();
+  const { messages, addMessage, messagesEndRef } = useMessages({
+    initialMessages: initialMessages as Array<{ role: 'student' | 'coach' | 'system' | 'teacher'; content: string; id: string; timestamp: number }>,
+  });
   const { phase, transitionTo } = useStateMachine<PresentationPhase>({
     initialPhase: 'generating',
     transitions: PHASE_TRANSITIONS,
@@ -140,6 +143,19 @@ export default function PresentationRendererRefactored({
     },
   });
 
+  // Derive streaming progress from content instead of setting state in an effect.
+  const streamingProgress = useMemo(() => {
+    if (phase !== 'generating' || !streamingContent) return 0;
+    const partialMatch = streamingContent.match(/---/g);
+    if (partialMatch) {
+      return Math.min(30 + partialMatch.length * 10, 90);
+    }
+    return 0;
+  }, [phase, streamingContent]);
+
+  // Combined progress: max of thinking-based progress and streaming-based progress
+  const effectiveProgress = Math.max(generationProgress, streamingProgress);
+
   // Generate new presentation
   const handleNewPresentation = useCallback(() => {
     setSlidesMarkdown(null);
@@ -148,16 +164,38 @@ export default function PresentationRendererRefactored({
     send(`请为知识点"${knowledgePoint.title}"生成一份新的演示文稿。`);
   }, [knowledgePoint.title, send, transitionTo]);
 
-  // Initial generation
+  // Restore from history or Initial generation
   useEffect(() => {
+    let timeout: NodeJS.Timeout;
     if (phase === 'generating' && !slidesMarkdown && !sending) {
-      send(`请为知识点"${knowledgePoint.title}"生成演示文稿。要求：
+      timeout = setTimeout(() => {
+        // Look for a past presentation in history
+        const pastPresentation = [...messages].reverse().find(m => {
+          if (m.role === 'coach') {
+            const parsed = parseSkillOutput<SlidesData>(m.content, 'presentation');
+            return parsed && parsed.slides;
+          }
+          return false;
+        });
+
+        if (pastPresentation) {
+          const parsed = parseSkillOutput<SlidesData>(pastPresentation.content, 'presentation');
+          if (parsed && parsed.slides) {
+            setSlidesMarkdown(parsed.slides);
+            transitionTo('viewing');
+            return;
+          }
+        }
+
+        send(`请为知识点"${knowledgePoint.title}"生成演示文稿。要求：
 - 5-8 张幻灯片
 - 包含标题、要点、示例、总结
 - 使用 Reveal.js Markdown 格式
 - 每张幻灯片用 --- 分隔`);
+      }, 0);
     }
-  }, [phase, slidesMarkdown, sending, send, knowledgePoint.title]);
+    return () => clearTimeout(timeout);
+  }, [phase, slidesMarkdown, sending, send, knowledgePoint.title, messages, transitionTo]);
 
   // -- Render ------------------------------------------------------
 
@@ -172,12 +210,12 @@ export default function PresentationRendererRefactored({
       {phase === 'generating' && (
         <LoadingState
           message={thinkingStatus || '正在生成演示文稿...'}
-          progress={generationProgress}
+          progress={effectiveProgress}
         >
           <div className={styles.progressHints}>
-            {generationProgress >= 20 && <p>✓ 大纲已生成</p>}
-            {generationProgress >= 50 && <p>✓ 幻灯片内容已生成</p>}
-            {generationProgress >= 80 && <p>✓ 正在完善细节...</p>}
+            {effectiveProgress >= 20 && <p>✓ 大纲已生成</p>}
+            {effectiveProgress >= 50 && <p>✓ 幻灯片内容已生成</p>}
+            {effectiveProgress >= 80 && <p>✓ 正在完善细节...</p>}
           </div>
         </LoadingState>
       )}

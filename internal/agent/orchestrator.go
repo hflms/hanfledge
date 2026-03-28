@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,8 +35,8 @@ type AgentOrchestrator struct {
 	critic     *CriticAgent
 	bkt        *BKTService
 	// profile    *ProfileService // Disabled: missing model definitions
-	assessor   *AssessorAgent
-	evaluator  *EvaluatorAgent
+	assessor  *AssessorAgent
+	evaluator *EvaluatorAgent
 
 	// 模块化管理器
 	skillState   *SkillStateManager
@@ -1220,30 +1221,15 @@ func (o *AgentOrchestrator) advanceSurveyPhaseIfActive(tc *TurnContext, response
 	}
 }
 
+var surveyDimensionRegex = regexp.MustCompile(`"dimension"\s*:\s*"([^"]+)"`)
+
 // extractSurveyDimension 从 <survey> JSON 中提取 dimension 字段。
 func extractSurveyDimension(content string) string {
-	// 简单提取 "dimension": "xxx" 的值
-	start := strings.Index(content, `"dimension"`)
-	if start == -1 {
-		return ""
+	matches := surveyDimensionRegex.FindStringSubmatch(content)
+	if len(matches) > 1 {
+		return matches[1]
 	}
-	sub := content[start:]
-	// 找到第一个 : 后的引号对
-	colonIdx := strings.Index(sub, ":")
-	if colonIdx == -1 {
-		return ""
-	}
-	sub = sub[colonIdx+1:]
-	firstQuote := strings.Index(sub, `"`)
-	if firstQuote == -1 {
-		return ""
-	}
-	sub = sub[firstQuote+1:]
-	secondQuote := strings.Index(sub, `"`)
-	if secondQuote == -1 {
-		return ""
-	}
-	return sub[:secondQuote]
+	return ""
 }
 
 // ── Error Notebook Auto-Archiving (§5.2 Step 3, item 3) ────

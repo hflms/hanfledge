@@ -27,7 +27,9 @@ export function useAgentChannel(
   const streamingContentRef = useRef('');
   const optionsRef = useRef(options);
 
-  useLayoutEffect(() => {
+  // Sync the options ref inside an effect to satisfy React Compiler's
+  // "no ref writes during render" rule (react-hooks/refs).
+  useEffect(() => {
     optionsRef.current = options;
   });
 

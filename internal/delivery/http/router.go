@@ -95,7 +95,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	userHandler := handler.NewUserHandler(deps.DB)
 	courseHandler := handler.NewCourseHandler(courseRepo, docRepo, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry, deps.LLMProvider)
-	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus, deps.Registry)
+	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus, deps.Registry, deps.FileStorage)
 	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
 	dashboardHandler := handler.NewDashboardHandler(courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
@@ -136,10 +136,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	// WeKnora integration (conditional — only when client is available)
 	if deps.WeKnoraClient != nil {
 		secret := deps.Cfg.WeKnora.EncryptionKey
-		if secret == "" {
-			secret = deps.Cfg.WeKnora.APIKey // Fallback for backward compatibility
-		}
-		slog.Info("WeKnora TokenManager init", "has_encryption_key", deps.Cfg.WeKnora.EncryptionKey != "", "has_api_key", deps.Cfg.WeKnora.APIKey != "", "secret_len", len(secret))
+		slog.Info("WeKnora TokenManager init", "has_encryption_key", deps.Cfg.WeKnora.EncryptionKey != "", "secret_len", len(secret))
 		tokenMgr := weknora.NewTokenManager(deps.WeKnoraClient, deps.DB, deps.RedisCache, secret)
 		wkHandler := handler.NewWeKnoraHandler(deps.WeKnoraClient, tokenMgr, deps.DB)
 		registerWeKnoraRoutes(protected, deps.DB, wkHandler)

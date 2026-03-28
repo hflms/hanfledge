@@ -15,11 +15,12 @@ export interface ChatMessage {
 interface UseMessagesOptions {
   maxMessages?: number;
   autoScroll?: boolean;
+  initialMessages?: ChatMessage[];
 }
 
 export function useMessages(options: UseMessagesOptions = {}) {
-  const { maxMessages = 100, autoScroll = true } = options;
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { maxMessages = 100, autoScroll = true, initialMessages = [] } = options;
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const addMessage = useCallback((msg: ChatMessage) => {
