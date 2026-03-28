@@ -53,9 +53,12 @@ export default function NotificationBell() {
       <button 
         className={styles.bell}
         onClick={() => setShowDropdown(!showDropdown)}
+        aria-label={unreadCount > 0 ? `通知（${unreadCount}条未读）` : '通知'}
+        aria-expanded={showDropdown}
+        aria-haspopup="true"
       >
-        🔔
-        {unreadCount > 0 && <span className={styles.badge}>{unreadCount}</span>}
+        <span aria-hidden="true">🔔</span>
+        {unreadCount > 0 && <span className={styles.badge} aria-hidden="true">{unreadCount}</span>}
       </button>
 
       {showDropdown && (
@@ -71,6 +74,7 @@ export default function NotificationBell() {
                 <button 
                   className={styles.markRead}
                   onClick={() => markAsRead(n.id)}
+                  aria-label={`将“${n.title}”标记为已读`}
                 >
                   标记已读
                 </button>
