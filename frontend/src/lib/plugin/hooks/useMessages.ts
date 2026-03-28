@@ -7,7 +7,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 
 export interface ChatMessage {
   id: string;
-  role: 'student' | 'coach' | 'system';
+  role: 'student' | 'coach' | 'system' | 'teacher';
   content: string;
   timestamp: number;
 }
