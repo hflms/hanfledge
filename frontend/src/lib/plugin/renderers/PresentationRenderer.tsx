@@ -53,7 +53,16 @@ export default function PresentationRendererRefactored({
   });
 
   const [slidesMarkdown, setSlidesMarkdown] = useState<string | null>(null);
-  const [generationProgress, setGenerationProgress] = useState(0);
+  const [baseProgress, setBaseProgress] = useState(0);
+
+  let generationProgress = baseProgress;
+  if (phase === 'generating' && streamingContent) {
+    const partialMatch = streamingContent.match(/---/g);
+    if (partialMatch) {
+      const slideCount = partialMatch.length;
+      generationProgress = Math.max(baseProgress, Math.min(30 + slideCount * 10, 90));
+    }
+  }
 
   // WebSocket handling with progressive updates
   const { send, sending, thinkingStatus, streamingContent } = useAgentChannel(agentChannel, {
@@ -122,31 +131,19 @@ export default function PresentationRendererRefactored({
     onThinking: (status) => {
       // Update progress based on thinking status
       if (status.includes('大纲')) {
-        setGenerationProgress(20);
+        setBaseProgress(20);
       } else if (status.includes('幻灯片')) {
-        setGenerationProgress(50);
+        setBaseProgress(50);
       } else if (status.includes('完善')) {
-        setGenerationProgress(80);
+        setBaseProgress(80);
       }
     },
   });
 
-  // Progressive generation simulation
-  useEffect(() => {
-    if (phase === 'generating' && streamingContent) {
-      // Check for partial slides in streaming content
-      const partialMatch = streamingContent.match(/---/g);
-      if (partialMatch) {
-        const slideCount = partialMatch.length;
-        setGenerationProgress(Math.min(30 + slideCount * 10, 90));
-      }
-    }
-  }, [phase, streamingContent]);
-
   // Generate new presentation
   const handleNewPresentation = useCallback(() => {
     setSlidesMarkdown(null);
-    setGenerationProgress(0);
+    setBaseProgress(0);
     transitionTo('generating');
     send(`请为知识点"${knowledgePoint.title}"生成一份新的演示文稿。`);
   }, [knowledgePoint.title, send, transitionTo]);

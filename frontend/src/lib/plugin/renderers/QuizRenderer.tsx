@@ -9,7 +9,6 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import ChatInputArea from '@/components/ChatInputArea';
 import { ProgressBar, PhaseIndicator, QuestionCard, LoadingState } from '@/components/skill-ui';
 import { useMessages, useStateMachine, useAgentChannel } from '@/lib/plugin/hooks';
 import { parseSkillOutput, stripSkillOutput } from '@/lib/plugin/parsers';
@@ -74,7 +73,7 @@ export default function QuizRendererRefactored({ agentChannel }: SkillRendererPr
   const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
 
   // WebSocket handling
-  const { send, sending, thinkingStatus, streamingContent } = useAgentChannel(agentChannel, {
+  const { send, sending, thinkingStatus } = useAgentChannel(agentChannel, {
     onMessage: (content) => {
       // Try parse quiz data
       const parsed = parseSkillOutput<QuizData>(content, 'quiz');

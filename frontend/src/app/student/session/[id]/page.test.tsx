@@ -23,6 +23,7 @@ vi.mock('next/dynamic', () => ({
 
 vi.mock('@/lib/api', () => ({
     getSession: vi.fn(),
+    getSystemConfig: vi.fn().mockResolvedValue({}),
 }));
 
 const mockPlugins: unknown[] = [];

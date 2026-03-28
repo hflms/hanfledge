@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import type { AgentWebSocketChannel } from '../types';
 
 /**
@@ -26,7 +26,10 @@ export function useAgentChannel(
   // at the time turn_complete fired because the effect kept re-running.
   const streamingContentRef = useRef('');
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+
+  useLayoutEffect(() => {
+    optionsRef.current = options;
+  });
 
   useEffect(() => {
     const unsubscribe = agentChannel.onMessage((data: string) => {

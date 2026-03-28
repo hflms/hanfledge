@@ -67,7 +67,7 @@ export default function LearningSurveyRendererRefactored({
   const [progress, setProgress] = useState({ completed: 0, total: 6 });
 
   // WebSocket handling
-  const { send, sending, thinkingStatus, streamingContent } = useAgentChannel(agentChannel, {
+  const { send, thinkingStatus } = useAgentChannel(agentChannel, {
     onMessage: (content) => {
       const parsed = parseSkillOutput<SurveyBatch>(content, 'survey');
       
