@@ -15,6 +15,7 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
 	"github.com/hflms/hanfledge/internal/plugin"
@@ -34,11 +35,12 @@ type ActivityHandler struct {
 	EventBus     *plugin.EventBus
 	Registry     *plugin.Registry
 	Storage      storage.FileStorage
+	LLMProvider  llm.LLMProvider
 }
 
 // NewActivityHandler creates a new ActivityHandler.
-func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus, registry *plugin.Registry, fs storage.FileStorage) *ActivityHandler {
-	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus, Registry: registry, Storage: fs}
+func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus, registry *plugin.Registry, fs storage.FileStorage, llmProvider llm.LLMProvider) *ActivityHandler {
+	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus, Registry: registry, Storage: fs, LLMProvider: llmProvider}
 }
 
 // publishEvent fires an EventBus event if the bus is available (nil-safe).
@@ -960,4 +962,175 @@ func (h *ActivityHandler) UploadAsset(c *gin.Context) {
 		"mime_type": contentType,
 		"key":       storageKey,
 	})
+}
+
+// ── AI Step Suggestion ──────────────────────────────────────
+
+// SuggestStepRequest 请求 AI 生成环节内容建议。
+type SuggestStepRequest struct {
+	StepType        model.StepType `json:"step_type" binding:"required"`
+	StepTitle       string         `json:"step_title"`
+	StepDescription string         `json:"step_description"`
+	ActivityTitle   string         `json:"activity_title"`
+	KnowledgePoints []string       `json:"knowledge_points"` // 前端可直接传知识点名称列表
+}
+
+// SuggestStepResponse AI 建议的环节内容。
+type SuggestStepResponse struct {
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	ContentBlocks []struct {
+		Type    string `json:"type"`
+		Content string `json:"content"`
+	} `json:"content_blocks"`
+	Duration int `json:"duration"`
+}
+
+// SuggestStepContent uses AI to generate content suggestions for a step.
+//
+//	@Summary      AI 建议环节内容
+//	@Description  根据环节类型和活动上下文，使用 AI 生成环节内容建议
+//	@Tags         Activities
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id    path  int                true  "活动 ID"
+//	@Param        body  body  SuggestStepRequest true  "环节上下文"
+//	@Success      200   {object}  SuggestStepResponse
+//	@Failure      400   {object}  ErrorResponse
+//	@Failure      500   {object}  ErrorResponse
+//	@Router       /activities/{id}/steps/suggest [post]
+func (h *ActivityHandler) SuggestStepContent(c *gin.Context) {
+	if h.LLMProvider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 服务不可用"})
+		return
+	}
+
+	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的活动 ID"})
+		return
+	}
+
+	var req SuggestStepRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误: " + err.Error()})
+		return
+	}
+
+	// 1. Fetch activity and course context
+	var activity model.LearningActivity
+	if err := h.DB.First(&activity, activityID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "活动不存在"})
+		return
+	}
+
+	// 2. Fetch knowledge points via course → chapters → KPs
+	var kpNames []string
+	if len(req.KnowledgePoints) > 0 {
+		kpNames = req.KnowledgePoints
+	} else if activity.CourseID != 0 {
+		var course model.Course
+		if err := h.DB.Preload("Chapters.KnowledgePoints").First(&course, activity.CourseID).Error; err == nil {
+			for _, ch := range course.Chapters {
+				for _, kp := range ch.KnowledgePoints {
+					kpNames = append(kpNames, kp.Title)
+				}
+			}
+		}
+	}
+
+	// 3. Build step-type-specific prompt
+	stepTypeDesc := stepTypePromptMap[req.StepType]
+	if stepTypeDesc == "" {
+		stepTypeDesc = "通用教学环节"
+	}
+
+	activityTitle := req.ActivityTitle
+	if activityTitle == "" {
+		activityTitle = activity.Title
+	}
+
+	kpContext := "无特定知识点"
+	if len(kpNames) > 0 {
+		kpContext = strings.Join(kpNames, "、")
+	}
+
+	prompt := fmt.Sprintf(`你是一位经验丰富的教学设计专家。请为以下教学环节生成详细的内容建议。
+
+【活动名称】%s
+【环节类型】%s（%s）
+【环节标题】%s
+【环节描述】%s
+【相关知识点】%s
+
+请生成以下内容，并以 JSON 格式返回（不要使用 markdown 代码块包裹）：
+{
+  "title": "建议的环节标题（如果原标题为空或可以改进）",
+  "description": "环节描述（2-3句话概述目标和方法）",
+  "content_blocks": [
+    {"type": "markdown", "content": "详细的教学内容，使用 Markdown 格式，包含具体的教学步骤、示例或问题"}
+  ],
+  "duration": 建议时长（分钟，整数）
+}
+
+要求：
+1. 内容要具体、可操作，不要泛泛而谈
+2. content_blocks 中的 markdown 内容应包含具体的教学材料（如讲解要点、讨论问题、练习题目等）
+3. 根据环节类型调整内容风格：
+   - lecture: 提供讲解提纲和关键知识点
+   - discussion: 提供讨论引导问题和预期讨论方向
+   - quiz: 提供具体的测验题目（选择题或简答题）
+   - practice: 提供练习任务和评分标准
+   - reading: 提供阅读指引和思考问题
+   - group_work: 提供小组活动方案和分工建议
+   - reflection: 提供反思提纲和自评要点
+   - ai_tutoring: 提供 AI 辅导的对话框架和知识检查点
+4. 时长建议要合理（通常 5-30 分钟）`,
+		activityTitle,
+		string(req.StepType), stepTypeDesc,
+		req.StepTitle,
+		req.StepDescription,
+		kpContext)
+
+	// 4. Call LLM
+	resp, err := h.LLMProvider.Chat(c.Request.Context(), []llm.ChatMessage{
+		{Role: "system", Content: "你是一位专业的教学设计 AI 助手。你只输出合法的 JSON，不使用 ```json 或 ``` 包裹。"},
+		{Role: "user", Content: prompt},
+	}, &llm.ChatOptions{Temperature: 0.7})
+
+	if err != nil {
+		slogActivity.Error("🤖 AI 建议生成失败", "activity_id", activityID, "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 建议生成失败: " + err.Error()})
+		return
+	}
+
+	// 5. Parse response — try to extract JSON object
+	rawJSON := resp
+	start := strings.Index(rawJSON, "{")
+	end := strings.LastIndex(rawJSON, "}")
+	if start != -1 && end != -1 && end > start {
+		rawJSON = rawJSON[start : end+1]
+	}
+
+	var suggestion SuggestStepResponse
+	if err := json.Unmarshal([]byte(rawJSON), &suggestion); err != nil {
+		slogActivity.Error("🤖 AI 响应解析失败", "raw", rawJSON[:min(len(rawJSON), 200)], "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 响应解析失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"suggestion": suggestion})
+}
+
+// stepTypePromptMap 环节类型的中文描述，用于 AI 提示词。
+var stepTypePromptMap = map[model.StepType]string{
+	model.StepTypeLecture:    "讲授环节 — 教师讲解核心知识",
+	model.StepTypeDiscussion: "讨论环节 — 引导学生交流观点",
+	model.StepTypeQuiz:       "测验环节 — 检测学生掌握程度",
+	model.StepTypePractice:   "练习环节 — 学生动手实践",
+	model.StepTypeReading:    "阅读环节 — 自主阅读与理解",
+	model.StepTypeGroupWork:  "小组协作 — 团队合作完成任务",
+	model.StepTypeReflection: "反思总结 — 回顾学习过程与收获",
+	model.StepTypeAITutoring: "AI辅导 — 智能个性化辅导",
 }

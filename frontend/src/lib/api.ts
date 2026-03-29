@@ -781,6 +781,38 @@ export async function saveActivitySteps(
   });
 }
 
+// ── AI Step Suggestion ──────────────────────────────────────
+
+export interface SuggestStepRequest {
+  step_type: StepType;
+  step_title?: string;
+  step_description?: string;
+  activity_title?: string;
+  knowledge_points?: string[];
+}
+
+export interface SuggestStepResponseBlock {
+  type: string;
+  content: string;
+}
+
+export interface SuggestStepResult {
+  title: string;
+  description: string;
+  content_blocks: SuggestStepResponseBlock[];
+  duration: number;
+}
+
+export async function suggestStepContent(
+  activityId: number,
+  params: SuggestStepRequest,
+): Promise<{ suggestion: SuggestStepResult }> {
+  return apiFetch<{ suggestion: SuggestStepResult }>(`/activities/${activityId}/steps/suggest`, {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
 export async function uploadActivityAsset(
   activityId: number,
   file: File,

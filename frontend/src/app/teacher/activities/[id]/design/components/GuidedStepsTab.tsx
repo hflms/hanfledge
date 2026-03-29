@@ -85,6 +85,7 @@ const TEMPLATES: StepTemplate[] = [
 
 interface GuidedStepsTabProps {
   activityId: number;
+  activityTitle: string;
   steps: SaveStepData[];
   disabled: boolean;
   onStepsChange: (steps: SaveStepData[]) => void;
@@ -94,6 +95,7 @@ interface GuidedStepsTabProps {
 
 export default function GuidedStepsTab({
   activityId,
+  activityTitle,
   steps,
   disabled,
   onStepsChange,
@@ -410,6 +412,7 @@ export default function GuidedStepsTab({
           <StepEditor
             key={`editor-${selectedIndex}`}
             activityId={activityId}
+            activityTitle={activityTitle}
             step={steps[selectedIndex]}
             index={selectedIndex}
             totalSteps={steps.length}

@@ -299,6 +299,7 @@ export default function ActivityDesignPage() {
       ) : (
         <GuidedStepsTab
           activityId={activityId}
+          activityTitle={title}
           steps={steps}
           disabled={isPublished}
           onStepsChange={(newSteps) => { setSteps(newSteps); markDirty(); }}

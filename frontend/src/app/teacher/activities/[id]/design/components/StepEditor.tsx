@@ -4,10 +4,12 @@ import { useState, useCallback, useRef } from 'react';
 
 import {
   uploadActivityAsset,
+  suggestStepContent,
   type SaveStepData,
   type ContentBlock,
   type ContentBlockType,
   type StepType,
+  type SuggestStepResult,
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { STEP_TYPES, getStepTypeMeta } from './GuidedStepsTab';
@@ -17,6 +19,7 @@ import styles from '../page.module.css';
 
 interface StepEditorProps {
   activityId: number;
+  activityTitle: string;
   step: SaveStepData;
   index: number;
   totalSteps: number;
@@ -48,6 +51,7 @@ function serializeBlocks(blocks: ContentBlock[]): string {
 
 export default function StepEditor({
   activityId,
+  activityTitle,
   step,
   index,
   totalSteps,
@@ -60,6 +64,8 @@ export default function StepEditor({
 }: StepEditorProps) {
   const [uploading, setUploading] = useState(false);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<SuggestStepResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -135,6 +141,48 @@ export default function StepEditor({
     e.target.value = '';
   }, [handleFileUpload]);
 
+  // -- AI Suggest ---------------------------------------------------
+
+  const handleAiSuggest = useCallback(async () => {
+    setAiLoading(true);
+    setAiSuggestion(null);
+    try {
+      const result = await suggestStepContent(activityId, {
+        step_type: step.step_type ?? 'lecture',
+        step_title: step.title,
+        step_description: step.description ?? '',
+        activity_title: activityTitle,
+      });
+      setAiSuggestion(result.suggestion);
+    } catch (err) {
+      console.error('AI 建议生成失败', err);
+      toast('AI 建议生成失败，请稍后重试', 'error');
+    } finally {
+      setAiLoading(false);
+    }
+  }, [activityId, activityTitle, step.step_type, step.title, step.description, toast]);
+
+  const handleAcceptSuggestion = useCallback(() => {
+    if (!aiSuggestion) return;
+    const newBlocks: ContentBlock[] = aiSuggestion.content_blocks.map(b => ({
+      type: b.type as ContentBlockType,
+      content: b.content,
+    }));
+    onUpdate({
+      ...step,
+      title: aiSuggestion.title || step.title,
+      description: aiSuggestion.description || step.description,
+      content_blocks: serializeBlocks(newBlocks),
+      duration: aiSuggestion.duration || step.duration,
+    });
+    setAiSuggestion(null);
+    toast('已应用 AI 建议', 'success');
+  }, [aiSuggestion, step, onUpdate, toast]);
+
+  const handleDismissSuggestion = useCallback(() => {
+    setAiSuggestion(null);
+  }, []);
+
   // -- Render -------------------------------------------------------
 
   return (
@@ -158,6 +206,21 @@ export default function StepEditor({
           <span className={styles.editorStepNum}>环节 {index + 1} / {totalSteps}</span>
         </div>
         <div className={styles.editorHeaderRight}>
+          {!disabled && (
+            <button
+              className={styles.btnAiSuggest}
+              onClick={handleAiSuggest}
+              disabled={aiLoading}
+              aria-label="AI 建议环节内容"
+            >
+              {aiLoading ? (
+                <span className={styles.aiSpinner} aria-hidden="true" />
+              ) : (
+                <span aria-hidden="true">{'\u2728'}</span>
+              )}
+              <span>{aiLoading ? 'AI 生成中\u2026' : 'AI 建议'}</span>
+            </button>
+          )}
           <button
             className={styles.btnIcon}
             onClick={onMoveUp}
@@ -210,6 +273,60 @@ export default function StepEditor({
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* AI Suggestion Preview */}
+      {aiSuggestion && (
+        <div className={styles.aiSuggestionPanel} role="region" aria-label="AI 建议预览">
+          <div className={styles.aiSuggestionHeader}>
+            <span className={styles.aiSuggestionBadge}>{'\u2728'} AI 建议</span>
+            <span className={styles.aiSuggestionHint}>预览建议内容，确认后将替换当前环节内容</span>
+          </div>
+          <div className={styles.aiSuggestionBody}>
+            <div className={styles.aiSuggestionField}>
+              <span className={styles.aiSuggestionLabel}>标题</span>
+              <span className={styles.aiSuggestionValue}>{aiSuggestion.title}</span>
+            </div>
+            <div className={styles.aiSuggestionField}>
+              <span className={styles.aiSuggestionLabel}>描述</span>
+              <span className={styles.aiSuggestionValue}>{aiSuggestion.description}</span>
+            </div>
+            <div className={styles.aiSuggestionField}>
+              <span className={styles.aiSuggestionLabel}>时长</span>
+              <span className={styles.aiSuggestionValue}>{aiSuggestion.duration} 分钟</span>
+            </div>
+            {aiSuggestion.content_blocks.map((block, i) => (
+              <div key={`ai-block-${i}`} className={styles.aiSuggestionContent}>
+                <span className={styles.aiSuggestionLabel}>内容块 {i + 1}</span>
+                <pre className={styles.aiSuggestionPre}>{block.content}</pre>
+              </div>
+            ))}
+          </div>
+          <div className={styles.aiSuggestionActions}>
+            <button
+              className={styles.btnPrimary}
+              onClick={handleAcceptSuggestion}
+              aria-label="应用 AI 建议"
+            >
+              采纳建议
+            </button>
+            <button
+              className={styles.btnSecondary}
+              onClick={handleDismissSuggestion}
+              aria-label="忽略 AI 建议"
+            >
+              忽略
+            </button>
+            <button
+              className={styles.btnSecondary}
+              onClick={handleAiSuggest}
+              disabled={aiLoading}
+              aria-label="重新生成 AI 建议"
+            >
+              重新生成
+            </button>
+          </div>
         </div>
       )}
 
