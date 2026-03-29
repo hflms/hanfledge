@@ -206,11 +206,9 @@ func createPerformanceIndexes(db *gorm.DB) {
 		// student_sessions: 高频查询 activity_id + status
 		`CREATE INDEX IF NOT EXISTS idx_sessions_activity_status ON student_sessions(activity_id, status)`,
 		// student_sessions: 学生历史会话查询
-		`CREATE INDEX IF NOT EXISTS idx_sessions_student_created ON student_sessions(student_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_student_started ON student_sessions(student_id, started_at DESC)`,
 		// interactions: 会话消息时间序列查询
 		`CREATE INDEX IF NOT EXISTS idx_interactions_session_created ON interactions(session_id, created_at)`,
-		// interactions: 知识点正确率分析
-		`CREATE INDEX IF NOT EXISTS idx_interactions_kp_correct ON interactions(kp_id, is_correct) WHERE kp_id IS NOT NULL`,
 		// student_kp_masteries: 更新时间排序（已有 idx_student_kp）
 		`CREATE INDEX IF NOT EXISTS idx_mastery_updated ON student_kp_masteries(updated_at DESC)`,
 		// error_notebook_entries: 学生错题查询
