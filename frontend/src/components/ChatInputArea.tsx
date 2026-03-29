@@ -13,6 +13,8 @@ interface Props {
 export default function ChatInputArea({ input, setInput, sending, onSend, placeholder = '输入消息...', showToggle = true }: Props) {
     const [showKeyboard, setShowKeyboard] = useState(!showToggle);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const id = React.useId();
+    const inputId = `chat-input-${id}`;
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -44,6 +46,8 @@ export default function ChatInputArea({ input, setInput, sending, onSend, placeh
                 <button 
                     onClick={() => setShowKeyboard(true)}
                     className={styles.toggleBtn}
+                    aria-expanded="false"
+                    aria-controls={inputId}
                 >
                     ⌨️ 切换手动输入...
                 </button>
@@ -54,6 +58,7 @@ export default function ChatInputArea({ input, setInput, sending, onSend, placeh
     return (
         <div className={styles.inputArea}>
             <textarea
+                id={inputId}
                 ref={inputRef}
                 className={styles.chatInput}
                 value={input}
@@ -62,20 +67,25 @@ export default function ChatInputArea({ input, setInput, sending, onSend, placeh
                 placeholder={sending ? 'AI 正在处理...' : placeholder}
                 disabled={sending}
                 rows={1}
+                aria-label="输入聊天消息"
             />
             <div className={styles.actionRow}>
                 <button
                     className={styles.sendBtn}
                     onClick={handleSendClick}
                     disabled={!input.trim() || sending}
+                    aria-busy={sending}
                 >
-                    发送
+                    {sending ? '发送中...' : '发送'}
                 </button>
                 {showToggle && (
                     <button
                         className={styles.collapseBtn}
                         onClick={() => setShowKeyboard(false)}
                         title="收起键盘"
+                        aria-expanded="true"
+                        aria-controls={inputId}
+                        aria-label="收起键盘输入"
                     >
                         收起
                     </button>
