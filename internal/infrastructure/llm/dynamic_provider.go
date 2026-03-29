@@ -97,6 +97,90 @@ func (p *DynamicProvider) getChatProvider() LLMProvider {
 				actualURL = "(default) https://dashscope.aliyuncs.com/compatible-mode/v1"
 			}
 			slogDynamic.Info("initialized dashscope client dynamically", "chat_model", chatModel, "compat_url", actualURL)
+		case "doubao":
+			apiKey := configs["DOUBAO_API_KEY"]
+			chatModel := configs["DOUBAO_MODEL"]
+			compatURL := configs["DOUBAO_COMPAT_BASE_URL"]
+			if compatURL == "" {
+				compatURL = "https://ark.cn-beijing.volces.com/api/v3"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized doubao client dynamically", "chat_model", chatModel, "compat_url", compatURL)
+		case "deepseek":
+			apiKey := configs["DEEPSEEK_API_KEY"]
+			chatModel := configs["DEEPSEEK_MODEL"]
+			compatURL := configs["DEEPSEEK_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = "deepseek-chat"
+			}
+			if compatURL == "" {
+				compatURL = "https://api.deepseek.com/v1"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized deepseek client dynamically", "chat_model", chatModel, "compat_url", compatURL)
+		case "openrouter":
+			apiKey := configs["OPENROUTER_API_KEY"]
+			chatModel := configs["OPENROUTER_MODEL"]
+			compatURL := configs["OPENROUTER_COMPAT_BASE_URL"]
+			if compatURL == "" {
+				compatURL = "https://openrouter.ai/api/v1"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized openrouter client dynamically", "chat_model", chatModel, "compat_url", compatURL)
+		case "moonshot":
+			apiKey := configs["MOONSHOT_API_KEY"]
+			chatModel := configs["MOONSHOT_MODEL"]
+			compatURL := configs["MOONSHOT_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = "moonshot-v1-8k"
+			}
+			if compatURL == "" {
+				compatURL = "https://api.moonshot.cn/v1"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized moonshot client dynamically", "chat_model", chatModel, "compat_url", compatURL)
+		case "zhipu":
+			apiKey := configs["ZHIPU_API_KEY"]
+			chatModel := configs["ZHIPU_MODEL"]
+			compatURL := configs["ZHIPU_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = "glm-4"
+			}
+			if compatURL == "" {
+				compatURL = "https://open.bigmodel.cn/api/paas/v4"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized zhipu client dynamically", "chat_model", chatModel, "compat_url", compatURL)
 		case "ollama":
 			host := configs["OLLAMA_BASE_URL"]
 			if host == "" {
@@ -163,6 +247,76 @@ func (p *DynamicProvider) getEmbeddingProvider() LLMProvider {
 				CompatBaseURL:  compatURL,
 			})
 			slogDynamic.Info("initialized dashscope embedding client dynamically", "model", embModel)
+		case "doubao":
+			apiKey := configs["DOUBAO_API_KEY"]
+			compatURL := configs["DOUBAO_COMPAT_BASE_URL"]
+			if compatURL == "" {
+				compatURL = "https://ark.cn-beijing.volces.com/api/v3"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      configs["DOUBAO_MODEL"],
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized doubao embedding client dynamically", "model", embModel)
+		case "deepseek":
+			apiKey := configs["DEEPSEEK_API_KEY"]
+			compatURL := configs["DEEPSEEK_COMPAT_BASE_URL"]
+			if compatURL == "" {
+				compatURL = "https://api.deepseek.com/v1"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      configs["DEEPSEEK_MODEL"],
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized deepseek embedding client dynamically", "model", embModel)
+		case "openrouter":
+			apiKey := configs["OPENROUTER_API_KEY"]
+			compatURL := configs["OPENROUTER_COMPAT_BASE_URL"]
+			if compatURL == "" {
+				compatURL = "https://openrouter.ai/api/v1"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      configs["OPENROUTER_MODEL"],
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized openrouter embedding client dynamically", "model", embModel)
+		case "moonshot":
+			apiKey := configs["MOONSHOT_API_KEY"]
+			compatURL := configs["MOONSHOT_COMPAT_BASE_URL"]
+			if compatURL == "" {
+				compatURL = "https://api.moonshot.cn/v1"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      configs["MOONSHOT_MODEL"],
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized moonshot embedding client dynamically", "model", embModel)
+		case "zhipu":
+			apiKey := configs["ZHIPU_API_KEY"]
+			compatURL := configs["ZHIPU_COMPAT_BASE_URL"]
+			if compatURL == "" {
+				compatURL = "https://open.bigmodel.cn/api/paas/v4"
+			}
+			embModel := configs["EMBEDDING_MODEL"]
+			client = NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      configs["ZHIPU_MODEL"],
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+			slogDynamic.Info("initialized zhipu embedding client dynamically", "model", embModel)
 		case "ollama":
 			host := configs["OLLAMA_BASE_URL"]
 			if host == "" {
@@ -224,6 +378,100 @@ func (p *DynamicProvider) getProviderForRequest(opts *ChatOptions) LLMProvider {
 				embModel = "text-embedding-v3"
 			}
 			slogDynamic.Info("using overridden dashscope provider", "model", chatModel)
+			return NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+		case "doubao":
+			apiKey := configs["DOUBAO_API_KEY"]
+			chatModel := opts.ModelOverride
+			compatURL := configs["DOUBAO_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = configs["DOUBAO_MODEL"]
+			}
+			if compatURL == "" {
+				compatURL = "https://ark.cn-beijing.volces.com/api/v3"
+			}
+			slogDynamic.Info("using overridden doubao provider", "model", chatModel)
+			return NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+		case "deepseek":
+			apiKey := configs["DEEPSEEK_API_KEY"]
+			chatModel := opts.ModelOverride
+			compatURL := configs["DEEPSEEK_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = configs["DEEPSEEK_MODEL"]
+				if chatModel == "" {
+					chatModel = "deepseek-chat"
+				}
+			}
+			if compatURL == "" {
+				compatURL = "https://api.deepseek.com/v1"
+			}
+			slogDynamic.Info("using overridden deepseek provider", "model", chatModel)
+			return NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+		case "openrouter":
+			apiKey := configs["OPENROUTER_API_KEY"]
+			chatModel := opts.ModelOverride
+			compatURL := configs["OPENROUTER_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = configs["OPENROUTER_MODEL"]
+			}
+			if compatURL == "" {
+				compatURL = "https://openrouter.ai/api/v1"
+			}
+			slogDynamic.Info("using overridden openrouter provider", "model", chatModel)
+			return NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+		case "moonshot":
+			apiKey := configs["MOONSHOT_API_KEY"]
+			chatModel := opts.ModelOverride
+			compatURL := configs["MOONSHOT_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = configs["MOONSHOT_MODEL"]
+				if chatModel == "" {
+					chatModel = "moonshot-v1-8k"
+				}
+			}
+			if compatURL == "" {
+				compatURL = "https://api.moonshot.cn/v1"
+			}
+			slogDynamic.Info("using overridden moonshot provider", "model", chatModel)
+			return NewDashScopeClient(DashScopeConfig{
+				APIKey:         apiKey,
+				ChatModel:      chatModel,
+				EmbeddingModel: embModel,
+				CompatBaseURL:  compatURL,
+			})
+		case "zhipu":
+			apiKey := configs["ZHIPU_API_KEY"]
+			chatModel := opts.ModelOverride
+			compatURL := configs["ZHIPU_COMPAT_BASE_URL"]
+			if chatModel == "" {
+				chatModel = configs["ZHIPU_MODEL"]
+				if chatModel == "" {
+					chatModel = "glm-4"
+				}
+			}
+			if compatURL == "" {
+				compatURL = "https://open.bigmodel.cn/api/paas/v4"
+			}
+			slogDynamic.Info("using overridden zhipu provider", "model", chatModel)
 			return NewDashScopeClient(DashScopeConfig{
 				APIKey:         apiKey,
 				ChatModel:      chatModel,

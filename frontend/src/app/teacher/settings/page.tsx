@@ -23,6 +23,21 @@ export default function SystemSettingsPage() {
     DASHSCOPE_API_KEY: '',
     DASHSCOPE_MODEL: 'qwen-max',
     DASHSCOPE_COMPAT_BASE_URL: '',
+    DOUBAO_API_KEY: '',
+    DOUBAO_MODEL: 'ep-xxx',
+    DOUBAO_COMPAT_BASE_URL: 'https://ark.cn-beijing.volces.com/api/v3',
+    DEEPSEEK_API_KEY: '',
+    DEEPSEEK_MODEL: 'deepseek-chat',
+    DEEPSEEK_COMPAT_BASE_URL: 'https://api.deepseek.com/v1',
+    OPENROUTER_API_KEY: '',
+    OPENROUTER_MODEL: '',
+    OPENROUTER_COMPAT_BASE_URL: 'https://openrouter.ai/api/v1',
+    MOONSHOT_API_KEY: '',
+    MOONSHOT_MODEL: 'moonshot-v1-8k',
+    MOONSHOT_COMPAT_BASE_URL: 'https://api.moonshot.cn/v1',
+    ZHIPU_API_KEY: '',
+    ZHIPU_MODEL: 'glm-4',
+    ZHIPU_COMPAT_BASE_URL: 'https://open.bigmodel.cn/api/paas/v4',
     EMBEDDING_PROVIDER: 'ollama',
     EMBEDDING_MODEL: 'bge-m3'
   });
@@ -164,6 +179,11 @@ export default function SystemSettingsPage() {
           >
             <option value="ollama">Ollama (本地私有化)</option>
             <option value="dashscope">DashScope (阿里云通义千问)</option>
+            <option value="doubao">Volcengine (火山引擎/豆包)</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="moonshot">Moonshot (月之暗面/Kimi)</option>
+            <option value="zhipu">Zhipu (智谱清言/GLM)</option>
           </select>
           <span className={styles.helpText}>系统所有 AI 功能将默认使用此提供商（如需针对不同场景自定义，可在具体功能页面中指定）。</span>
         </div>
@@ -178,6 +198,11 @@ export default function SystemSettingsPage() {
           >
             <option value="ollama">Ollama (本地私有化)</option>
             <option value="dashscope">DashScope (阿里云通义千问)</option>
+            <option value="doubao">Volcengine (火山引擎/豆包)</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="moonshot">Moonshot (月之暗面/Kimi)</option>
+            <option value="zhipu">Zhipu (智谱清言/GLM)</option>
           </select>
           <span className={styles.helpText}>向量化模型可单独选择提供商，默认与对话提供商一致。</span>
         </div>
@@ -333,6 +358,201 @@ export default function SystemSettingsPage() {
               placeholder="留空使用默认: https://dashscope.aliyuncs.com/compatible-mode/v1"
             />
             <span className={styles.helpText}>自定义 OpenAI 兼容接口地址。如使用代理或自建网关请在此填写，留空则使用 DashScope 官方地址。</span>
+          </div>
+        </div>
+      )}
+
+      {configs.LLM_PROVIDER === 'doubao' && (
+        <div className={styles.card}>
+          <h2>Volcengine (火山引擎/豆包) 配置</h2>
+          <div className={styles.formGroup} style={{ marginTop: '20px' }}>
+            <label>API Key</label>
+            <input
+              type="password"
+              name="DOUBAO_API_KEY"
+              value={configs.DOUBAO_API_KEY}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="sk-..."
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>推理接入点 (Model / Endpoint)</label>
+            <input
+              type="text"
+              name="DOUBAO_MODEL"
+              value={configs.DOUBAO_MODEL}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="例如：ep-xxx"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>API 地址</label>
+            <input
+              type="text"
+              name="DOUBAO_COMPAT_BASE_URL"
+              value={configs.DOUBAO_COMPAT_BASE_URL || ''}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="默认: https://ark.cn-beijing.volces.com/api/v3"
+            />
+          </div>
+        </div>
+      )}
+
+      {configs.LLM_PROVIDER === 'deepseek' && (
+        <div className={styles.card}>
+          <h2>DeepSeek 配置</h2>
+          <div className={styles.formGroup} style={{ marginTop: '20px' }}>
+            <label>API Key</label>
+            <input
+              type="password"
+              name="DEEPSEEK_API_KEY"
+              value={configs.DEEPSEEK_API_KEY}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="sk-..."
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>对话模型 (Chat Model)</label>
+            <input
+              type="text"
+              name="DEEPSEEK_MODEL"
+              value={configs.DEEPSEEK_MODEL}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="例如：deepseek-chat 或 deepseek-reasoner"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>API 地址</label>
+            <input
+              type="text"
+              name="DEEPSEEK_COMPAT_BASE_URL"
+              value={configs.DEEPSEEK_COMPAT_BASE_URL || ''}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="默认: https://api.deepseek.com/v1"
+            />
+          </div>
+        </div>
+      )}
+
+      {configs.LLM_PROVIDER === 'openrouter' && (
+        <div className={styles.card}>
+          <h2>OpenRouter 配置</h2>
+          <div className={styles.formGroup} style={{ marginTop: '20px' }}>
+            <label>API Key</label>
+            <input
+              type="password"
+              name="OPENROUTER_API_KEY"
+              value={configs.OPENROUTER_API_KEY}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="sk-or-v1-..."
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>对话模型 (Chat Model)</label>
+            <input
+              type="text"
+              name="OPENROUTER_MODEL"
+              value={configs.OPENROUTER_MODEL}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="例如：anthropic/claude-3-haiku"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>API 地址</label>
+            <input
+              type="text"
+              name="OPENROUTER_COMPAT_BASE_URL"
+              value={configs.OPENROUTER_COMPAT_BASE_URL || ''}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="默认: https://openrouter.ai/api/v1"
+            />
+          </div>
+        </div>
+      )}
+
+      {configs.LLM_PROVIDER === 'moonshot' && (
+        <div className={styles.card}>
+          <h2>Moonshot (月之暗面/Kimi) 配置</h2>
+          <div className={styles.formGroup} style={{ marginTop: '20px' }}>
+            <label>API Key</label>
+            <input
+              type="password"
+              name="MOONSHOT_API_KEY"
+              value={configs.MOONSHOT_API_KEY}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="sk-..."
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>对话模型 (Chat Model)</label>
+            <input
+              type="text"
+              name="MOONSHOT_MODEL"
+              value={configs.MOONSHOT_MODEL}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="例如：moonshot-v1-8k"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>API 地址</label>
+            <input
+              type="text"
+              name="MOONSHOT_COMPAT_BASE_URL"
+              value={configs.MOONSHOT_COMPAT_BASE_URL || ''}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="默认: https://api.moonshot.cn/v1"
+            />
+          </div>
+        </div>
+      )}
+
+      {configs.LLM_PROVIDER === 'zhipu' && (
+        <div className={styles.card}>
+          <h2>Zhipu (智谱清言/GLM) 配置</h2>
+          <div className={styles.formGroup} style={{ marginTop: '20px' }}>
+            <label>API Key</label>
+            <input
+              type="password"
+              name="ZHIPU_API_KEY"
+              value={configs.ZHIPU_API_KEY}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="sk-..."
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>对话模型 (Chat Model)</label>
+            <input
+              type="text"
+              name="ZHIPU_MODEL"
+              value={configs.ZHIPU_MODEL}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="例如：glm-4"
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label>API 地址</label>
+            <input
+              type="text"
+              name="ZHIPU_COMPAT_BASE_URL"
+              value={configs.ZHIPU_COMPAT_BASE_URL || ''}
+              onChange={handleChange}
+              className={styles.input}
+              placeholder="默认: https://open.bigmodel.cn/api/paas/v4"
+            />
           </div>
         </div>
       )}
