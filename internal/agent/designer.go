@@ -75,7 +75,7 @@ func (a *DesignerAgent) SetWeKnoraClient(client *weknora.Client) {
 // 5.5. Cross-Encoder 精重排 → Top-5 (§8.1.1 Stage 2)
 // 6. CRAG 质量网关 — 评估检索质量，低质量时触发回退
 // 7. Token 截断 + 图谱上下文 + 系统 Prompt 组装
-func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPrescription, userInput string) (PersonalizedMaterial, error) {
+func (a *DesignerAgent) Assemble(tc *TurnContext, prescription LearningPrescription, userInput string) (PersonalizedMaterial, error) {
 	slogDesigner.Info("assembling material",
 		"student_id", prescription.StudentID, "kp_targets", len(prescription.TargetKPSequence))
 
@@ -113,14 +113,14 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	// Step 2: RAG-Fusion 查询扩展 (§8.1.2)
 	// 将增强查询扩展为多个学术化变体，提升召回覆盖面
 	slogDesigner.Info("[DEBUG] starting query expansion", "session_id", prescription.SessionID)
-	expandedQueries := a.expander.ExpandQuery(ctx, enhancedQuery)
+	expandedQueries := a.expander.ExpandQuery(tc.Ctx, enhancedQuery)
 	slogDesigner.Info("[DEBUG] query expansion done", "session_id", prescription.SessionID, "variants", len(expandedQueries))
 
 	// Step 3: 多路语义检索
 	// 3a. 对每个变体独立执行 pgvector 语义检索 Top-50
 	var allSemanticChunks []RetrievedChunk
 	for i, query := range expandedQueries {
-		chunks, err := a.semanticSearch(ctx, courseID, query)
+		chunks, err := a.semanticSearch(tc.Ctx, courseID, query)
 		if err != nil {
 			slogDesigner.Warn("semantic search failed", "variant", i, "err", err)
 			continue
@@ -130,7 +130,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 
 	// 3b. 图谱引导检索 — Neo4j → KP titles → pgvector Top-50
 	slogDesigner.Info("[DEBUG] starting graph content search", "session_id", prescription.SessionID)
-	graphChunks, err := a.graphContentSearch(ctx, courseID, prescription.TargetKPSequence)
+	graphChunks, err := a.graphContentSearch(tc.Ctx, courseID, prescription.TargetKPSequence)
 	if err != nil {
 		slogDesigner.Warn("graph content search failed", "err", err)
 	}
@@ -139,8 +139,8 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 
 	// 3c. WeKnora 知识库检索 Top-20 (如果课程绑定了 KB)
 	var wkChunks []RetrievedChunk
-	if a.weknora != nil {
-		wkChunks, err = a.weknoraSearch(ctx, courseID, enhancedQuery)
+	if a.weknora != nil || tc.WeKnoraClient != nil {
+		wkChunks, err = a.weknoraSearch(tc, courseID, enhancedQuery)
 		if err != nil {
 			slogDesigner.Warn("weknora search failed", "err", err)
 		} else if len(wkChunks) > 0 {
@@ -159,7 +159,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	// Step 4.5: Cross-Encoder 精重排 (§8.1.1 Stage 2)
 	// 对 RRF 粗排候选池中的每个 chunk 与原始查询做深度语义评分，精选 Top-5
 	slogDesigner.Info("[DEBUG] starting reranker", "session_id", prescription.SessionID, "candidates", len(mergedChunks))
-	mergedChunks = a.reranker.Rerank(ctx, userInput, mergedChunks)
+	mergedChunks = a.reranker.Rerank(tc.Ctx, userInput, mergedChunks)
 	slogDesigner.Info("[DEBUG] reranker done", "session_id", prescription.SessionID, "result", len(mergedChunks))
 
 	// Step 5: CRAG 质量网关 (§8.1.2)
@@ -175,7 +175,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	}
 
 	// Step 6: 图谱上下文 — 知识点关系（用于 Prompt 和前端展示）
-	graphNodes := a.graphSearch(ctx, prescription.TargetKPSequence)
+	graphNodes := a.graphSearch(tc.Ctx, prescription.TargetKPSequence)
 
 	// Step 6.5: 误区加载 — 谬误侦探技能激活时加载目标 KP 的误区 (§5.2 Step 5)
 	var misconceptions []MisconceptionItem
@@ -191,7 +191,7 @@ func (a *DesignerAgent) Assemble(ctx context.Context, prescription LearningPresc
 	if !relevance.Passed {
 		if a.searchConn != nil {
 			// §8.1.2: CRAG → fail → Dynamic Connector → Web Search Enrichment
-			systemPrompt = a.gateway.HandleFallbackWithSearch(ctx, systemPrompt, userInput, a.searchConn)
+			systemPrompt = a.gateway.HandleFallbackWithSearch(tc.Ctx, systemPrompt, userInput, a.searchConn)
 		} else {
 			systemPrompt = a.gateway.HandleFallback(systemPrompt)
 		}
@@ -621,14 +621,18 @@ func trapTypeLabel(trapType string) string {
 }
 
 // weknoraSearch 从 WeKnora 知识库中检索相关内容。
-func (a *DesignerAgent) weknoraSearch(ctx context.Context, courseID uint, query string) ([]RetrievedChunk, error) {
-	if a.weknora == nil {
+func (a *DesignerAgent) weknoraSearch(tc *TurnContext, courseID uint, query string) ([]RetrievedChunk, error) {
+	client := tc.WeKnoraClient
+	if client == nil {
+		client = a.weknora
+	}
+	if client == nil {
 		return nil, nil
 	}
 
 	// 查询课程绑定的知识库
 	var refs []model.WeKnoraKBRef
-	if err := a.db.WithContext(ctx).Where("course_id = ?", courseID).Find(&refs).Error; err != nil {
+	if err := a.db.WithContext(tc.Ctx).Where("course_id = ?", courseID).Find(&refs).Error; err != nil {
 		return nil, fmt.Errorf("query kb refs: %w", err)
 	}
 
@@ -637,13 +641,10 @@ func (a *DesignerAgent) weknoraSearch(ctx context.Context, courseID uint, query 
 	}
 
 	// 从每个绑定的知识库中搜索
-	// 注意：这里使用的是全局 client，实际应该使用 per-user token
-	// 但在 Designer 层我们没有 user context，所以暂时使用全局 client
-	// TODO: 考虑在 TurnContext 中传递 user-specific WeKnora client
 	var allChunks []RetrievedChunk
 	for _, ref := range refs {
 		// 调用 WeKnora 搜索 API
-		results, err := a.weknora.SearchKnowledge(ctx, ref.KBID, query, 10)
+		results, err := client.SearchKnowledge(tc.Ctx, ref.KBID, query, 10)
 		if err != nil {
 			slogDesigner.Warn("weknora search failed", "kb_id", ref.KBID, "err", err)
 			continue
