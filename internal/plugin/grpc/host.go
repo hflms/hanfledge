@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
+	googlegrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 var slogGRPC = logger.L("PluginGRPC")
@@ -91,15 +94,46 @@ func (h *HostManager) Stop(ctx context.Context, pluginID string) error {
 // HealthCheck checks if a plugin process is healthy.
 func (h *HostManager) HealthCheck(ctx context.Context, pluginID string) (bool, error) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
 	proc, exists := h.processes[pluginID]
 	if !exists {
+		h.mu.RUnlock()
 		return false, fmt.Errorf("plugin %s is not running", pluginID)
 	}
+	port := proc.Port
+	h.mu.RUnlock()
 
-	// TODO: Call gRPC HealthCheck method
-	return proc.Healthy, nil
+	addr := fmt.Sprintf("localhost:%d", port)
+	conn, err := googlegrpc.NewClient(addr, googlegrpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		h.updateHealth(pluginID, false)
+		return false, fmt.Errorf("failed to connect to plugin %s: %w", pluginID, err)
+	}
+	defer conn.Close()
+
+	client := grpc_health_v1.NewHealthClient(conn)
+	req := &grpc_health_v1.HealthCheckRequest{Service: ""}
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	resp, err := client.Check(ctxTimeout, req)
+	if err != nil {
+		h.updateHealth(pluginID, false)
+		return false, fmt.Errorf("health check failed for plugin %s: %w", pluginID, err)
+	}
+
+	healthy := resp.Status == grpc_health_v1.HealthCheckResponse_SERVING
+	h.updateHealth(pluginID, healthy)
+
+	return healthy, nil
+}
+
+func (h *HostManager) updateHealth(pluginID string, healthy bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if proc, exists := h.processes[pluginID]; exists {
+		proc.Healthy = healthy
+	}
 }
 
 // ListProcesses returns all running plugin processes.
