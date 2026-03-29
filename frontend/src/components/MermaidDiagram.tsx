@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
 import { generateId } from '@/lib/utils';
 
 interface MermaidDiagramProps {
@@ -17,7 +18,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
         mermaid.initialize({
             startOnLoad: false,
             theme: 'default',
-            securityLevel: 'loose',
+            securityLevel: 'strict',
             fontFamily: 'inherit',
         });
 
@@ -28,8 +29,14 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
                 if (!chart) return;
                 const id = generateId('mermaid');
                 const { svg: renderedSvg } = await mermaid.render(id, chart);
+
+                // Sanitize the SVG output using DOMPurify
+                const sanitizedSvg = DOMPurify.sanitize(renderedSvg, {
+                    USE_PROFILES: { svg: true },
+                });
+
                 if (isMounted) {
-                    setSvg(renderedSvg);
+                    setSvg(sanitizedSvg);
                     setError('');
                 }
             } catch (err) {
