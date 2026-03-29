@@ -24,8 +24,25 @@ func NewSCORMAdapter(cfg LMSConfig) (*SCORMAdapter, error) {
 func (a *SCORMAdapter) Type() AdapterType { return AdapterSCORM }
 
 func (a *SCORMAdapter) LaunchURL(ctx context.Context, req LaunchRequest) (*LaunchResponse, error) {
-	// TODO: Implement SCORM content package launch
-	return nil, fmt.Errorf("SCORM 2004 LaunchURL not yet implemented")
+	sessionID := fmt.Sprintf("scorm_%s_%s", req.UserID, req.ActivityID)
+
+	formData := map[string]string{
+		"user_id":     req.UserID,
+		"course_id":   req.CourseID,
+		"activity_id": req.ActivityID,
+		"session_id":  sessionID,
+	}
+
+	if a.apiKey != "" {
+		formData["api_key"] = a.apiKey
+	}
+
+	return &LaunchResponse{
+		URL:       a.endpoint,
+		Method:    "POST",
+		FormData:  formData,
+		SessionID: sessionID,
+	}, nil
 }
 
 func (a *SCORMAdapter) ReportScore(ctx context.Context, req ScoreReport) error {
