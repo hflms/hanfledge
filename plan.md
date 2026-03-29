@@ -1,0 +1,48 @@
+1. **Understand LTI 1.3 OIDC Login Initiation & JWT Launch Message**
+   - The user wants to implement `LaunchURL` for LTI 1.3.
+   - LTI 1.3 uses OIDC login initiation. The platform makes a request to a Tool login initiation URL or the Tool redirects the user to the platform OIDC login endpoint (`AuthURL`). Wait, LTI 1.3 flows usually go Platform -> Tool (OIDC Login Init) -> Platform (Auth) -> Tool (LTI Launch).
+   - In our case, `LaunchURL` returns a `LaunchResponse`. This means we are generating a payload to *simulate* a launch, or act as the Tool starting a launch, OR we are generating the parameters to redirect a user to the platform to start the OIDC flow.
+   - Wait, `LaunchURL` generates a launch URL for a specific learning activity. In LTI 1.3, if the LMS Adapter is acting as the *Tool*, it needs to initiate OIDC with the Platform.
+   - Let's check `LaunchURL` return type. It returns `URL`, `Method`, `FormData`, `SessionID`.
+   - Wait, if the application is an LTI 1.3 Tool, to launch a learning activity from the Tool, we need to send an OIDC authentication request to the Platform's `AuthURL`.
+   - The OIDC authentication request parameters are:
+     - `scope` (openid)
+     - `response_type` (id_token)
+     - `client_id` (a.clientID)
+     - `redirect_uri` (req.ReturnURL or some tool redirect URI)
+     - `login_hint` (user ID or session hint)
+     - `state` (generated session ID)
+     - `response_mode` (form_post)
+     - `nonce` (generated nonce)
+     - `prompt` (none)
+     - `lti_message_hint` (course ID / activity ID / etc)
+   - Wait, is our LMS Adapter acting as the Platform or the Tool?
+     - "external Learning Management System integrations" -> "LMS Adapter". Our system is likely the Tool connecting to an external LMS (the Platform).
+     - However, wait. If our system is the Tool, `LaunchURL` generates a launch URL *to* the LMS, or *for* the LMS?
+     - "LaunchURL generates a launch URL for a specific learning activity."
+     - Let's look at LTI 1.3 specification. A Tool initiates an LTI 1.3 launch if it wants to launch itself via Deep Linking, or if it does an OIDC 3rd party login initiation.
+     - Actually, "OIDC login initiation + JWT message signing".
+     - Wait, if it says "JWT message signing", the tool usually *receives* the JWT from the Platform and verifies it.
+     - If the *adapter* signs the JWT, then our system is acting as the **Platform** (LMS) and launching the **Tool**!
+     - Let's re-read `LMSAdapter` interface: "LMSAdapter defines the contract for external Learning Management System integrations."
+     - Wait, if we are the Platform launching a Tool, then `LaunchURL` would generate a signed JWT (the `id_token`), put it in a form, and POST it to the Tool's launch URL.
+     - Let's check the fields of `LTI13Adapter`:
+       - `clientID`: The client ID of the tool.
+       - `deploymentID`: The deployment ID.
+       - `platformURL`: Our platform URL? Or the tool's platform URL?
+       - `keysetURL`: JWKS URL.
+       - `authURL`: OIDC Auth URL.
+       - `tokenURL`: OAuth2 Token URL.
+       - `privateKey`: Private key to sign the JWT!
+     - Yes, `privateKey` in `LMSConfig` means we have the private key to sign the JWT. So our system is acting as the **LMS (Platform)** launching an external Tool, OR our system is acting as the Tool but signing a message (e.g. Deep Linking Response).
+     - Let's read the prompt: "Implement OIDC login initiation + JWT message signing". If we initiate OIDC login, wait...
+     - LTI 1.3 flow:
+       1. Platform (us) -> Tool (Login Initiation). We send `iss`, `target_link_uri`, `login_hint`, `lti_message_hint`, `client_id`, `lti_deployment_id`.
+       2. Tool -> Platform (Auth Request). The tool redirects to Platform's AuthURL.
+       3. Platform (us) -> Tool (LTI Launch). We POST the signed JWT `id_token` and `state`.
+     - BUT `LaunchURL` method returns a `LaunchResponse`. Does it return the Login Initiation URL? Or the final LTI Launch POST?
+     - If it returns "JWT message signing", maybe it returns the final form POST directly? Sometimes platforms skip the Tool Login Initiation if they already have all the info, but LTI 1.3 requires the OIDC flow.
+     - Wait! "TODO: Implement OIDC login initiation + JWT message signing"
+     - Let's generate a signed JWT and return it in the form data for a POST request.
+     - Wait, what if it expects us to generate the OIDC Login Initiation request?
+     - Let's search the codebase for LTI 1.3 or `LMSAdapter` usage to see what is expected.
