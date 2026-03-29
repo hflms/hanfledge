@@ -510,6 +510,8 @@ export interface LearningActivity {
 
 export type ContentBlockType = 'markdown' | 'file' | 'video' | 'image';
 
+export type StepType = 'lecture' | 'discussion' | 'quiz' | 'practice' | 'reading' | 'group_work' | 'reflection' | 'ai_tutoring';
+
 export interface ContentBlock {
   type: ContentBlockType;
   content: string;
@@ -523,6 +525,7 @@ export interface ActivityStep {
   activity_id: number;
   title: string;
   description: string;
+  step_type: StepType;
   sort_order: number;
   content_blocks: string; // JSON string of ContentBlock[]
   duration: number;
@@ -762,6 +765,7 @@ export interface SaveStepData {
   id?: number;
   title: string;
   description?: string;
+  step_type?: StepType;
   sort_order: number;
   content_blocks?: string;
   duration?: number;

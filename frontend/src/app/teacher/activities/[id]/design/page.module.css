@@ -1,5 +1,15 @@
 /* === Activity Design Page === */
 
+/* Override content area padding for this wide page.
+   Applied as a child of DashboardLayout .content — we use
+   negative margin + padding to reclaim the parent 32px gutter,
+   giving the dual-pane guided-steps layout room to breathe. */
+.designPageWide {
+  max-width: 100%;
+  margin: -32px;
+  padding: 24px 16px;
+}
+
 .backLink {
   display: inline-flex;
   align-items: center;
@@ -36,6 +46,15 @@
   font-size: 22px;
   font-weight: 700;
   margin: 0;
+  text-wrap: balance;
+}
+
+.titleInput {
+  font-size: 22px;
+  font-weight: 700;
+  border: none;
+  padding: 0;
+  background: transparent;
 }
 
 .pageSubtitle {
@@ -91,7 +110,7 @@
   padding: 8px 16px;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background 0.2s ease;
 }
 
 .tabBtn:hover {
@@ -140,6 +159,11 @@
   border-color: var(--accent);
 }
 
+.formInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .formTextarea {
   font-size: 14px;
   padding: 8px 12px;
@@ -156,6 +180,11 @@
 .formTextarea:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.formTextarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* === Buttons === */
@@ -196,7 +225,7 @@
   background: var(--bg-card);
   color: var(--text-primary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
 
 .btnSecondary:hover {
@@ -216,7 +245,7 @@
   background: transparent;
   color: var(--danger);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .btnDanger:hover {
@@ -234,7 +263,7 @@
   background: var(--bg-card);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.2s, color 0.2s;
   font-size: 16px;
 }
 
@@ -244,6 +273,31 @@
 }
 
 .btnIcon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btnIconSm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  font-size: 10px;
+}
+
+.btnIconSm:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btnIconSm:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
@@ -286,188 +340,595 @@
   width: 100%;
 }
 
-/* === Guided Steps Tab === */
-
-.stepsPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.stepsToolbar {
+.checkboxLabel {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.stepsCount {
+  gap: 8px;
   font-size: 13px;
-  color: var(--text-muted);
+  cursor: pointer;
 }
 
-.stepsList {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+/* ================================================================
+   GUIDED STEPS — Dual-Pane Layout (Moodle-inspired)
+   ================================================================ */
 
-.emptySteps {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 20px;
-  border: 2px dashed var(--border);
-  border-radius: var(--radius-md);
-  text-align: center;
-  gap: 12px;
-}
-
-.emptyStepsIcon {
-  font-size: 32px;
-  opacity: 0.4;
-}
-
-.emptyStepsText {
-  font-size: 14px;
-  color: var(--text-muted);
-}
-
-/* === Step Card === */
-
-.stepCard {
-  display: flex;
-  flex-direction: column;
+.guidedLayout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-card);
+  min-height: 560px;
   overflow: hidden;
-  transition: border-color 0.2s;
 }
 
-.stepCard:hover {
-  border-color: rgba(108, 92, 231, 0.3);
-}
+/* -- Timeline Sidebar --------------------------------------------- */
 
-.stepCardExpanded {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(108, 92, 231, 0.1);
-}
-
-.stepHeader {
+.timelineSidebar {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  cursor: pointer;
-  user-select: none;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
 }
 
-.stepDragHandle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--text-muted);
-  cursor: grab;
-  opacity: 0.5;
+.timelineHeader {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.timelineTitle {
   font-size: 14px;
-  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
 }
 
-.stepDragHandle:active {
+.timelineStats {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.timelineList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+/* -- Timeline Item ------------------------------------------------ */
+
+.timelineItem {
+  display: flex;
+  gap: 12px;
+  padding: 8px 20px 8px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.timelineItem:hover {
+  background: rgba(108, 92, 231, 0.04);
+}
+
+.timelineItemSelected {
+  background: rgba(108, 92, 231, 0.08);
+}
+
+.timelineItemSelected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+/* -- Drag & Drop -------------------------------------------------- */
+
+.timelineItem[draggable='true'] {
+  cursor: grab;
+}
+
+.timelineItem[draggable='true']:active {
   cursor: grabbing;
 }
 
-.stepNumber {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(108, 92, 231, 0.1);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
+.timelineItemDragging {
+  opacity: 0.4;
 }
 
-.stepTitleInput {
-  flex: 1;
+.timelineItemDropTarget {
+  background: rgba(108, 92, 231, 0.1);
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+.timelineDragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
   font-size: 14px;
-  font-weight: 600;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  outline: none;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: grab;
+  user-select: none;
+}
+
+.timelineItem:hover .timelineDragHandle {
+  opacity: 1;
+}
+
+.timelineDragHandle:active {
+  cursor: grabbing;
+  color: var(--accent);
+}
+
+.timelineConnector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 32px;
+}
+
+.timelineDot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.timelineDotIcon {
+  font-size: 14px;
+}
+
+.timelineLine {
+  width: 2px;
+  flex: 1;
+  min-height: 12px;
+  background: var(--border);
+  margin-top: 4px;
+}
+
+.timelineContent {
+  flex: 1;
+  min-width: 0;
   padding: 4px 0;
 }
 
-.stepTitleInput::placeholder {
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-.stepActions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.stepExpandIcon {
-  transition: transform 0.2s;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.stepExpandIconOpen {
-  transform: rotate(180deg);
-}
-
-/* === Step Editor Body === */
-
-.stepBody {
-  padding: 0 16px 16px 52px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-}
-
-.stepMetaRow {
-  display: grid;
-  grid-template-columns: 1fr 120px;
-  gap: 12px;
-}
-
-.durationInput {
-  font-size: 14px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
+.timelineItemTitle {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
-  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
 }
 
-/* === Content Blocks === */
+.timelineItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-.contentBlocksSection {
+.timelineTag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.timelineDuration {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* -- Timeline Actions --------------------------------------------- */
+
+.timelineActions {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.contentBlocksLabel {
-  font-size: 12px;
+.addStepGroup {
+  display: flex;
+  gap: 6px;
+}
+
+.btnAddStep {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
   font-weight: 600;
+  padding: 8px 12px;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  background: rgba(108, 92, 231, 0.05);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnAddStep:hover {
+  background: rgba(108, 92, 231, 0.1);
+}
+
+.btnTemplate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnTemplate:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* -- Add Step Type Menu ------------------------------------------- */
+
+.addStepMenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.addStepMenuItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+}
+
+.addStepMenuItem:hover {
+  background: rgba(108, 92, 231, 0.08);
+}
+
+.addStepMenuIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.addStepMenuText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.addStepMenuLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.addStepMenuDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* -- Template Picker ---------------------------------------------- */
+
+.templatePicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.templatePickerTitle {
+  font-size: 12px;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.templateCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  text-align: left;
+}
+
+.templateCard:hover {
+  border-color: var(--accent);
+  background: rgba(108, 92, 231, 0.05);
+}
+
+.templateCardLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.templateCardDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.templateCardSteps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.templateStepBadge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ================================================================
+   EDITOR PANEL (right pane)
+   ================================================================ */
+
+.editorPanel {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* -- Empty State -------------------------------------------------- */
+
+.emptyEditor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 32px;
+  text-align: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.emptyEditorIcon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.emptyEditorTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.emptyEditorText {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 400px;
+}
+
+.emptyEditorActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* -- Editor Container --------------------------------------------- */
+
+.editorContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.editorHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.editorTypeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.editorTypeBadge:hover {
+  opacity: 0.8;
+}
+
+.editorTypeChevron {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.editorStepNum {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.editorHeaderRight {
+  display: flex;
+  gap: 4px;
+}
+
+/* -- Type Selector Dropdown --------------------------------------- */
+
+.typeSelectorDropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(108, 92, 231, 0.03);
+}
+
+.typeSelectorItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+}
+
+.typeSelectorItem:hover {
+  background: rgba(108, 92, 231, 0.08);
+}
+
+.typeSelectorItemActive {
+  background: rgba(108, 92, 231, 0.1);
+}
+
+.typeSelectorIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.typeSelectorText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.typeSelectorLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.typeSelectorDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* -- Editor Body -------------------------------------------------- */
+
+.editorBody {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editorMetaRow {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.durationInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.durationInput {
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  width: 80px;
+}
+
+.durationUnit {
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ================================================================
+   CONTENT BLOCKS (shared between old and new editor)
+   ================================================================ */
+
+.contentBlocksSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contentBlocksHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.contentBlocksLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.contentBlocksCount {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .contentBlockList {
@@ -478,18 +939,24 @@
 
 .contentBlock {
   display: flex;
-  gap: 8px;
-  padding: 10px 12px;
+  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: rgba(108, 92, 231, 0.02);
+  overflow: hidden;
+  transition: border-color 0.15s;
 }
 
-.contentBlockBody {
-  flex: 1;
+.contentBlock:hover {
+  border-color: rgba(108, 92, 231, 0.2);
+}
+
+.contentBlockHead {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border);
 }
 
 .contentBlockType {
@@ -497,18 +964,30 @@
   font-weight: 600;
   color: var(--accent);
   text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.contentBlockActions {
+  display: flex;
+  gap: 2px;
+}
+
+.contentBlockBody {
+  padding: 8px 10px;
 }
 
 .contentBlockTextarea {
+  width: 100%;
   font-size: 13px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-card);
   color: var(--text-primary);
-  min-height: 60px;
+  min-height: 100px;
   resize: vertical;
-  font-family: inherit;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  line-height: 1.5;
 }
 
 .contentBlockTextarea:focus {
@@ -516,12 +995,30 @@
   border-color: var(--accent);
 }
 
+.contentBlockTextarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .contentBlockFile {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+.contentBlockPreview {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  max-height: 200px;
+}
+
+.contentBlockImage {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
 }
 
 .contentBlockFileLink {
@@ -538,11 +1035,12 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  padding-top: 4px;
 }
 
 .addBlockBtn {
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -554,6 +1052,21 @@
 .addBlockBtn:hover {
   border-color: var(--accent);
   color: var(--accent);
+  background: rgba(108, 92, 231, 0.04);
+}
+
+.addBlockBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.uploadingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 8px 0;
 }
 
 /* === File Uploader === */
@@ -622,4 +1135,90 @@
 .saveBarActions {
   display: flex;
   gap: 8px;
+}
+
+/* ================================================================
+   FOCUS-VISIBLE for buttons & interactive elements
+   ================================================================ */
+
+.btnPrimary:focus-visible,
+.btnSecondary:focus-visible,
+.btnDanger:focus-visible,
+.btnIcon:focus-visible,
+.btnIconSm:focus-visible,
+.btnAddStep:focus-visible,
+.btnTemplate:focus-visible,
+.addBlockBtn:focus-visible,
+.addStepMenuItem:focus-visible,
+.templateCard:focus-visible,
+.typeSelectorItem:focus-visible,
+.tabBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editorTypeBadge:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.designerSelect:focus-visible,
+.durationInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ================================================================
+   REDUCED MOTION
+   ================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .backLink,
+  .tabBtn,
+  .formInput,
+  .formTextarea,
+  .btnPrimary,
+  .btnSecondary,
+  .btnDanger,
+  .btnIcon,
+  .btnIconSm,
+  .btnAddStep,
+  .btnTemplate,
+  .addBlockBtn,
+  .addStepMenuItem,
+  .templateCard,
+  .typeSelectorItem,
+  .contentBlock,
+  .contentBlockTextarea,
+  .editorTypeBadge,
+  .timelineItem,
+  .timelineDragHandle {
+    transition: none;
+  }
+
+  .designPageWide,
+  .timelineItemDropTarget {
+    animation: none;
+  }
+}
+
+/* ================================================================
+   RESPONSIVE ADJUSTMENTS
+   ================================================================ */
+
+@media (max-width: 900px) {
+  .guidedLayout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .timelineSidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 240px;
+  }
+
+  .editorMetaRow {
+    flex-direction: column;
+  }
 }

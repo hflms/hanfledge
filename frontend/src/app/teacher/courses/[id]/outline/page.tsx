@@ -974,6 +974,13 @@ export default function OutlinePage() {
                                                 <button
                                                     type="button"
                                                     className="btn btn-secondary"
+                                                    onClick={() => router.push(`/teacher/activities/${activity.id}/design`)}
+                                                >
+                                                    {activity.status === 'published' ? '查看设计' : '设计'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
                                                     disabled={activity.status === 'published' || publishingId === activity.id}
                                                     onClick={() => handlePublishActivity(activity.id)}
                                                 >

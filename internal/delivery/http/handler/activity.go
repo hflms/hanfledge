@@ -336,12 +336,13 @@ type SaveStepsRequest struct {
 
 // StepData 单个环节数据。
 type StepData struct {
-	ID            uint   `json:"id,omitempty"`
-	Title         string `json:"title" binding:"required"`
-	Description   string `json:"description,omitempty"`
-	SortOrder     int    `json:"sort_order"`
-	ContentBlocks string `json:"content_blocks,omitempty"` // JSON string
-	Duration      int    `json:"duration,omitempty"`
+	ID            uint           `json:"id,omitempty"`
+	Title         string         `json:"title" binding:"required"`
+	Description   string         `json:"description,omitempty"`
+	StepType      model.StepType `json:"step_type,omitempty"`
+	SortOrder     int            `json:"sort_order"`
+	ContentBlocks string         `json:"content_blocks,omitempty"` // JSON string
+	Duration      int            `json:"duration,omitempty"`
 }
 
 // SaveSteps 批量保存活动环节（全量替换策略）。
@@ -412,10 +413,15 @@ func (h *ActivityHandler) SaveSteps(c *gin.Context) {
 		if contentBlocks == "" {
 			contentBlocks = "[]"
 		}
+		stepType := s.StepType
+		if stepType == "" {
+			stepType = model.StepTypeLecture
+		}
 		step := model.ActivityStep{
 			ActivityID:    uint(activityID),
 			Title:         s.Title,
 			Description:   s.Description,
+			StepType:      stepType,
 			SortOrder:     i, // Enforce sequential ordering from array position
 			ContentBlocks: contentBlocks,
 			Duration:      s.Duration,

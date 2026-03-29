@@ -58,15 +58,6 @@ export default function PresentationRendererRefactored({
   const [slidesMarkdown, setSlidesMarkdown] = useState<string | null>(null);
   const [baseProgress, setBaseProgress] = useState(0);
 
-  let generationProgress = baseProgress;
-  if (phase === 'generating' && streamingContent) {
-    const partialMatch = streamingContent.match(/---/g);
-    if (partialMatch) {
-      const slideCount = partialMatch.length;
-      generationProgress = Math.max(baseProgress, Math.min(30 + slideCount * 10, 90));
-    }
-  }
-
   // WebSocket handling with progressive updates
   const { send, sending, thinkingStatus, streamingContent } = useAgentChannel(agentChannel, {
     onMessage: (content) => {
@@ -154,7 +145,7 @@ export default function PresentationRendererRefactored({
   }, [phase, streamingContent]);
 
   // Combined progress: max of thinking-based progress and streaming-based progress
-  const effectiveProgress = Math.max(generationProgress, streamingProgress);
+  const effectiveProgress = Math.max(baseProgress, streamingProgress);
 
   // Generate new presentation
   const handleNewPresentation = useCallback(() => {

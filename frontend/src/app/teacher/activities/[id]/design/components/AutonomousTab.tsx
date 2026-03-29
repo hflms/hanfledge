@@ -48,6 +48,7 @@ export default function AutonomousTab({
           value={designerId}
           onChange={(e) => onDesignerChange(e.target.value)}
           disabled={disabled}
+          name="designer-id"
         >
           <option value="">-- 选择设计者 --</option>
           {designers.map((d) => (
@@ -68,6 +69,7 @@ export default function AutonomousTab({
             value={deadline}
             onChange={(e) => onDeadlineChange(e.target.value)}
             disabled={disabled}
+            name="deadline"
           />
         </div>
 
@@ -81,13 +83,14 @@ export default function AutonomousTab({
             max={10}
             onChange={(e) => onMaxAttemptsChange(Number(e.target.value))}
             disabled={disabled}
+            name="max-attempts"
           />
         </div>
       </div>
 
       {/* Allow retry toggle */}
       <div className={styles.formGroup}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+        <label className={styles.checkboxLabel}>
           <input
             type="checkbox"
             checked={allowRetry}
