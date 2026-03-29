@@ -75,7 +75,7 @@ func TestTruncateStr(t *testing.T) {
 // -- SessionHandler Constructor Test --------------------------
 
 func TestNewSessionHandler(t *testing.T) {
-	h := NewSessionHandler(nil, nil, nil, nil, "http://localhost:3000", "debug")
+	h := NewSessionHandler(nil, nil, nil, nil, nil, "http://localhost:3000", "debug")
 	if h == nil {
 		t.Fatal("NewSessionHandler returned nil")
 	}
