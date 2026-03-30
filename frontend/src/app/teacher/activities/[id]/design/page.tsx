@@ -82,6 +82,7 @@ export default function ActivityDesignPage() {
           id: s.id,
           title: s.title,
           description: s.description,
+          step_type: s.step_type,
           sort_order: s.sort_order,
           content_blocks: s.content_blocks,
           duration: s.duration,
@@ -106,6 +107,17 @@ export default function ActivityDesignPage() {
 
   useEffect(() => { fetchActivity(); }, [fetchActivity]);
   useEffect(() => { fetchDesigners(); }, [fetchDesigners]);
+
+  // -- Warn before leaving with unsaved changes -------------------
+
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
 
   // -- Handlers ----------------------------------------------------
 
@@ -189,7 +201,7 @@ export default function ActivityDesignPage() {
 
   if (!activity) {
     return (
-      <div className="fade-in">
+      <div className={`fade-in ${styles.designPageWide}`}>
         <p>活动不存在或无权访问</p>
       </div>
     );
@@ -198,7 +210,7 @@ export default function ActivityDesignPage() {
   const isPublished = activity.status === 'published';
 
   return (
-    <div className="fade-in">
+    <div className={`fade-in ${styles.designPageWide}`}>
       {/* Back link */}
       <a
         className={styles.backLink}
@@ -216,12 +228,14 @@ export default function ActivityDesignPage() {
         <div className={styles.headerLeft}>
           <h1 className={styles.pageTitle}>
             <input
-              className={styles.formInput}
+              className={`${styles.formInput} ${styles.titleInput}`}
               value={title}
               onChange={(e) => { setTitle(e.target.value); markDirty(); }}
-              placeholder="活动标题"
+              placeholder="活动标题…"
               disabled={isPublished}
-              style={{ fontSize: '22px', fontWeight: 700, border: 'none', padding: 0, background: 'transparent' }}
+              name="activity-title"
+              aria-label="活动标题"
+              autoComplete="off"
             />
           </h1>
           <p className={styles.pageSubtitle}>
@@ -243,8 +257,9 @@ export default function ActivityDesignPage() {
           className={styles.formTextarea}
           value={description}
           onChange={(e) => { setDescription(e.target.value); markDirty(); }}
-          placeholder="简要描述活动目标和要求..."
+          placeholder="简要描述活动目标和要求…"
           disabled={isPublished}
+          name="activity-description"
           rows={3}
         />
       </div>
@@ -284,6 +299,7 @@ export default function ActivityDesignPage() {
       ) : (
         <GuidedStepsTab
           activityId={activityId}
+          activityTitle={title}
           steps={steps}
           disabled={isPublished}
           onStepsChange={(newSteps) => { setSteps(newSteps); markDirty(); }}
@@ -293,7 +309,7 @@ export default function ActivityDesignPage() {
       {/* Save Bar */}
       {!isPublished && (
         <div className={styles.saveBar}>
-          <span className={styles.saveBarStatus}>
+          <span className={styles.saveBarStatus} aria-live="polite">
             {dirty ? '有未保存的更改' : '所有更改已保存'}
           </span>
           <div className={styles.saveBarActions}>
@@ -302,14 +318,14 @@ export default function ActivityDesignPage() {
               onClick={handleSave}
               disabled={saving || !dirty}
             >
-              {saving ? '保存中...' : '保存草稿'}
+              {saving ? '保存中\u2026' : '保存草稿'}
             </button>
             <button
               className={styles.btnPrimary}
               onClick={handlePublish}
               disabled={publishing}
             >
-              {publishing ? '发布中...' : '发布活动'}
+              {publishing ? '发布中\u2026' : '发布活动'}
             </button>
           </div>
         </div>

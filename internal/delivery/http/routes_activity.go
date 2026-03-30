@@ -27,10 +27,11 @@ func registerActivityRoutes(
 	{
 		activities.POST("", activityHandler.CreateActivity)
 		activities.GET("", activityHandler.ListActivities)
-		activities.GET("/:id", activityHandler.GetActivity)         // Activity detail
-		activities.PUT("/:id", activityHandler.UpdateActivity)      // Update draft activity
-		activities.PUT("/:id/steps", activityHandler.SaveSteps)     // Batch save steps
-		activities.POST("/:id/upload", activityHandler.UploadAsset) // Upload activity asset
+		activities.GET("/:id", activityHandler.GetActivity)                       // Activity detail
+		activities.PUT("/:id", activityHandler.UpdateActivity)                    // Update draft activity
+		activities.PUT("/:id/steps", activityHandler.SaveSteps)                   // Batch save steps
+		activities.POST("/:id/upload", activityHandler.UploadAsset)               // Upload activity asset
+		activities.POST("/:id/steps/suggest", activityHandler.SuggestStepContent) // AI suggest step content
 		activities.POST("/:id/publish", activityHandler.PublishActivity)
 		activities.POST("/:id/preview", activityHandler.PreviewActivity)      // Sandbox preview
 		activities.GET("/:id/sessions", dashboardHandler.GetActivitySessions) // Phase 5

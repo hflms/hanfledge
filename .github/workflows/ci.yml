@@ -55,17 +55,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
-      
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          run_install: false
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
       
       - name: Run linter
-        run: pnpm run lint
+        run: pnpm lint
       
       - name: Run tests
-        run: pnpm run test:run
+        run: pnpm test:run
       
       - name: Build
-        run: pnpm run build
+        run: pnpm build

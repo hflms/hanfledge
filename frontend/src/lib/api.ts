@@ -510,6 +510,8 @@ export interface LearningActivity {
 
 export type ContentBlockType = 'markdown' | 'file' | 'video' | 'image';
 
+export type StepType = 'lecture' | 'discussion' | 'quiz' | 'practice' | 'reading' | 'group_work' | 'reflection' | 'ai_tutoring';
+
 export interface ContentBlock {
   type: ContentBlockType;
   content: string;
@@ -523,6 +525,7 @@ export interface ActivityStep {
   activity_id: number;
   title: string;
   description: string;
+  step_type: StepType;
   sort_order: number;
   content_blocks: string; // JSON string of ContentBlock[]
   duration: number;
@@ -762,6 +765,7 @@ export interface SaveStepData {
   id?: number;
   title: string;
   description?: string;
+  step_type?: StepType;
   sort_order: number;
   content_blocks?: string;
   duration?: number;
@@ -774,6 +778,38 @@ export async function saveActivitySteps(
   return apiFetch<ActivityStep[]>(`/activities/${activityId}/steps`, {
     method: 'PUT',
     body: JSON.stringify({ steps }),
+  });
+}
+
+// ── AI Step Suggestion ──────────────────────────────────────
+
+export interface SuggestStepRequest {
+  step_type: StepType;
+  step_title?: string;
+  step_description?: string;
+  activity_title?: string;
+  knowledge_points?: string[];
+}
+
+export interface SuggestStepResponseBlock {
+  type: string;
+  content: string;
+}
+
+export interface SuggestStepResult {
+  title: string;
+  description: string;
+  content_blocks: SuggestStepResponseBlock[];
+  duration: number;
+}
+
+export async function suggestStepContent(
+  activityId: number,
+  params: SuggestStepRequest,
+): Promise<{ suggestion: SuggestStepResult }> {
+  return apiFetch<{ suggestion: SuggestStepResult }>(`/activities/${activityId}/steps/suggest`, {
+    method: 'POST',
+    body: JSON.stringify(params),
   });
 }
 

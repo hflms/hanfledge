@@ -87,14 +87,29 @@ const (
 	ContentBlockImage    ContentBlockType = "image"
 )
 
+// StepType 教学环节类型枚举（参考 Moodle 活动模块分类）。
+type StepType string
+
+const (
+	StepTypeLecture    StepType = "lecture"     // 讲授
+	StepTypeDiscussion StepType = "discussion"  // 讨论
+	StepTypeQuiz       StepType = "quiz"        // 测验
+	StepTypePractice   StepType = "practice"    // 练习
+	StepTypeReading    StepType = "reading"     // 阅读
+	StepTypeGroupWork  StepType = "group_work"  // 小组协作
+	StepTypeReflection StepType = "reflection"  // 反思总结
+	StepTypeAITutoring StepType = "ai_tutoring" // AI辅导
+)
+
 // ActivityStep 学习活动环节表。
-// 每个环节包含标题、描述和一组有序的内容块。
+// 每个环节包含标题、描述、类型和一组有序的内容块。
 type ActivityStep struct {
-	ID          uint   `gorm:"primaryKey" json:"id"`
-	ActivityID  uint   `gorm:"not null;index" json:"activity_id"`
-	Title       string `gorm:"size:200;not null" json:"title"`
-	Description string `gorm:"size:2000" json:"description,omitempty"`
-	SortOrder   int    `gorm:"not null;default:0" json:"sort_order"`
+	ID          uint     `gorm:"primaryKey" json:"id"`
+	ActivityID  uint     `gorm:"not null;index" json:"activity_id"`
+	Title       string   `gorm:"size:200;not null" json:"title"`
+	Description string   `gorm:"size:2000" json:"description,omitempty"`
+	StepType    StepType `gorm:"size:50;default:lecture" json:"step_type"`
+	SortOrder   int      `gorm:"not null;default:0" json:"sort_order"`
 	// ContentBlocks 存储环节的展示内容，为 JSON 数组。
 	// 每个元素: { "type": "markdown|file|video|image", "content": "...", "file_name": "...", "file_url": "...", "file_size": 0 }
 	ContentBlocks string `gorm:"type:jsonb;default:'[]'" json:"content_blocks"`
