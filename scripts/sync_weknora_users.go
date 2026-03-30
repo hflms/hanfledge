@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -72,7 +74,7 @@ func main() {
 			log.Printf("failed to hash password for %s: %v", user.Phone, hashErr)
 			continue
 		}
-		
+
 		wkUser := WeKnoraUser{
 			ID:                  uuid.New().String(),
 			Username:            user.Phone, // Use phone as username
@@ -88,8 +90,8 @@ func main() {
 		if err == nil {
 			// Update existing user
 			if err := wkDB.WithContext(ctx).Model(&existing).Updates(map[string]interface{}{
-				"email":                   wkUser.Email,
-				"password_hash":           wkUser.PasswordHash,
+				"email":                  wkUser.Email,
+				"password_hash":          wkUser.PasswordHash,
 				"can_access_all_tenants": wkUser.CanAccessAllTenants,
 			}).Error; err != nil {
 				log.Printf("failed to update user %s: %v", user.Phone, err)
