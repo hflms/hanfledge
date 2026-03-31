@@ -16,6 +16,8 @@ import {
     type ActivitySessionStats,
     type SkillEffectivenessResponse,
     type PaginatedResponse,
+    type LiveMonitorResponse,
+    type ActivityLiveDetailResponse,
 } from '@/lib/api';
 import { useApi } from '@/lib/useApi';
 import styles from './page.module.css';
@@ -43,6 +45,9 @@ export default function TeacherDashboardPage() {
     const closeActivityModal = useCallback(() => setSelectedActivity(null), []);
     const activityModalRef = useModalA11y(!!selectedActivity, closeActivityModal);
     const [exporting, setExporting] = useState<string | null>(null);
+    const [expandedLiveActivityId, setExpandedLiveActivityId] = useState<number | null>(null);
+    const [liveDetail, setLiveDetail] = useState<ActivityLiveDetailResponse | null>(null);
+    const [liveDetailLoading, setLiveDetailLoading] = useState(false);
 
     // Register built-in dashboard widget plugins
     useBuiltinDashboardPlugins();
@@ -63,6 +68,33 @@ export default function TeacherDashboardPage() {
     const { data: skillEffectiveness } = useApi<SkillEffectivenessResponse>(
         effectiveCourseId ? `/dashboard/skill-effectiveness?course_id=${effectiveCourseId}` : null
     );
+
+    // Live monitor: poll every 10 seconds
+    const { data: liveMonitor } = useApi<LiveMonitorResponse>(
+        effectiveCourseId ? `/dashboard/live-monitor?course_id=${effectiveCourseId}` : null,
+        { refreshInterval: 10000 }
+    );
+
+    // Handle expanding a live activity card to show per-step detail
+    const handleLiveActivityClick = useCallback(async (activityId: number) => {
+        if (expandedLiveActivityId === activityId) {
+            setExpandedLiveActivityId(null);
+            setLiveDetail(null);
+            return;
+        }
+        setExpandedLiveActivityId(activityId);
+        setLiveDetailLoading(true);
+        try {
+            const { getActivityLiveDetail } = await import('@/lib/api');
+            const detail = await getActivityLiveDetail(activityId);
+            setLiveDetail(detail);
+        } catch (err) {
+            console.error('Failed to load live detail', err);
+            setLiveDetail(null);
+        } finally {
+            setLiveDetailLoading(false);
+        }
+    }, [expandedLiveActivityId]);
 
     // Handle activity click to show session details
     const handleActivityClick = async (activityId: number) => {
@@ -238,6 +270,220 @@ export default function TeacherDashboardPage() {
                     courseTitle: courses.find(c => c.id === effectiveCourseId)?.title || '',
                 }}
             />
+
+            {/* Live Monitor Section */}
+            {liveMonitor && liveMonitor.activities.length > 0 && (
+                <div className={styles.liveMonitorSection}>
+                    <div className={styles.liveMonitorHeader}>
+                        <h2 className={styles.sectionTitle}>实时监控</h2>
+                        <span className={styles.liveMonitorTimestamp}>
+                            更新于 {new Date(liveMonitor.timestamp).toLocaleTimeString('zh-CN')}
+                        </span>
+                    </div>
+                    <div className={styles.liveActivityGrid}>
+                        {liveMonitor.activities.map(act => {
+                            const isExpanded = expandedLiveActivityId === act.activity_id;
+
+                            if (isExpanded) {
+                                return (
+                                    <div key={act.activity_id} className={styles.liveActivityCardExpanded}>
+                                        <div className={styles.liveCardTitle}>
+                                            {act.active_students > 0 ? (
+                                                <span className={styles.livePulse} />
+                                            ) : (
+                                                <span className={styles.livePulseNone} />
+                                            )}
+                                            {act.activity_title}
+                                            <button
+                                                className={styles.liveDetailToggle}
+                                                onClick={() => handleLiveActivityClick(act.activity_id)}
+                                            >
+                                                收起
+                                            </button>
+                                        </div>
+
+                                        <div className={styles.liveCardStats}>
+                                            <div className={styles.liveCardStat}>
+                                                <div className={styles.liveCardStatValue}>{act.active_students}</div>
+                                                学习中
+                                            </div>
+                                            <div className={styles.liveCardStat}>
+                                                <div className={styles.liveCardStatValue}>{act.completed_students}</div>
+                                                已完成
+                                            </div>
+                                            <div className={styles.liveCardStat}>
+                                                <div className={styles.liveCardStatValue}>{Math.round(act.avg_mastery * 100)}%</div>
+                                                平均掌握度
+                                            </div>
+                                            <div className={styles.liveCardStat}>
+                                                <div className={styles.liveCardStatValue}>{Math.round(act.avg_duration_min)}</div>
+                                                平均时长(分)
+                                            </div>
+                                        </div>
+
+                                        {/* Per-step detail */}
+                                        <div className={styles.liveDetailSection}>
+                                            {liveDetailLoading ? (
+                                                <LoadingSpinner size="small" />
+                                            ) : liveDetail && liveDetail.activity_id === act.activity_id ? (
+                                                <>
+                                                    {/* Step progress bar */}
+                                                    <div className={styles.liveStepBar}>
+                                                        {liveDetail.steps.map(step => (
+                                                            <div
+                                                                key={step.kp_id}
+                                                                className={`${styles.liveStepBarSegment} ${
+                                                                    step.students.length > 0 ? styles.liveStepBarSegmentHasStudents : ''
+                                                                }`}
+                                                            />
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Step columns */}
+                                                    <div className={styles.liveStepColumns}>
+                                                        {liveDetail.steps.map(step => (
+                                                            <div key={step.kp_id} className={styles.liveStepColumn}>
+                                                                <div className={styles.liveStepHeader}>
+                                                                    <span>环节 {step.step_index + 1}: {step.kp_title}</span>
+                                                                    {step.students.length > 0 && (
+                                                                        <span className={styles.liveStepCount}>
+                                                                            {step.students.length} 人
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {step.students.length > 0 ? (
+                                                                    <div className={styles.studentChipList}>
+                                                                        {step.students.map(stu => {
+                                                                            const chipClass = stu.status === 'active'
+                                                                                ? styles.studentChipActive
+                                                                                : stu.status === 'completed'
+                                                                                    ? styles.studentChipCompleted
+                                                                                    : styles.studentChip;
+                                                                            const masteryPct = Math.round(stu.mastery_score * 100);
+                                                                            const masteryColor = masteryPct >= 80
+                                                                                ? styles.masteryHigh
+                                                                                : masteryPct >= 50
+                                                                                    ? styles.masteryMedium
+                                                                                    : styles.masteryLow;
+                                                                            return (
+                                                                                <span
+                                                                                    key={stu.session_id}
+                                                                                    className={chipClass}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        router.push(`/teacher/dashboard/session/${stu.session_id}`);
+                                                                                    }}
+                                                                                    title={`${stu.student_name} · ${Math.round(stu.duration_min)}分钟 · ${stu.interaction_count}次互动`}
+                                                                                >
+                                                                                    {stu.student_name}
+                                                                                    <span className={`${styles.studentChipMastery} ${masteryColor}`}>
+                                                                                        {masteryPct}%
+                                                                                    </span>
+                                                                                </span>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className={styles.liveEmptyText}>暂无学生</div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Alerts */}
+                                                    {liveDetail.alerts.length > 0 && (
+                                                        <div className={styles.alertSection}>
+                                                            <div className={styles.alertSectionTitle}>
+                                                                预警 ({liveDetail.alerts.length})
+                                                            </div>
+                                                            <div className={styles.alertList}>
+                                                                {liveDetail.alerts.map((alert, idx) => {
+                                                                    const alertCardClass =
+                                                                        alert.alert_type === 'idle' ? styles.alertCardIdle
+                                                                        : alert.alert_type === 'stuck' ? styles.alertCardStuck
+                                                                        : styles.alertCardStruggling;
+                                                                    const badgeClass =
+                                                                        alert.alert_type === 'idle' ? styles.alertBadgeIdle
+                                                                        : alert.alert_type === 'stuck' ? styles.alertBadgeStuck
+                                                                        : styles.alertBadgeStruggling;
+                                                                    const badgeLabel =
+                                                                        alert.alert_type === 'idle' ? '空闲'
+                                                                        : alert.alert_type === 'stuck' ? '停滞'
+                                                                        : '困难';
+                                                                    return (
+                                                                        <div key={`${alert.session_id}-${alert.alert_type}-${idx}`} className={alertCardClass}>
+                                                                            <span className={badgeClass}>{badgeLabel}</span>
+                                                                            <span className={styles.alertName}>{alert.student_name}</span>
+                                                                            <span className={styles.alertMessage}>{alert.message}</span>
+                                                                            <button
+                                                                                className={styles.alertAction}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    router.push(`/teacher/dashboard/session/${alert.session_id}`);
+                                                                                }}
+                                                                            >
+                                                                                查看
+                                                                            </button>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div
+                                    key={act.activity_id}
+                                    className={styles.liveActivityCard}
+                                    onClick={() => handleLiveActivityClick(act.activity_id)}
+                                >
+                                    <div className={styles.liveCardTitle}>
+                                        {act.active_students > 0 ? (
+                                            <span className={styles.livePulse} />
+                                        ) : (
+                                            <span className={styles.livePulseNone} />
+                                        )}
+                                        {act.activity_title}
+                                    </div>
+                                    <div className={styles.liveCardStats}>
+                                        <div className={styles.liveCardStat}>
+                                            <div className={styles.liveCardStatValue}>{act.active_students}</div>
+                                            学习中
+                                        </div>
+                                        <div className={styles.liveCardStat}>
+                                            <div className={styles.liveCardStatValue}>{act.completed_students}</div>
+                                            已完成
+                                        </div>
+                                        <div className={styles.liveCardStat}>
+                                            <div className={styles.liveCardStatValue}>{Math.round(act.avg_mastery * 100)}%</div>
+                                            平均掌握度
+                                        </div>
+                                        <div className={styles.liveCardStat}>
+                                            <div className={styles.liveCardStatValue}>{Math.round(act.avg_duration_min)}</div>
+                                            平均时长(分)
+                                        </div>
+                                    </div>
+                                    <button
+                                        className={styles.liveDetailToggle}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleLiveActivityClick(act.activity_id);
+                                        }}
+                                    >
+                                        展开详情
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Activity Table */}
             <h2 className={styles.sectionTitle}>学习活动统计</h2>

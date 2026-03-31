@@ -105,7 +105,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	}
 
 	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, tokenMgr, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
-	dashboardHandler := handler.NewDashboardHandler(courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)
+	dashboardHandler := handler.NewDashboardHandler(deps.DB, courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
 	metricsHandler := handler.NewMetricsHandler(deps.RedisCache)
 	analyticsHandler := handler.NewAnalyticsHandler(deps.DB, deps.PIIRedactor)

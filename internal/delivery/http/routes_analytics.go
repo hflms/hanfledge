@@ -25,6 +25,8 @@ func registerAnalyticsRoutes(
 	{
 		dashboard.GET("/knowledge-radar", dashboardHandler.GetKnowledgeRadar)
 		dashboard.GET("/skill-effectiveness", analyticsHandler.GetSkillEffectiveness) // Phase G
+		dashboard.GET("/live-monitor", dashboardHandler.GetLiveMonitor)               // 实时监控概览
+		dashboard.GET("/activities/:id/live", dashboardHandler.GetActivityLiveDetail) // 活动实时详情
 	}
 
 	// Student Mastery (TEACHER) — Phase 5

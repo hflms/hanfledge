@@ -692,6 +692,74 @@ export async function getSelfMastery(courseId?: number): Promise<StudentMasteryD
   return apiFetch<StudentMasteryData>(`/student/mastery${qs ? '?' + qs : ''}`);
 }
 
+// ── Live Monitor API — Real-time Student Monitoring ─────────
+
+export interface LiveActivitySummary {
+  activity_id: number;
+  activity_title: string;
+  activity_status: string;
+  total_students: number;
+  active_students: number;
+  completed_students: number;
+  avg_mastery: number;
+  avg_duration_min: number;
+}
+
+export interface LiveMonitorResponse {
+  course_id: number;
+  timestamp: string;
+  activities: LiveActivitySummary[];
+}
+
+export interface LiveStudentInfo {
+  student_id: number;
+  student_name: string;
+  session_id: number;
+  status: string;
+  duration_min: number;
+  mastery_score: number;
+  interaction_count: number;
+  last_active_at: string;
+  scaffold_level: string;
+}
+
+export interface LiveStepInfo {
+  kp_id: number;
+  kp_title: string;
+  step_index: number;
+  students: LiveStudentInfo[];
+}
+
+export interface StudentAlert {
+  student_id: number;
+  student_name: string;
+  session_id: number;
+  alert_type: 'idle' | 'stuck' | 'struggling';
+  message: string;
+}
+
+export interface KPSequenceItem {
+  kp_id: number;
+  kp_title: string;
+}
+
+export interface ActivityLiveDetailResponse {
+  activity_id: number;
+  title: string;
+  kp_sequence: KPSequenceItem[];
+  steps: LiveStepInfo[];
+  alerts: StudentAlert[];
+  timestamp: string;
+}
+
+export async function getLiveMonitor(courseId: number): Promise<LiveMonitorResponse> {
+  return apiFetch<LiveMonitorResponse>(`/dashboard/live-monitor?course_id=${courseId}`);
+}
+
+export async function getActivityLiveDetail(activityId: number): Promise<ActivityLiveDetailResponse> {
+  return apiFetch<ActivityLiveDetailResponse>(`/dashboard/activities/${activityId}/live`);
+}
+
 // ── Teacher Activity API ────────────────────────────────────
 
 export async function listTeacherActivities(courseId?: number, pg?: PaginationParams): Promise<PaginatedResponse<LearningActivity>> {

@@ -18,7 +18,7 @@ import (
 // -- DashboardHandler Constructor Test ------------------------
 
 func TestNewDashboardHandler(t *testing.T) {
-	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil)
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil)
 	if h == nil {
 		t.Fatal("NewDashboardHandler returned nil")
 	}
@@ -686,4 +686,201 @@ func TestGetErrorNotebook_EmptyNotebook(t *testing.T) {
 	if resp.TotalCount != 0 {
 		t.Errorf("TotalCount = %d, want 0", resp.TotalCount)
 	}
+}
+
+// -- LiveMonitor Response Types Tests ----------------------------
+
+func TestLiveActivitySummaryDefaults(t *testing.T) {
+	s := LiveActivitySummary{}
+	if s.ActivityID != 0 {
+		t.Errorf("ActivityID = %d, want 0", s.ActivityID)
+	}
+	if s.TotalStudents != 0 {
+		t.Errorf("TotalStudents = %d, want 0", s.TotalStudents)
+	}
+	if s.ActiveStudents != 0 {
+		t.Errorf("ActiveStudents = %d, want 0", s.ActiveStudents)
+	}
+}
+
+func TestActivityLiveDetailResponseDefaults(t *testing.T) {
+	r := ActivityLiveDetailResponse{}
+	if r.ActivityID != 0 {
+		t.Errorf("ActivityID = %d, want 0", r.ActivityID)
+	}
+	if r.Steps != nil {
+		t.Error("Steps should be nil by default")
+	}
+	if r.Alerts != nil {
+		t.Error("Alerts should be nil by default")
+	}
+}
+
+func TestStudentAlertFields(t *testing.T) {
+	alert := StudentAlert{
+		StudentID:   1,
+		StudentName: "张三",
+		SessionID:   10,
+		AlertType:   "stuck",
+		Message:     "在当前环节停留超过 15 分钟且互动较少",
+	}
+	if alert.AlertType != "stuck" {
+		t.Errorf("AlertType = %q, want 'stuck'", alert.AlertType)
+	}
+	if alert.StudentName != "张三" {
+		t.Errorf("StudentName = %q, want '张三'", alert.StudentName)
+	}
+}
+
+// -- GetLiveMonitor HTTP Tests --------------------------------
+
+func TestGetLiveMonitor_Success(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
+	student := seedUser(t, db, "13800000002", "pass", "李同学", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "物理学")
+	ch := seedChapter(t, db, course.ID, "力学", 1)
+	kp := seedKP(t, db, ch.ID, "牛顿第二定律")
+	activity := seedActivity(t, db, teacher.ID, course.ID, "课堂练习1")
+
+	// Publish the activity
+	db.Model(&activity).Update("status", "published")
+
+	seedSession(t, db, student.ID, activity.ID, kp.ID, model.SessionStatusActive)
+
+	h := newTestDashboardHandler(db)
+	w, c := newTestContextWithQuery(http.MethodGet,
+		fmt.Sprintf("/api/v1/dashboard/live-monitor?course_id=%d", course.ID),
+		teacher.ID)
+
+	h.GetLiveMonitor(c)
+
+	assertStatus(t, w, http.StatusOK)
+
+	var resp LiveMonitorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp.Activities) != 1 {
+		t.Fatalf("Activities count = %d, want 1", len(resp.Activities))
+	}
+	if resp.Activities[0].ActiveStudents != 1 {
+		t.Errorf("ActiveStudents = %d, want 1", resp.Activities[0].ActiveStudents)
+	}
+	if resp.Activities[0].TotalStudents != 1 {
+		t.Errorf("TotalStudents = %d, want 1", resp.Activities[0].TotalStudents)
+	}
+}
+
+func TestGetLiveMonitor_MissingCourseID(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
+	h := newTestDashboardHandler(db)
+
+	w, c := newTestContextWithQuery(http.MethodGet,
+		"/api/v1/dashboard/live-monitor", teacher.ID)
+
+	h.GetLiveMonitor(c)
+
+	assertStatus(t, w, http.StatusBadRequest)
+	assertBodyContains(t, w, "course_id 参数必填")
+}
+
+func TestGetLiveMonitor_Forbidden(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
+	other := seedUser(t, db, "13800000002", "pass", "赵老师", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "物理学")
+	h := newTestDashboardHandler(db)
+
+	w, c := newTestContextWithQuery(http.MethodGet,
+		fmt.Sprintf("/api/v1/dashboard/live-monitor?course_id=%d", course.ID),
+		other.ID)
+
+	h.GetLiveMonitor(c)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+// -- GetActivityLiveDetail HTTP Tests -------------------------
+
+func TestGetActivityLiveDetail_Success(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
+	student1 := seedUser(t, db, "13800000002", "pass", "李同学", model.UserStatusActive)
+	student2 := seedUser(t, db, "13800000003", "pass", "王同学", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "物理学")
+	ch := seedChapter(t, db, course.ID, "力学", 1)
+	kp1 := seedKP(t, db, ch.ID, "牛顿第一定律")
+	kp2 := seedKP(t, db, ch.ID, "牛顿第二定律")
+	activity := seedActivity(t, db, teacher.ID, course.ID, "课堂练习1")
+
+	// Set KP IDs on activity (GORM field KPIDS -> column kp_id_s via naming strategy)
+	kpJSON := fmt.Sprintf("[%d,%d]", kp1.ID, kp2.ID)
+	if err := db.Model(&model.LearningActivity{}).Where("id = ?", activity.ID).
+		UpdateColumn("kp_id_s", kpJSON).Error; err != nil {
+		t.Fatalf("failed to update kpids: %v", err)
+	}
+
+	// Two students on different steps
+	seedSession(t, db, student1.ID, activity.ID, kp1.ID, model.SessionStatusActive)
+	seedSession(t, db, student2.ID, activity.ID, kp2.ID, model.SessionStatusActive)
+
+	h := newTestDashboardHandler(db)
+	w, c := newTestContextWithParams(http.MethodGet,
+		fmt.Sprintf("/api/v1/dashboard/activities/%d/live", activity.ID), "",
+		teacher.ID, gin.Params{{Key: "id", Value: fmt.Sprintf("%d", activity.ID)}})
+
+	h.GetActivityLiveDetail(c)
+
+	assertStatus(t, w, http.StatusOK)
+
+	var resp ActivityLiveDetailResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp.KPSequence) != 2 {
+		t.Fatalf("KPSequence count = %d, want 2", len(resp.KPSequence))
+	}
+	if len(resp.Steps) != 2 {
+		t.Fatalf("Steps count = %d, want 2", len(resp.Steps))
+	}
+	// Student1 should be on step 0 (kp1), student2 on step 1 (kp2)
+	if len(resp.Steps[0].Students) != 1 {
+		t.Errorf("Step 0 students = %d, want 1", len(resp.Steps[0].Students))
+	}
+	if len(resp.Steps[1].Students) != 1 {
+		t.Errorf("Step 1 students = %d, want 1", len(resp.Steps[1].Students))
+	}
+}
+
+func TestGetActivityLiveDetail_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
+	h := newTestDashboardHandler(db)
+
+	w, c := newTestContextWithParams(http.MethodGet,
+		"/api/v1/dashboard/activities/999/live", "",
+		teacher.ID, gin.Params{{Key: "id", Value: "999"}})
+
+	h.GetActivityLiveDetail(c)
+
+	assertStatus(t, w, http.StatusNotFound)
+}
+
+func TestGetActivityLiveDetail_Forbidden(t *testing.T) {
+	db := setupTestDB(t)
+	teacher := seedUser(t, db, "13800000001", "pass", "王老师", model.UserStatusActive)
+	other := seedUser(t, db, "13800000002", "pass", "赵老师", model.UserStatusActive)
+	course := seedCourse(t, db, teacher.ID, "物理学")
+	activity := seedActivity(t, db, teacher.ID, course.ID, "课堂练习1")
+
+	h := newTestDashboardHandler(db)
+	w, c := newTestContextWithParams(http.MethodGet,
+		fmt.Sprintf("/api/v1/dashboard/activities/%d/live", activity.ID), "",
+		other.ID, gin.Params{{Key: "id", Value: fmt.Sprintf("%d", activity.ID)}})
+
+	h.GetActivityLiveDetail(c)
+
+	assertStatus(t, w, http.StatusForbidden)
 }

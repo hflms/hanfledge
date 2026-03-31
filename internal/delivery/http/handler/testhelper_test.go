@@ -259,9 +259,10 @@ func assertCSVResponse(t *testing.T, w *httptest.ResponseRecorder) {
 }
 
 // newTestDashboardHandler creates a DashboardHandler backed by the given gorm.DB,
-// wrapping it with all 6 repository implementations needed by the constructor.
+// wrapping it with all repository implementations needed by the constructor.
 func newTestDashboardHandler(db *gorm.DB) *DashboardHandler {
 	return NewDashboardHandler(
+		db,
 		pgRepo.NewCourseRepo(db),
 		pgRepo.NewUserRepo(db),
 		pgRepo.NewKnowledgePointRepo(db),
