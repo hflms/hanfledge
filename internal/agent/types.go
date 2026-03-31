@@ -5,6 +5,7 @@ import (
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/weknora"
 )
 
 // ============================
@@ -333,6 +334,9 @@ type TurnContext struct {
 
 	// ModelRouter 任务上下文 (§8.3.3)
 	LLMTaskContext *llm.TaskContext
+
+	// User-specific WeKnora Client (for per-user knowledge base retrieval)
+	WeKnoraClient *weknora.Client
 
 	// 流式输出回调
 	OnThinking     func(status string)

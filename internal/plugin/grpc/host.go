@@ -8,6 +8,8 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -26,6 +28,7 @@ type PluginProcess struct {
 	Port      int
 	StartedAt time.Time
 	Healthy   bool
+	cmd       *exec.Cmd
 }
 
 // HostManager manages gRPC plugin processes on the host side.
@@ -56,17 +59,33 @@ func (h *HostManager) Start(ctx context.Context, pluginID string, binaryPath str
 	port := h.nextPort
 	h.nextPort++
 
+	cmd := exec.Command(binaryPath)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", port))
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start plugin process: %w", err)
+	}
+
 	proc := &PluginProcess{
 		ID:        pluginID,
 		Command:   binaryPath,
 		Port:      port,
 		StartedAt: time.Now(),
 		Healthy:   false,
+		cmd:       cmd,
 	}
 
-	// TODO: Actually launch the subprocess with exec.Command
-	// and establish gRPC connection
 	slogGRPC.Info("starting plugin", "plugin", pluginID, "port", port, "binary", binaryPath)
+
+	go func() {
+		err := cmd.Wait()
+		if err != nil {
+			slogGRPC.Error("plugin process exited with error", "plugin", pluginID, "error", err)
+		} else {
+			slogGRPC.Info("plugin process exited normally", "plugin", pluginID)
+		}
+		h.updateHealth(pluginID, false)
+	}()
 
 	proc.Healthy = true
 	h.processes[pluginID] = proc
@@ -84,8 +103,29 @@ func (h *HostManager) Stop(ctx context.Context, pluginID string) error {
 		return fmt.Errorf("plugin %s is not running", pluginID)
 	}
 
-	// TODO: Send graceful shutdown signal, then kill after timeout
 	slogGRPC.Info("stopping plugin", "plugin", pluginID, "port", proc.Port)
+
+	if proc.cmd != nil && proc.cmd.Process != nil {
+		err := proc.cmd.Process.Signal(os.Interrupt)
+		if err != nil {
+			slogGRPC.Warn("failed to send interrupt signal, killing immediately", "plugin", pluginID, "error", err)
+			proc.cmd.Process.Kill()
+		} else {
+			// Instead of Wait, since we are already waiting in a goroutine in Start(),
+			// we can't call Wait() again.
+			// We can use a simpler approach: check if process is alive periodically
+			// or just use time.AfterFunc to kill it. Wait() will clean up anyway.
+			timer := time.AfterFunc(5*time.Second, func() {
+				slogGRPC.Warn("plugin process did not exit gracefully, killing", "plugin", pluginID)
+				proc.cmd.Process.Kill()
+			})
+
+			// If we wanted to wait synchronously in Stop, we'd need a channel in proc.
+			// The original code was fine with just deleting it from map and returning.
+			// time.AfterFunc is sufficient to ensure it dies.
+			_ = timer
+		}
+	}
 
 	delete(h.processes, pluginID)
 	return nil
