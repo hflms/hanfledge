@@ -32,6 +32,9 @@ func TestNewActivityHandler(t *testing.T) {
 	if h.Storage != nil {
 		t.Error("expected nil Storage")
 	}
+	if h.LLMProvider != nil {
+		t.Error("expected nil LLMProvider")
+	}
 }
 
 // -- CreateActivityRequest Fields Test ------------------------

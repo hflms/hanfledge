@@ -319,6 +319,52 @@ type RecommendMount struct {
 	Reason        string              `json:"reason"`
 }
 
+type simpleKP struct {
+	ID    uint   `json:"id"`
+	Title string `json:"title"`
+}
+
+type simpleSkill struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Desc string `json:"description"`
+}
+
+func buildSkillRecommendationPrompt(courseTitle string, kps []simpleKP, available []simpleSkill) string {
+	kpJSON, _ := json.Marshal(kps)
+	skillJSON, _ := json.Marshal(available)
+
+	return fmt.Sprintf(`You are an AI assistant helping a teacher design a course.
+Here are the Knowledge Points (KPs) for the course "%s":
+%s
+
+Here are the available pedagogical skills:
+%s
+
+Please recommend up to 10 skill mounts for these knowledge points. Focus on key points.
+Output ONLY a valid JSON array of objects with the following keys:
+- "kp_id": integer
+- "skill_id": string
+- "scaffold_level": string (one of "high", "medium", "low")
+- "reason": string (why this skill fits this KP)
+
+JSON output:`, courseTitle, string(kpJSON), string(skillJSON))
+}
+
+func parseSkillRecommendations(rawJSON string) ([]RecommendMount, error) {
+	start := strings.Index(rawJSON, "[")
+	end := strings.LastIndex(rawJSON, "]")
+	if start != -1 && end != -1 && end > start {
+		rawJSON = rawJSON[start : end+1]
+	}
+
+	var mounts []RecommendMount
+	if err := json.Unmarshal([]byte(rawJSON), &mounts); err != nil {
+		return nil, err
+	}
+	return mounts, nil
+}
+
 // RecommendSkills uses AI to recommend skill mappings for a course.
 // POST /api/v1/courses/:id/skills/recommend
 func (h *SkillHandler) RecommendSkills(c *gin.Context) {
@@ -342,20 +388,10 @@ func (h *SkillHandler) RecommendSkills(c *gin.Context) {
 	}
 
 	// 3. Build prompt for AI
-	type SimpleKP struct {
-		ID    uint   `json:"id"`
-		Title string `json:"title"`
-	}
-	type SimpleSkill struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-		Desc string `json:"description"`
-	}
-
-	var kps []SimpleKP
+	var kps []simpleKP
 	for _, ch := range course.Chapters {
 		for _, kp := range ch.KnowledgePoints {
-			kps = append(kps, SimpleKP{ID: kp.ID, Title: kp.Title})
+			kps = append(kps, simpleKP{ID: kp.ID, Title: kp.Title})
 		}
 	}
 
@@ -364,31 +400,14 @@ func (h *SkillHandler) RecommendSkills(c *gin.Context) {
 		return
 	}
 
-	var available []SimpleSkill
+	var available []simpleSkill
 	skillMap := make(map[string]string)
 	for _, s := range skills {
-		available = append(available, SimpleSkill{ID: s.Metadata.ID, Name: s.Metadata.Name, Desc: s.Metadata.Description})
+		available = append(available, simpleSkill{ID: s.Metadata.ID, Name: s.Metadata.Name, Desc: s.Metadata.Description})
 		skillMap[s.Metadata.ID] = s.Metadata.Name
 	}
 
-	kpJSON, _ := json.Marshal(kps)
-	skillJSON, _ := json.Marshal(available)
-
-	prompt := fmt.Sprintf(`You are an AI assistant helping a teacher design a course.
-Here are the Knowledge Points (KPs) for the course "%s":
-%s
-
-Here are the available pedagogical skills:
-%s
-
-Please recommend up to 10 skill mounts for these knowledge points. Focus on key points.
-Output ONLY a valid JSON array of objects with the following keys:
-- "kp_id": integer
-- "skill_id": string
-- "scaffold_level": string (one of "high", "medium", "low")
-- "reason": string (why this skill fits this KP)
-
-JSON output:`, course.Title, string(kpJSON), string(skillJSON))
+	prompt := buildSkillRecommendationPrompt(course.Title, kps, available)
 
 	// 4. Call LLM
 	resp, err := h.LLMProvider.Chat(c.Request.Context(), []llm.ChatMessage{
@@ -401,16 +420,9 @@ JSON output:`, course.Title, string(kpJSON), string(skillJSON))
 		return
 	}
 
-	// 5. Parse response (try to extract JSON array if wrapped)
-	rawJSON := resp
-	start := strings.Index(rawJSON, "[")
-	end := strings.LastIndex(rawJSON, "]")
-	if start != -1 && end != -1 && end > start {
-		rawJSON = rawJSON[start : end+1]
-	}
-
-	var mounts []RecommendMount
-	if err := json.Unmarshal([]byte(rawJSON), &mounts); err != nil {
+	// 5. Parse response
+	mounts, err := parseSkillRecommendations(resp)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "解析 AI 响应失败: " + err.Error()})
 		return
 	}

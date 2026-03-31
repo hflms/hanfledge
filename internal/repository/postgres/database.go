@@ -41,13 +41,18 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// Fix empty string values in timestamp columns before migration.
 	// If columns were previously text/varchar, empty strings cannot be cast to timestamptz.
-	fixTimestampSQL := []string{
-		`UPDATE courses SET created_at = NULL WHERE created_at = '' OR created_at IS NOT NULL AND created_at::text = ''`,
-		`UPDATE courses SET updated_at = NULL WHERE updated_at = '' OR updated_at IS NOT NULL AND updated_at::text = ''`,
-	}
-	for _, sql := range fixTimestampSQL {
-		if err := db.Exec(sql).Error; err != nil {
-			slogDB.Warn("timestamp fix query skipped (table may not exist yet)", "err", err)
+	// Only run the fix if the target table already exists to avoid noisy ERROR logs from GORM.
+	var tableExists bool
+	db.Raw(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'courses')`).Scan(&tableExists)
+	if tableExists {
+		fixTimestampSQL := []string{
+			`UPDATE courses SET created_at = NULL WHERE created_at = '' OR created_at IS NOT NULL AND created_at::text = ''`,
+			`UPDATE courses SET updated_at = NULL WHERE updated_at = '' OR updated_at IS NOT NULL AND updated_at::text = ''`,
+		}
+		for _, sql := range fixTimestampSQL {
+			if err := db.Exec(sql).Error; err != nil {
+				slogDB.Warn("timestamp fix query failed", "err", err)
+			}
 		}
 	}
 
