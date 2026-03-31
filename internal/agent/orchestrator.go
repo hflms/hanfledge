@@ -404,7 +404,7 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 		tc.OnThinking("Designer 正在检索知识图谱...")
 	}
 
-	material, err := o.designer.Assemble(ctx, prescription, tc.UserInput)
+	material, err := o.designer.Assemble(tc, prescription, tc.UserInput)
 	if err != nil {
 		return fmt.Errorf("designer failed: %w", err)
 	}

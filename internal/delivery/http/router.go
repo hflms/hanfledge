@@ -96,7 +96,15 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	courseHandler := handler.NewCourseHandler(courseRepo, docRepo, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry, deps.LLMProvider)
 	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus, deps.Registry, deps.FileStorage, deps.LLMProvider)
-	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
+
+	var tokenMgr *weknora.TokenManager
+	if deps.WeKnoraClient != nil {
+		secret := deps.Cfg.WeKnora.EncryptionKey
+		slog.Info("WeKnora TokenManager init", "has_encryption_key", deps.Cfg.WeKnora.EncryptionKey != "", "secret_len", len(secret))
+		tokenMgr = weknora.NewTokenManager(deps.WeKnoraClient, deps.DB, deps.RedisCache, secret)
+	}
+
+	sessionHandler := handler.NewSessionHandler(deps.DB, deps.Orchestrator, deps.InjectionGuard, deps.ASRProvider, tokenMgr, deps.Cfg.Server.CORSOrigins, deps.Cfg.Server.GinMode)
 	dashboardHandler := handler.NewDashboardHandler(courseRepo, userRepo, kpRepo, masteryRepo, sessionRepo, activityRepo)
 	kgHandler := handler.NewKnowledgeGraphHandler(deps.DB, deps.Neo4jClient)
 	metricsHandler := handler.NewMetricsHandler(deps.RedisCache)
@@ -135,9 +143,6 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 
 	// WeKnora integration (conditional — only when client is available)
 	if deps.WeKnoraClient != nil {
-		secret := deps.Cfg.WeKnora.EncryptionKey
-		slog.Info("WeKnora TokenManager init", "has_encryption_key", deps.Cfg.WeKnora.EncryptionKey != "", "secret_len", len(secret))
-		tokenMgr := weknora.NewTokenManager(deps.WeKnoraClient, deps.DB, deps.RedisCache, secret)
 		wkHandler := handler.NewWeKnoraHandler(deps.WeKnoraClient, tokenMgr, deps.DB)
 		registerWeKnoraRoutes(protected, deps.DB, wkHandler)
 		registerWeKnoraCourseRoutes(protected, deps.DB, wkHandler)
