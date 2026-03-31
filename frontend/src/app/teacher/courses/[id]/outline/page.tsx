@@ -8,9 +8,8 @@ import {
     listSkills, mountSkill,
     mountSkillToKP, unmountSkillFromKP, updateKPSkillConfig,
     recommendSkills, batchMountSkills,
-    listClasses, listTeacherActivities, createActivity, publishActivity,
-    listDesigners,
-    type Course, type Document, type SkillMetadata, type MountedSkill, type RecommendMount, type ClassItem, type LearningActivity, type InstructionalDesigner
+    listTeacherActivities, createActivity, publishActivity,
+    type Course, type Document, type SkillMetadata, type MountedSkill, type RecommendMount, type LearningActivity
 } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { DOCUMENT_STATUS_LABEL, CATEGORY_ICONS } from '@/lib/constants';
@@ -55,19 +54,8 @@ export default function OutlinePage() {
     const [selectedMounts, setSelectedMounts] = useState<Set<string>>(new Set());
     const [batchMounting, setBatchMounting] = useState(false);
 
-    // -- Activity publish state ----------------------------------------
-    const [classes, setClasses] = useState<ClassItem[]>([]);
+    // -- Activity state ----------------------------------------
     const [activities, setActivities] = useState<LearningActivity[]>([]);
-    const [designers, setDesigners] = useState<InstructionalDesigner[]>([]);
-    const [activityTitle, setActivityTitle] = useState('');
-    const [activityType, setActivityType] = useState<'autonomous' | 'guided'>('autonomous');
-    const [activityStepsConfig, setActivityStepsConfig] = useState<Array<{ title: string; scaffold_level: string; description: string }>>([]);
-    const [activityDesigner, setActivityDesigner] = useState('');
-    const [activityDeadline, setActivityDeadline] = useState('');
-    const [activityAllowRetry, setActivityAllowRetry] = useState(true);
-    const [activityMaxAttempts, setActivityMaxAttempts] = useState(3);
-    const [selectedKP, setSelectedKP] = useState<Set<number>>(new Set());
-    const [selectedClasses, setSelectedClasses] = useState<Set<number>>(new Set());
     const [creatingActivity, setCreatingActivity] = useState(false);
     const [publishingId, setPublishingId] = useState<number | null>(null);
     const [rightTab, setRightTab] = useState<'materials' | 'activities'>('materials');
@@ -100,27 +88,6 @@ export default function OutlinePage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
-    useEffect(() => {
-        const loadClasses = async () => {
-            try {
-                const res = await listClasses({ page: 1, limit: 200 });
-                setClasses(res.items || []);
-            } catch (err) {
-                console.error('Failed to load classes', err);
-            }
-        };
-        const loadDesigners = async () => {
-            try {
-                const res = await listDesigners();
-                setDesigners(res);
-            } catch (err) {
-                console.error('Failed to load designers', err);
-            }
-        };
-        loadClasses();
-        loadDesigners();
-    }, []);
 
     // Poll document status while any doc is processing
     useEffect(() => {
@@ -346,106 +313,33 @@ export default function OutlinePage() {
         setSelectedMounts(newSet);
     };
 
-    const toggleKP = (kpId: number) => {
-        const next = new Set(selectedKP);
-        if (next.has(kpId)) {
-            next.delete(kpId);
-        } else {
-            next.add(kpId);
-        }
-        setSelectedKP(next);
-    };
+    // -- Activity handlers -------------------------------------------
 
-    const toggleClass = (classId: number) => {
-        const next = new Set(selectedClasses);
-        if (next.has(classId)) {
-            next.delete(classId);
-        } else {
-            next.add(classId);
-        }
-        setSelectedClasses(next);
-    };
-
-    const selectAllKP = () => {
-        const next = new Set<number>();
+    const handleNewActivity = async () => {
+        // Collect all KP IDs from course chapters as default
+        const allKpIds: number[] = [];
         (course?.chapters || []).forEach((ch) => {
-            ch.knowledge_points?.forEach((kp) => next.add(kp.id));
+            ch.knowledge_points?.forEach((kp) => allKpIds.push(kp.id));
         });
-        setSelectedKP(next);
-    };
-
-    const clearKP = () => {
-        setSelectedKP(new Set());
-    };
-
-    const selectAllClasses = () => {
-        setSelectedClasses(new Set(classes.map((c) => c.id)));
-    };
-
-    const clearClasses = () => {
-        setSelectedClasses(new Set());
-    };
-
-    const handleCreateActivity = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!activityTitle.trim()) {
-            toast('请输入活动名称', 'warning');
-            return;
-        }
-        if (selectedKP.size === 0) {
-            toast('请选择至少一个知识点', 'warning');
-            return;
-        }
-        if (activityType === 'guided' && activityStepsConfig.length === 0) {
-            toast('请至少添加一个定制环节', 'warning');
+        if (allKpIds.length === 0) {
+            toast('请先上传教材生成知识点后再创建活动', 'warning');
             return;
         }
         setCreatingActivity(true);
         try {
-            await createActivity({
+            const activity = await createActivity({
                 course_id: courseId,
-                title: activityTitle.trim(),
-                type: activityType,
-                steps_config: activityType === 'guided' ? activityStepsConfig : undefined,
-                designer_id: activityDesigner || undefined,
-                kp_ids: Array.from(selectedKP),
-                class_ids: selectedClasses.size > 0 ? Array.from(selectedClasses) : undefined,
-                deadline: activityDeadline || undefined,
-                allow_retry: activityAllowRetry,
-                max_attempts: activityMaxAttempts,
+                title: `${course?.title || '课程'} - 新活动`,
+                kp_ids: allKpIds,
             });
-            toast('活动创建成功', 'success');
-            setActivityTitle('');
-            setActivityType('autonomous');
-            setActivityStepsConfig([]);
-            setActivityDesigner('');
-            setActivityDeadline('');
-            setSelectedKP(new Set());
-            setSelectedClasses(new Set());
-            const activityRes = await listTeacherActivities(courseId, { page: 1, limit: 50 });
-            setActivities(activityRes.items || []);
+            toast('活动草稿已创建，正在跳转设计页...', 'success');
+            router.push(`/teacher/activities/${activity.id}/design`);
         } catch (err) {
             console.error('Failed to create activity', err);
             toast('创建活动失败', 'error');
         } finally {
             setCreatingActivity(false);
         }
-    };
-
-    const addActivityStep = () => {
-        setActivityStepsConfig([...activityStepsConfig, { title: '', scaffold_level: 'high', description: '' }]);
-    };
-
-    const updateActivityStep = (index: number, field: string, value: string) => {
-        const newSteps = [...activityStepsConfig];
-        newSteps[index] = { ...newSteps[index], [field]: value };
-        setActivityStepsConfig(newSteps);
-    };
-
-    const removeActivityStep = (index: number) => {
-        const newSteps = [...activityStepsConfig];
-        newSteps.splice(index, 1);
-        setActivityStepsConfig(newSteps);
     };
 
     const handlePublishActivity = async (activityId: number) => {
@@ -748,251 +642,73 @@ export default function OutlinePage() {
 
                     {rightTab === 'activities' && (
                         <div className={styles.activityPanel} style={{ marginTop: 0, borderTop: 'none', paddingTop: 0 }}>
-                            <form className={styles.activityForm} onSubmit={handleCreateActivity}>
-                            <div className="form-group">
-                                <label className="label" htmlFor="activity-title">活动名称</label>
-                                <input
-                                    id="activity-title"
-                                    className="input"
-                                    value={activityTitle}
-                                    onChange={(e) => setActivityTitle(e.target.value)}
-                                    placeholder="例如：一次函数·课堂探究"
-                                    required
-                                />
-                            </div>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ width: '100%' }}
+                                disabled={creatingActivity}
+                                onClick={handleNewActivity}
+                            >
+                                {creatingActivity ? '创建中...' : '+ 新建活动'}
+                            </button>
 
-                            <div className="form-group">
-                                <label className="label">活动类型</label>
-                                <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <input
-                                            type="radio"
-                                            name="activity-type"
-                                            value="autonomous"
-                                            checked={activityType === 'autonomous'}
-                                            onChange={() => setActivityType('autonomous')}
-                                        />
-                                        <span>全自主学习 (依赖已挂载的 Skills)</span>
-                                    </label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <input
-                                            type="radio"
-                                            name="activity-type"
-                                            value="guided"
-                                            checked={activityType === 'guided'}
-                                            onChange={() => setActivityType('guided')}
-                                        />
-                                        <span>教师规定环节 (高定制化)</span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            {activityType === 'autonomous' && (
-                                <div className="form-group">
-                                    <label className="label" htmlFor="activity-designer">教学设计者 (可选)</label>
-                                    <select
-                                        id="activity-designer"
-                                        className="input"
-                                        value={activityDesigner}
-                                        onChange={(e) => setActivityDesigner(e.target.value)}
-                                    >
-                                        <option value="">默认（无特定风格）</option>
-                                        {designers.map(d => (
-                                            <option key={d.id} value={d.id}>{d.name} - {d.description}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {activityType === 'guided' && (
-                                <div className="form-group">
-                                    <label className="label">定制环节配置</label>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
-                                        {activityStepsConfig.map((step, index) => (
-                                            <div key={index} style={{ padding: '12px', border: '1px solid var(--color-border)', borderRadius: '8px', background: 'var(--color-bg-secondary)' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                    <strong>环节 {index + 1}</strong>
-                                                    <button type="button" onClick={() => removeActivityStep(index)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>删除</button>
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
-                                                    <input
-                                                        type="text"
-                                                        className="input"
-                                                        placeholder="环节名称 (如: 引入、探究...)"
-                                                        value={step.title}
-                                                        onChange={(e) => updateActivityStep(index, 'title', e.target.value)}
-                                                        required
-                                                    />
-                                                    <select
-                                                        className="input"
-                                                        value={step.scaffold_level}
-                                                        onChange={(e) => updateActivityStep(index, 'scaffold_level', e.target.value)}
-                                                        style={{ width: '120px' }}
-                                                    >
-                                                        <option value="high">高支架</option>
-                                                        <option value="medium">中支架</option>
-                                                        <option value="low">低支架</option>
-                                                    </select>
-                                                </div>
-                                                <textarea
-                                                    className="input"
-                                                    placeholder="环节说明或 AI 引导提示词..."
-                                                    value={step.description}
-                                                    onChange={(e) => updateActivityStep(index, 'description', e.target.value)}
-                                                    rows={2}
-                                                />
-                                            </div>
-                                        ))}
-                                        <button type="button" onClick={addActivityStep} className="btn btn-secondary" style={{ alignSelf: 'flex-start' }}>
-                                            + 添加环节
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className={styles.activityRow}>
-                                <div className="form-group">
-                                    <label className="label" htmlFor="activity-deadline">截止日期 (可选)</label>
-                                    <input
-                                        id="activity-deadline"
-                                        className="input"
-                                        type="date"
-                                        value={activityDeadline}
-                                        onChange={(e) => setActivityDeadline(e.target.value)}
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label className="label" htmlFor="activity-attempts">最大尝试次数</label>
-                                    <input
-                                        id="activity-attempts"
-                                        className="input"
-                                        type="number"
-                                        min={1}
-                                        max={10}
-                                        value={activityMaxAttempts}
-                                        onChange={(e) => setActivityMaxAttempts(Number(e.target.value))}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className={styles.toggleRow}>
-                                <label className={styles.toggleLabel}>
-                                    <input
-                                        type="checkbox"
-                                        checked={activityAllowRetry}
-                                        onChange={(e) => setActivityAllowRetry(e.target.checked)}
-                                    />
-                                    允许学生重复尝试
-                                </label>
-                            </div>
-
-                            <div className={styles.selectSection}>
-                                <div className={styles.selectHeader}>
-                                    <span>选择知识点</span>
-                                    <div className={styles.selectActions}>
-                                        <button type="button" className={styles.linkBtn} onClick={selectAllKP}>全选</button>
-                                        <button type="button" className={styles.linkBtn} onClick={clearKP}>清空</button>
-                                    </div>
-                                </div>
-                                <div className={styles.selectList}>
-                                    {(course?.chapters || []).map((ch) => (
-                                        <div key={ch.id} className={styles.selectGroup}>
-                                            <div className={styles.groupTitle}>{ch.title}</div>
-                                            <div className={styles.selectGrid}>
-                                                {ch.knowledge_points?.map((kp) => (
-                                                    <label key={kp.id} className={styles.selectItem}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={selectedKP.has(kp.id)}
-                                                            onChange={() => toggleKP(kp.id)}
-                                                        />
-                                                        <span>{kp.title}</span>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className={styles.selectSection}>
-                                <div className={styles.selectHeader}>
-                                    <span>选择班级</span>
-                                    <div className={styles.selectActions}>
-                                        <button type="button" className={styles.linkBtn} onClick={selectAllClasses}>全选</button>
-                                        <button type="button" className={styles.linkBtn} onClick={clearClasses}>清空</button>
-                                    </div>
-                                </div>
-                                {classes.length === 0 ? (
-                                    <div className={styles.emptyHint}>暂无可用班级，请先在管理端创建班级</div>
+                            <div className={styles.activityList}>
+                                <div className={styles.activityListTitle}>当前活动</div>
+                                {activities.length === 0 ? (
+                                    <div className={styles.emptyHint}>暂无活动，点击上方按钮创建</div>
                                 ) : (
-                                    <div className={styles.selectGrid}>
-                                        {classes.map((item) => (
-                                            <label key={item.id} className={styles.selectItem}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedClasses.has(item.id)}
-                                                    onChange={() => toggleClass(item.id)}
-                                                />
-                                                <span>{item.name}</span>
-                                            </label>
+                                    <div className={styles.activityItems}>
+                                        {activities.map((activity) => (
+                                            <div
+                                                key={activity.id}
+                                                className={styles.activityItem}
+                                                role="button"
+                                                tabIndex={0}
+                                                style={{ cursor: 'pointer' }}
+                                                onClick={() => router.push(`/teacher/activities/${activity.id}/design`)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        router.push(`/teacher/activities/${activity.id}/design`);
+                                                    }
+                                                }}
+                                            >
+                                                <div>
+                                                    <div className={styles.activityName}>
+                                                        {activity.title}
+                                                        <span className={styles.scaffoldBadge} style={{ marginLeft: '8px' }}>
+                                                            {activity.type === 'guided' ? '定制化' : '全自主'}
+                                                        </span>
+                                                    </div>
+                                                    <div className={styles.activityMeta}>
+                                                        状态：{activity.status}
+                                                        {activity.published_at ? ` · 发布于 ${new Date(activity.published_at).toLocaleDateString('zh-CN')}` : ''}
+                                                    </div>
+                                                </div>
+                                                <div className={styles.activityActions}>
+                                                    {activity.status !== 'published' && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-secondary"
+                                                            disabled={publishingId === activity.id}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handlePublishActivity(activity.id);
+                                                            }}
+                                                        >
+                                                            {publishingId === activity.id ? '发布中...' : '发布'}
+                                                        </button>
+                                                    )}
+                                                    {activity.status === 'published' && (
+                                                        <span className={styles.scaffoldBadge} style={{ fontSize: 11, padding: '2px 8px' }}>已发布</span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
-
-                            <button
-                                type="submit"
-                                className="btn btn-primary"
-                                disabled={creatingActivity}
-                            >
-                                {creatingActivity ? '创建中...' : '创建活动'}
-                            </button>
-                        </form>
-
-                        <div className={styles.activityList}>
-                            <div className={styles.activityListTitle}>当前活动</div>
-                            {activities.length === 0 ? (
-                                <div className={styles.emptyHint}>暂无活动，创建后可发布给学生</div>
-                            ) : (
-                                <div className={styles.activityItems}>
-                                    {activities.map((activity) => (
-                                        <div key={activity.id} className={styles.activityItem}>
-                                            <div>
-                                                <div className={styles.activityName}>
-                                                    {activity.title}
-                                                    <span className={styles.scaffoldBadge} style={{ marginLeft: '8px' }}>
-                                                        {activity.type === 'guided' ? '定制化' : '全自主'}
-                                                    </span>
-                                                </div>
-                                                <div className={styles.activityMeta}>
-                                                    状态：{activity.status}
-                                                    {activity.published_at ? ` · 发布于 ${new Date(activity.published_at).toLocaleDateString('zh-CN')}` : ''}
-                                                </div>
-                                            </div>
-                                            <div className={styles.activityActions}>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-secondary"
-                                                    onClick={() => router.push(`/teacher/activities/${activity.id}/design`)}
-                                                >
-                                                    {activity.status === 'published' ? '查看设计' : '设计'}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-secondary"
-                                                    disabled={activity.status === 'published' || publishingId === activity.id}
-                                                    onClick={() => handlePublishActivity(activity.id)}
-                                                >
-                                                    {publishingId === activity.id ? '发布中...' : activity.status === 'published' ? '已发布' : '发布'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                         </div>
-                    </div>
                     )}
                 </div>
             </div>

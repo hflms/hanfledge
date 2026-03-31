@@ -8,6 +8,14 @@
         radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
         var(--bg-primary);
     padding: 20px;
+    position: relative;
+}
+
+.themeToggleCorner {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
 }
 
 .loginCard {

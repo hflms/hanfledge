@@ -16,7 +16,7 @@ import (
 // -- ActivityHandler Constructor Test -------------------------
 
 func TestNewActivityHandler(t *testing.T) {
-	h := NewActivityHandler(nil, nil, nil, nil, nil, nil)
+	h := NewActivityHandler(nil, nil, nil, nil, nil, nil, nil)
 	if h == nil {
 		t.Fatal("NewActivityHandler returned nil")
 	}
@@ -34,6 +34,9 @@ func TestNewActivityHandler(t *testing.T) {
 	}
 	if h.LLMProvider != nil {
 		t.Error("expected nil LLMProvider")
+	}
+	if h.Cache != nil {
+		t.Error("expected nil Cache")
 	}
 }
 
@@ -177,7 +180,7 @@ func TestPreviewActivity_CreatesSession(t *testing.T) {
 	// Set KPIDS so the preview can parse a target KP
 	db.Model(&act).Update("kp_ids", "[1,2]")
 
-	h := NewActivityHandler(db, nil, nil, nil, nil, nil)
+	h := NewActivityHandler(db, nil, nil, nil, nil, nil, nil)
 
 	w, c := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
 		teacher.ID, gin.Params{{Key: "id", Value: "1"}})
@@ -207,7 +210,7 @@ func TestPreviewActivity_RequiresOwnership(t *testing.T) {
 	course := seedCourse(t, db, teacher.ID, "力学基础")
 	act := seedActivity(t, db, teacher.ID, course.ID, "牛顿定律")
 
-	h := NewActivityHandler(db, nil, nil, nil, nil, nil)
+	h := NewActivityHandler(db, nil, nil, nil, nil, nil, nil)
 
 	// otherTeacher tries to preview teacher's activity
 	w, c := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
@@ -224,7 +227,7 @@ func TestPreviewActivity_ReusesExistingSandbox(t *testing.T) {
 	course := seedCourse(t, db, teacher.ID, "力学基础")
 	act := seedActivity(t, db, teacher.ID, course.ID, "牛顿定律")
 
-	h := NewActivityHandler(db, nil, nil, nil, nil, nil)
+	h := NewActivityHandler(db, nil, nil, nil, nil, nil, nil)
 
 	// First preview — creates a session
 	w1, c1 := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
@@ -258,7 +261,7 @@ func TestPreviewActivity_WorksOnDraftActivity(t *testing.T) {
 	// Activity starts as draft (no status set in seedActivity, verify)
 	db.Model(&act).Update("status", model.ActivityStatusDraft)
 
-	h := NewActivityHandler(db, nil, nil, nil, nil, nil)
+	h := NewActivityHandler(db, nil, nil, nil, nil, nil, nil)
 
 	w, c := newTestContextWithParams("POST", "/api/v1/activities/1/preview", "",
 		teacher.ID, gin.Params{{Key: "id", Value: fmt.Sprintf("%d", act.ID)}})
@@ -273,7 +276,7 @@ func TestPreviewActivity_InvalidID(t *testing.T) {
 	db := setupTestDB(t)
 	teacher := seedUser(t, db, "13900001006", "pass", "王老师", model.UserStatusActive)
 
-	h := NewActivityHandler(db, nil, nil, nil, nil, nil)
+	h := NewActivityHandler(db, nil, nil, nil, nil, nil, nil)
 
 	w, c := newTestContextWithParams("POST", "/api/v1/activities/abc/preview", "",
 		teacher.ID, gin.Params{{Key: "id", Value: "abc"}})
@@ -287,7 +290,7 @@ func TestPreviewActivity_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	teacher := seedUser(t, db, "13900001007", "pass", "王老师", model.UserStatusActive)
 
-	h := NewActivityHandler(db, nil, nil, nil, nil, nil)
+	h := NewActivityHandler(db, nil, nil, nil, nil, nil, nil)
 
 	w, c := newTestContextWithParams("POST", "/api/v1/activities/999/preview", "",
 		teacher.ID, gin.Params{{Key: "id", Value: "999"}})

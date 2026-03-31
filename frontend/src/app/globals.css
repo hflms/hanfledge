@@ -2,9 +2,10 @@
 @import url('katex/dist/katex.min.css');
 
 :root {
-  /* === Color System === */
+  /* === Color System (Dark — default) === */
   --bg-primary: #0a0a1a;
   --bg-secondary: #12122a;
+  --bg-tertiary: #1c1c3a;
   --bg-card: rgba(255, 255, 255, 0.04);
   --bg-card-hover: rgba(255, 255, 255, 0.08);
   --bg-glass: rgba(255, 255, 255, 0.06);
@@ -25,6 +26,7 @@
   --border: rgba(255, 255, 255, 0.08);
   --border-focus: rgba(108, 92, 231, 0.5);
 
+  /* === Non-color tokens (shared across themes) === */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -39,6 +41,37 @@
 
   --sidebar-width: 260px;
   --header-height: 64px;
+}
+
+/* === Light Theme Override === */
+[data-theme-type="light"] {
+  --bg-primary: #f5f5fa;
+  --bg-secondary: #eaeaf2;
+  --bg-tertiary: #dddde8;
+  --bg-card: rgba(0, 0, 0, 0.03);
+  --bg-card-hover: rgba(0, 0, 0, 0.06);
+  --bg-glass: rgba(255, 255, 255, 0.7);
+
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a4a6a;
+  --text-muted: #8888a0;
+
+  --accent: #6c5ce7;
+  --accent-light: #8b7cf0;
+  --accent-glow: rgba(108, 92, 231, 0.2);
+
+  --success: #00a884;
+  --warning: #e6a817;
+  --danger: #d35444;
+  --info: #3b8ad9;
+
+  --border: rgba(0, 0, 0, 0.1);
+  --border-focus: rgba(108, 92, 231, 0.4);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 30px var(--accent-glow);
 }
 
 * {

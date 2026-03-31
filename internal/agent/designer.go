@@ -93,10 +93,10 @@ func (a *DesignerAgent) Assemble(tc *TurnContext, prescription LearningPrescript
 		if err := a.db.First(&kp, prescription.TargetKPSequence[0].KPID).Error; err == nil {
 			// 将知识点标题作为主要查询，学生输入作为辅助
 			enhancedQuery = kp.Title + " " + userInput
-			slogDesigner.Info("enhanced query with KP title", 
+			slogDesigner.Info("enhanced query with KP title",
 				"session_id", prescription.SessionID,
 				"kp_id", prescription.TargetKPSequence[0].KPID,
-				"kp_title", kp.Title, 
+				"kp_title", kp.Title,
 				"user_input", userInput,
 				"enhanced_query", enhancedQuery)
 		} else {
@@ -184,8 +184,14 @@ func (a *DesignerAgent) Assemble(tc *TurnContext, prescription LearningPrescript
 		slogDesigner.Debug("misconceptions loaded", "count", len(misconceptions))
 	}
 
+	// Step 6.6: 加载前序步骤摘要 — 跨步骤知识衔接
+	var stepSummaries []model.StepSummary
+	a.db.Where("session_id = ?", prescription.SessionID).
+		Order("step_index ASC").
+		Find(&stepSummaries)
+
 	// Step 7: 组装系统 Prompt
-	systemPrompt := a.buildSystemPrompt(prescription, mergedChunks, graphNodes, misconceptions)
+	systemPrompt := a.buildSystemPrompt(prescription, mergedChunks, graphNodes, misconceptions, stepSummaries)
 
 	// Step 7.5: CRAG 回退处理 — 如果检索质量不达标，触发回退策略
 	if !relevance.Passed {
@@ -419,7 +425,7 @@ func rrfMerge(semantic, graph []RetrievedChunk, topN int) []RetrievedChunk {
 // ── Prompt Assembly ─────────────────────────────────────────
 
 // buildSystemPrompt 根据检索结果和处方组装系统 Prompt。
-func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chunks []RetrievedChunk, nodes []GraphNode, misconceptions []MisconceptionItem) string {
+func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chunks []RetrievedChunk, nodes []GraphNode, misconceptions []MisconceptionItem, stepSummaries []model.StepSummary) string {
 	var sb strings.Builder
 
 	sb.WriteString("你是一位 AI 学习教练，正在帮助学生学习。\n\n")
@@ -431,6 +437,18 @@ func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chu
 		sb.WriteString("\n\n请严格遵循以上规则进行教学。\n\n")
 	}
 
+	// 前序学习回顾 — 跨步骤知识衔接（如果有历史步骤摘要）
+	if len(stepSummaries) > 0 {
+		sb.WriteString("【前序学习回顾】\n")
+		sb.WriteString("学生在之前的学习环节中已完成以下内容，请基于此衔接教学：\n")
+		for i, ss := range stepSummaries {
+			sb.WriteString(fmt.Sprintf("  环节 %d (知识点 %d, 技能: %s, 掌握度: %.2f→%.2f, %d轮对话):\n",
+				i+1, ss.KPID, ss.SkillID, ss.MasteryStart, ss.MasteryEnd, ss.TurnCount))
+			sb.WriteString(fmt.Sprintf("    %s\n", ss.Summary))
+		}
+		sb.WriteString("\n")
+	}
+
 	// 当前教学目标知识点
 	if len(prescription.TargetKPSequence) > 0 {
 		currentKP := prescription.TargetKPSequence[0]
@@ -438,7 +456,7 @@ func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chu
 		sb.WriteString(fmt.Sprintf("知识点 ID: %d\n", currentKP.KPID))
 		sb.WriteString(fmt.Sprintf("当前掌握度: %.2f\n", currentKP.CurrentMastery))
 		sb.WriteString(fmt.Sprintf("目标掌握度: %.2f\n", currentKP.TargetMastery))
-		
+
 		// 从数据库查询知识点标题
 		var kp model.KnowledgePoint
 		if err := a.db.First(&kp, currentKP.KPID).Error; err == nil {

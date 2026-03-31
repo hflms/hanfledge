@@ -317,8 +317,12 @@ func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMateria
 		{Role: "system", Content: systemContent},
 	}
 
-	// 加载历史对话（最近 10 轮）
-	history := a.loadHistory(tc.Ctx, tc.SessionID, 10)
+	// 加载历史对话（最近 10 轮，仅当前步骤）
+	currentKPID := uint(0)
+	if tc.Prescription != nil && len(tc.Prescription.TargetKPSequence) > 0 {
+		currentKPID = tc.Prescription.TargetKPSequence[0].KPID
+	}
+	history := a.loadHistory(tc.Ctx, tc.SessionID, currentKPID, 10)
 	messages = append(messages, history...)
 
 	// 如果有教师干预指令（Whisper），将其作为最高优先级的系统提示插入到历史之后
@@ -341,8 +345,11 @@ func (a *CoachAgent) buildMessages(tc *TurnContext, material PersonalizedMateria
 }
 
 // loadHistory 加载会话历史交互记录（cache-first, DB fallback）。
-func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, limit int) []llm.ChatMessage {
+// 当 currentKPID > 0 时，仅加载属于该知识点步骤的交互，避免跨步骤历史污染。
+func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, currentKPID uint, limit int) []llm.ChatMessage {
 	// 尝试从 Redis 缓存读取
+	// 注: 步骤切换时缓存已被 InvalidateSessionHistory 清空,
+	// 所以缓存中的内容始终属于当前步骤。
 	if a.cache != nil {
 		cached, err := a.cache.GetSessionHistory(ctx, sessionID)
 		if err != nil {
@@ -367,12 +374,24 @@ func (a *CoachAgent) loadHistory(ctx context.Context, sessionID uint, limit int)
 	}
 
 	var interactions []interaction
-	a.db.Raw(`
-		SELECT role, content FROM interactions
-		WHERE session_id = ?
-		ORDER BY created_at ASC
-		LIMIT ?
-	`, sessionID, limit*2).Scan(&interactions) // *2 for student+coach pairs
+
+	if currentKPID > 0 {
+		// 按当前步骤的知识点过滤，仅加载该步骤的交互
+		a.db.Raw(`
+			SELECT role, content FROM interactions
+			WHERE session_id = ? AND kp_id = ?
+			ORDER BY created_at ASC
+			LIMIT ?
+		`, sessionID, currentKPID, limit*2).Scan(&interactions)
+	} else {
+		// 回退: 无 KP 信息时加载全部（兼容旧数据）
+		a.db.Raw(`
+			SELECT role, content FROM interactions
+			WHERE session_id = ?
+			ORDER BY created_at ASC
+			LIMIT ?
+		`, sessionID, limit*2).Scan(&interactions)
+	}
 
 	messages := make([]llm.ChatMessage, 0, len(interactions))
 	for _, inter := range interactions {
@@ -409,10 +428,10 @@ func (a *CoachAgent) buildDesignerStylePrompt(strategy *DesignerStrategy) string
 	}
 
 	styleMap := map[string]string{
-		"questioning":   "\n[教学风格] 采用苏格拉底式追问，通过连续提问引导学生思考，避免直接给出答案。",
-		"coaching":      "\n[教学风格] 采用教练式引导，提供实践建议和反馈，鼓励学生动手尝试。",
-		"diagnostic":    "\n[教学风格] 采用诊断式教学，先评估学生当前水平，再针对性补足薄弱环节。",
-		"facilitation":  "\n[教学风格] 采用促进式引导，鼓励学生提出假设和验证，教师作为学习促进者。",
+		"questioning":  "\n[教学风格] 采用苏格拉底式追问，通过连续提问引导学生思考，避免直接给出答案。",
+		"coaching":     "\n[教学风格] 采用教练式引导，提供实践建议和反馈，鼓励学生动手尝试。",
+		"diagnostic":   "\n[教学风格] 采用诊断式教学，先评估学生当前水平，再针对性补足薄弱环节。",
+		"facilitation": "\n[教学风格] 采用促进式引导，鼓励学生提出假设和验证，教师作为学习促进者。",
 	}
 
 	return styleMap[strategy.InterventionStyle]
