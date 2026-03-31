@@ -1,8 +1,12 @@
 package lms
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"time"
 )
 
 // SCORMAdapter implements LMSAdapter for SCORM 2004 protocol.
@@ -46,8 +50,33 @@ func (a *SCORMAdapter) LaunchURL(ctx context.Context, req LaunchRequest) (*Launc
 }
 
 func (a *SCORMAdapter) ReportScore(ctx context.Context, req ScoreReport) error {
-	// TODO: Implement SCORM RTE score commit
-	return fmt.Errorf("SCORM 2004 ReportScore not yet implemented")
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal SCORM score report: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create SCORM score request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	if a.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send SCORM score report: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("SCORM score report failed with status: %s", resp.Status)
+	}
+
+	return nil
 }
 
 func (a *SCORMAdapter) SyncRoster(ctx context.Context, courseID string) (*Roster, error) {

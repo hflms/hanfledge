@@ -81,60 +81,7 @@ func NewLTI13Adapter(cfg LMSConfig) (*LTI13Adapter, error) {
 
 func (a *LTI13Adapter) Type() AdapterType { return AdapterLTI13 }
 
-func (a *LTI13Adapter) getAccessToken(ctx context.Context) (string, error) {
-	parsedKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(a.privateKey))
-	if err != nil {
-		return "", fmt.Errorf("failed to parse private key: %w", err)
-	}
 
-	claims := jwt.MapClaims{
-		"iss": a.clientID,
-		"sub": a.clientID,
-		"aud": a.tokenURL,
-		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(5 * time.Minute).Unix(),
-		"jti": uuid.New().String(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	signedToken, err := token.SignedString(parsedKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to sign token: %w", err)
-	}
-
-	data := url.Values{}
-	data.Set("grant_type", "client_credentials")
-	data.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
-	data.Set("client_assertion", signedToken)
-	data.Set("scope", "https://purl.imsglobal.org/spec/lti-ags/scope/score")
-
-	req, err := http.NewRequestWithContext(ctx, "POST", a.tokenURL, strings.NewReader(data.Encode()))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to request token: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return "", fmt.Errorf("failed to decode token response: %w", err)
-	}
-
-	return tokenResp.AccessToken, nil
-}
 
 func (a *LTI13Adapter) LaunchURL(ctx context.Context, req LaunchRequest) (*LaunchResponse, error) {
 	if a.privateKey == "" {
@@ -208,7 +155,7 @@ func (a *LTI13Adapter) LaunchURL(ctx context.Context, req LaunchRequest) (*Launc
 }
 
 func (a *LTI13Adapter) ReportScore(ctx context.Context, req ScoreReport) error {
-	token, err := a.getAccessToken(ctx)
+	token, err := a.getAccessToken(ctx, []string{"https://purl.imsglobal.org/spec/lti-ags/scope/score"})
 	if err != nil {
 		return fmt.Errorf("failed to get AGS access token: %w", err)
 	}
