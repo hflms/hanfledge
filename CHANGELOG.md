@@ -8,6 +8,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Comprehensive Documentation (2026-03-31)**
+  - CONTRIBUTING.md with contribution workflow, coding standards, and PR guidelines
+  - Developer setup guide (`docs/development-setup.md`)
+  - Complete API reference covering all 111 REST endpoints (`docs/api-reference.md`)
+  - Database schema reference with ER diagram (`docs/database-schema.md`)
+  - WebSocket protocol specification (`docs/websocket-protocol.md`)
+  - Security architecture guide (`docs/security.md`)
+  - Testing guide for backend and frontend (`docs/testing-guide.md`)
+  - Plugin development guide (`docs/plugin-development.md`)
+  - Documentation index (`docs/README.md`)
+  - Rewrote frontend README with project-specific content
+
+- **Real-time Student Monitoring Dashboard (2026-03-30)**
+  - Teacher dashboard with live session tracking
+  - Real-time student activity monitoring
+
+- **Unit Test Coverage Improvement (2026-03-30)**
+  - Backend handler tests for auth, course, knowledge-point, skill, activity
+  - Middleware tests for JWT authentication and RBAC authorization
+  - Frontend library tests for API client and auth utilities
+  - Test infrastructure with helpers, seed data, and context creators
+
+- **Theme System and UI Improvements (2026-03-29)**
+  - Theme system with light/dark mode support
+  - Simplified activity tab interface
+  - Inter-step data flow optimization
+
+- **LTI 1.3 Integration (2026-03-15)**
+  - AGS score passback for grade synchronization
+  - NRPS SyncRoster for class roster sync
+  - LaunchURL with OIDC login initiation and JWT message signing
+
+- **SCORM Support (2026-03-14)**
+  - SCORM 2004 ReportScore with HTTP POST
+  - SCORM content package LaunchURL
+
+- **LMS Adapter Enhancements (2026-03-13)**
+  - xAPI ReportScore implementation
+  - Plugin host ExecCommand support
+
+- **Accessibility (2026-03-12)**
+  - SkillModal accessible with ESC key support and ARIA dialog semantics
+  - Copy feedback on code blocks in markdown renderer
+
 - **WeKnora Integration (2026-03-08)**
   - SSO single sign-on with automatic user synchronization
   - Per-user token management with Redis caching and database persistence
@@ -28,6 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Visual feedback for voice detection (🔴 waiting, 🟢 detected)
 
 ### Changed
+- User-specific WeKnora client in DesignerAgent (per-user token isolation)
+- GitHub Actions CI workflow updated to use pnpm
 - WeKnora client initialization now uses empty API key (per-user token mode)
 - TokenManager uses `WEKNORA_ENCRYPTION_KEY` instead of `WEKNORA_API_KEY`
 - Removed WeKnora ping check during initialization (deferred to first user access)
@@ -35,6 +81,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Neo4j service now includes health check dependency for WeKnora
 
 ### Fixed
+- Test signature sync and build error resolution
+- CI pnpm exclusivity fix for GitHub Actions
+- Soul evolution notification bug
+- OSS storage integration issues
+- RecommendSkills code health refactoring
 - WeKnora knowledge base list API authentication issue
 - SSO auto-login with correct localStorage key (`weknora_token`)
 - User and tenant information persistence in localStorage
@@ -42,6 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WeKnora frontend token processing and URL parameter cleanup
 
 ### Documentation
+- Added comprehensive project documentation (10 new/rewritten files)
+- Added Copilot agent instructions (`.github/copilot-instructions.md`)
 - Updated README.md with WeKnora integration details
 - Added SSO login-token API to API reference
 - Added WeKnora optimization section to README
