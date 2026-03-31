@@ -30,6 +30,45 @@ function PassthroughTag({ children }: { children?: React.ReactNode }) {
     return <>{children}</>;
 }
 
+function CopyButton({ text }: { text: string }) {
+    const [copied, setCopied] = React.useState(false);
+    const timeoutRef = React.useRef<NodeJS.Timeout>(undefined);
+
+    const handleCopy = React.useCallback(() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+
+        timeoutRef.current = setTimeout(() => {
+            setCopied(false);
+        }, 2000);
+    }, [text]);
+
+    // Cleanup timeout on unmount
+    React.useEffect(() => {
+        return () => {
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
+    }, []);
+
+    return (
+        <button
+            className={styles.copyBtn}
+            onClick={handleCopy}
+            type="button"
+            aria-label={copied ? "已复制代码" : "复制代码"}
+            aria-live="polite"
+        >
+            {copied ? '已复制!' : '复制'}
+        </button>
+    );
+}
+
 // -- Component ---------------------------------------------------
 
 const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
@@ -52,16 +91,7 @@ const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStrea
                         {language && (
                             <div className={styles.codeBlockHeader}>
                                 <span className={styles.codeLanguage}>{language}</span>
-                                <button
-                                    className={styles.copyBtn}
-                                    onClick={() => {
-                                        const text = String(children).replace(/\n$/, '');
-                                        navigator.clipboard.writeText(text);
-                                    }}
-                                    type="button"
-                                >
-                                    复制
-                                </button>
+                                <CopyButton text={String(children).replace(/\n$/, '')} />
                             </div>
                         )}
                         <pre className={styles.pre}>

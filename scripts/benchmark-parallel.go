@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -39,10 +41,27 @@ func main() {
 	defer neo4jClient.Close(context.Background())
 
 	// 初始化 LLM (用于 Designer)
-	llmProvider, err := llm.NewProvider(cfg.LLM.Provider, &cfg.LLM)
-	if err != nil {
-		log.Fatalf("❌ LLM 初始化失败: %v", err)
+	var llmProvider llm.LLMProvider
+	switch cfg.LLM.Provider {
+	case "dashscope":
+		embModel := cfg.LLM.EmbeddingModel
+		if embModel == "" {
+			embModel = "text-embedding-v3"
+		}
+		llmProvider = llm.NewDashScopeClient(llm.DashScopeConfig{
+			APIKey:         cfg.LLM.DashScopeKey,
+			ChatModel:      cfg.LLM.DashScopeModel,
+			EmbeddingModel: embModel,
+			CompatBaseURL:  cfg.LLM.DashScopeCompatURL,
+		})
+	default:
+		llmProvider = llm.NewOllamaClient(
+			cfg.LLM.OllamaHost,
+			cfg.LLM.OllamaModel,
+			cfg.LLM.EmbeddingModel,
+		)
 	}
+	_ = llmProvider // reserved for future Designer benchmark
 
 	fmt.Println("🚀 Hanfledge 2.0 性能基准测试")
 	fmt.Println("================================")
@@ -88,12 +107,13 @@ func main() {
 	// 测试 2: Designer 预加载耗时
 	fmt.Println("⏱️  [测试 2] Designer 预加载 (Neo4j GetKPContext)")
 	var currentKP uint
+	var designerTime time.Duration
 	db.Raw("SELECT current_kp FROM student_sessions WHERE id = ?", sessionID).Scan(&currentKP)
 
 	if currentKP > 0 {
 		start = time.Now()
 		_, err = neo4jClient.GetKPContext(context.Background(), currentKP, 2)
-		designerTime := time.Since(start)
+		designerTime = time.Since(start)
 		if err != nil {
 			log.Printf("❌ Designer 预加载失败: %v", err)
 		} else {

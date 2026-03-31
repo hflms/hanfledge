@@ -43,6 +43,8 @@ type StudentSession struct {
 type Interaction struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	SessionID  uint      `gorm:"not null;index" json:"session_id"`
+	KPID       uint      `gorm:"index" json:"kp_id"`           // 交互发生时的目标知识点 (用于按步骤过滤历史)
+	StepIndex  int       `gorm:"default:0" json:"step_index"`  // 在活动 KP 序列中的位置 (0-based)
 	Role       string    `gorm:"size:20;not null" json:"role"` // "student" | "coach" | "system" | "teacher"
 	Content    string    `gorm:"type:text;not null" json:"content"`
 	SkillID    string    `gorm:"size:100" json:"skill_id"`
@@ -56,6 +58,22 @@ type Interaction struct {
 	ContextPrecision     *float64 `json:"context_precision,omitempty"`                // 检索上下文精度
 	ContextRecall        *float64 `json:"context_recall,omitempty"`                   // 检索上下文召回
 	EvalStatus           string   `gorm:"size:20;default:pending" json:"eval_status"` // pending | evaluated | skipped
+}
+
+// StepSummary 步骤学习摘要表。
+// 每次步骤转换时由 LLM 生成，概括前一步骤的学习成果，
+// 供后续步骤的 Designer 注入系统提示词，实现跨步骤知识衔接。
+type StepSummary struct {
+	ID           uint    `gorm:"primaryKey" json:"id"`
+	SessionID    uint    `gorm:"not null;index" json:"session_id"`
+	KPID         uint    `gorm:"not null" json:"kp_id"`             // 该步骤对应的知识点
+	StepIndex    int     `gorm:"default:0" json:"step_index"`       // 步骤序号
+	Summary      string  `gorm:"type:text;not null" json:"summary"` // LLM 生成的学习摘要
+	MasteryStart float64 `gorm:"default:0" json:"mastery_start"`    // 步骤开始时的掌握度
+	MasteryEnd   float64 `gorm:"default:0" json:"mastery_end"`      // 步骤结束时的掌握度
+	TurnCount    int     `gorm:"default:0" json:"turn_count"`       // 该步骤交互轮次
+	SkillID      string  `gorm:"size:100" json:"skill_id"`          // 该步骤使用的技能
+	CreatedAt    string  `json:"created_at"`
 }
 
 // StudentKPMastery 学生-知识点掌握度表。

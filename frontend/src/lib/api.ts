@@ -596,8 +596,15 @@ export async function getSession(sessionId: number): Promise<SessionDetail> {
   return apiFetch<SessionDetail>(`/sessions/${sessionId}`);
 }
 
-export async function updateSessionStep(sessionId: number, kpId: number, activeSkill: string): Promise<{ message: string }> {
-  return apiFetch<{ message: string }>(`/sessions/${sessionId}/step`, {
+export interface StepTransitionResult {
+  message: string;
+  step_summary: string;
+  old_kp_id: number;
+  new_kp_id: number;
+}
+
+export async function updateSessionStep(sessionId: number, kpId: number, activeSkill: string): Promise<StepTransitionResult> {
+  return apiFetch<StepTransitionResult>(`/sessions/${sessionId}/step`, {
     method: 'PUT',
     body: JSON.stringify({ kp_id: kpId, active_skill: activeSkill }),
   });

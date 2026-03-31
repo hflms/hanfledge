@@ -15,6 +15,7 @@ import (
 	"github.com/hflms/hanfledge/internal/agent"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/storage"
@@ -36,11 +37,12 @@ type ActivityHandler struct {
 	Registry     *plugin.Registry
 	Storage      storage.FileStorage
 	LLMProvider  llm.LLMProvider
+	Cache        *cache.RedisCache // Redis cache for session history invalidation
 }
 
 // NewActivityHandler creates a new ActivityHandler.
-func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus, registry *plugin.Registry, fs storage.FileStorage, llmProvider llm.LLMProvider) *ActivityHandler {
-	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus, Registry: registry, Storage: fs, LLMProvider: llmProvider}
+func NewActivityHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, eventBus *plugin.EventBus, registry *plugin.Registry, fs storage.FileStorage, llmProvider llm.LLMProvider, redisCache *cache.RedisCache) *ActivityHandler {
+	return &ActivityHandler{DB: db, Orchestrator: orchestrator, EventBus: eventBus, Registry: registry, Storage: fs, LLMProvider: llmProvider, Cache: redisCache}
 }
 
 // publishEvent fires an EventBus event if the bus is available (nil-safe).
@@ -839,7 +841,14 @@ func (h *ActivityHandler) GetSession(c *gin.Context) {
 	})
 }
 
-// UpdateSessionStep updates the active skill and current KP for a session
+// UpdateSessionStep updates the active skill and current KP for a session.
+// PUT /sessions/:id/step
+// On step transition, this handler:
+//  1. Summarizes the prior step's interactions via LLM
+//  2. Saves a StepSummary record for the completed step
+//  3. Resets SkillState (clears stale skill session data)
+//  4. Invalidates Redis session history cache
+//  5. Updates the session's current_kp and active_skill
 func (h *ActivityHandler) UpdateSessionStep(c *gin.Context) {
 	sessionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -858,17 +867,160 @@ func (h *ActivityHandler) UpdateSessionStep(c *gin.Context) {
 
 	studentID := middleware.GetUserID(c)
 
-	query := h.DB.Model(&model.StudentSession{}).Where("id = ? AND student_id = ?", sessionID, studentID)
+	// 1. 加载当前会话，获取旧步骤信息
+	var session model.StudentSession
+	if err := h.DB.First(&session, "id = ? AND student_id = ?", sessionID, studentID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "会话不存在"})
+		return
+	}
 
-	if err := query.Updates(map[string]interface{}{
-		"current_kp":   req.KPID,
-		"active_skill": req.ActiveSkill,
-	}).Error; err != nil {
+	oldKPID := session.CurrentKP
+	oldSkill := session.ActiveSkill
+	summaryText := ""
+
+	// 2. 如果有旧步骤（kp_id != 0），生成步骤摘要
+	if oldKPID != 0 {
+		summaryText = h.summarizePriorStep(c.Request.Context(), uint(sessionID), oldKPID, oldSkill)
+	}
+
+	// 3. 保存 StepSummary 记录
+	if summaryText != "" {
+		// 获取旧步骤的掌握度
+		var mastery model.StudentKPMastery
+		masteryEnd := 0.0
+		if err := h.DB.Where("student_id = ? AND kp_id = ?", studentID, oldKPID).First(&mastery).Error; err == nil {
+			masteryEnd = mastery.MasteryScore
+		}
+
+		// 统计旧步骤的交互轮次
+		var turnCount int64
+		h.DB.Model(&model.Interaction{}).Where("session_id = ? AND kp_id = ? AND role = ?", sessionID, oldKPID, "student").Count(&turnCount)
+
+		// 计算步骤索引
+		stepIndex := h.findStepIndex(uint(sessionID), oldKPID)
+
+		stepSummary := model.StepSummary{
+			SessionID:    uint(sessionID),
+			KPID:         oldKPID,
+			StepIndex:    stepIndex,
+			Summary:      summaryText,
+			MasteryStart: 0, // TODO: track start mastery in future
+			MasteryEnd:   masteryEnd,
+			TurnCount:    int(turnCount),
+			SkillID:      oldSkill,
+			CreatedAt:    time.Now().Format(time.RFC3339),
+		}
+		if err := h.DB.Create(&stepSummary).Error; err != nil {
+			slogActivity.Warn("save step summary failed", "session_id", sessionID, "err", err)
+		}
+	}
+
+	// 4. 重置 SkillState（清除旧步骤的技能会话状态）
+	h.DB.Model(&model.StudentSession{}).Where("id = ?", sessionID).Update("skill_state", nil)
+
+	// 5. 失效 Redis 缓存（旧步骤的历史不应在新步骤中被缓存命中）
+	if h.Cache != nil {
+		if err := h.Cache.InvalidateSessionHistory(c.Request.Context(), uint(sessionID)); err != nil {
+			slogActivity.Warn("invalidate session history cache failed", "session_id", sessionID, "err", err)
+		}
+		if err := h.Cache.InvalidateSessionState(c.Request.Context(), uint(sessionID)); err != nil {
+			slogActivity.Warn("invalidate session state cache failed", "session_id", sessionID, "err", err)
+		}
+	}
+
+	// 6. 更新会话的 current_kp 和 active_skill
+	if err := h.DB.Model(&model.StudentSession{}).Where("id = ? AND student_id = ?", sessionID, studentID).
+		Updates(map[string]interface{}{
+			"current_kp":   req.KPID,
+			"active_skill": req.ActiveSkill,
+		}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新会话步骤失败"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "会话步骤更新成功"})
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "会话步骤更新成功",
+		"step_summary": summaryText,
+		"old_kp_id":    oldKPID,
+		"new_kp_id":    req.KPID,
+	})
+}
+
+// summarizePriorStep 使用 LLM 为前一步骤的交互生成学习摘要。
+func (h *ActivityHandler) summarizePriorStep(ctx context.Context, sessionID, kpID uint, skillID string) string {
+	// 查询该步骤的所有交互记录
+	var interactions []model.Interaction
+	h.DB.Where("session_id = ? AND kp_id = ?", sessionID, kpID).
+		Order("created_at ASC").
+		Limit(30). // 限制上下文长度
+		Find(&interactions)
+
+	if len(interactions) == 0 {
+		// 回退: 如果没有带 kp_id 的记录（旧数据），用全部交互
+		h.DB.Where("session_id = ?", sessionID).
+			Order("created_at ASC").
+			Limit(20).
+			Find(&interactions)
+	}
+
+	if len(interactions) < 2 {
+		return ""
+	}
+
+	// 构建对话文本
+	var sb strings.Builder
+	for _, ix := range interactions {
+		sb.WriteString(fmt.Sprintf("[%s]: %s\n", ix.Role, ix.Content))
+	}
+
+	prompt := fmt.Sprintf(`请用2-3句话概括以下学习对话中学生的学习成果和主要收获。
+重点关注：学生理解了什么、还存在什么困难、掌握了哪些关键概念。
+技能类型: %s
+
+对话内容:
+%s
+
+学习摘要:`, skillID, sb.String())
+
+	if h.LLMProvider == nil {
+		return ""
+	}
+
+	summary, err := h.LLMProvider.Chat(ctx, []llm.ChatMessage{
+		{Role: "user", Content: prompt},
+	}, &llm.ChatOptions{MaxTokens: 200, Temperature: 0.3})
+	if err != nil {
+		slogActivity.Warn("step summary LLM call failed", "session_id", sessionID, "err", err)
+		return ""
+	}
+
+	return strings.TrimSpace(summary)
+}
+
+// findStepIndex 查找知识点在活动 KP 序列中的位置。
+func (h *ActivityHandler) findStepIndex(sessionID, kpID uint) int {
+	var activityID uint
+	h.DB.Model(&model.StudentSession{}).Where("id = ?", sessionID).Pluck("activity_id", &activityID)
+	if activityID == 0 {
+		return 0
+	}
+
+	var kpIDsJSON string
+	h.DB.Model(&model.LearningActivity{}).Where("id = ?", activityID).Pluck("kpids", &kpIDsJSON)
+	if kpIDsJSON == "" {
+		return 0
+	}
+
+	var kpIDs []uint
+	if err := json.Unmarshal([]byte(kpIDsJSON), &kpIDs); err != nil {
+		return 0
+	}
+	for i, id := range kpIDs {
+		if id == kpID {
+			return i
+		}
+	}
+	return 0
 }
 
 // ── Activity File Upload ────────────────────────────────────

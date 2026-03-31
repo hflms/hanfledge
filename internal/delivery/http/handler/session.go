@@ -19,6 +19,7 @@ import (
 	"github.com/hflms/hanfledge/internal/infrastructure/asr"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/infrastructure/safety"
+	"github.com/hflms/hanfledge/internal/infrastructure/weknora"
 	"gorm.io/gorm"
 )
 
@@ -44,19 +45,21 @@ type SessionHandler struct {
 	InjectionGuard *safety.InjectionGuard
 	Achievement    *AchievementHandler
 	ASR            asr.ASRProvider // ASR 语音识别 (nil-safe)
+	TokenManager   *weknora.TokenManager // WeKnora Token Manager (nil-safe)
 	upgrader       websocket.Upgrader
 }
 
 // NewSessionHandler creates a new SessionHandler.
 // corsOrigins is a comma-separated list of allowed origins (e.g. "http://localhost:3000"),
 // or "*" to allow all origins. ginMode controls dev vs production behavior.
-func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard, asrProvider asr.ASRProvider, corsOrigins string, ginMode string) *SessionHandler {
+func NewSessionHandler(db *gorm.DB, orchestrator *agent.AgentOrchestrator, injectionGuard *safety.InjectionGuard, asrProvider asr.ASRProvider, tokenMgr *weknora.TokenManager, corsOrigins string, ginMode string) *SessionHandler {
 	return &SessionHandler{
 		DB:             db,
 		Orchestrator:   orchestrator,
 		InjectionGuard: injectionGuard,
 		Achievement:    NewAchievementHandler(db),
 		ASR:            asrProvider,
+		TokenManager:   tokenMgr,
 		upgrader:       newUpgrader(corsOrigins, ginMode),
 		ActiveSessions: make(map[uint]*wsConn),
 	}
@@ -421,6 +424,17 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 	slogSession.Info("user message", "session", session.ID, "text", safety.RedactForLog(payload.Text, 50))
 	slogSession.Info("[DEBUG] provider_override", "session", session.ID, "provider", payload.ProviderOverride, "model", payload.ModelOverride)
 
+	// 获取 User-specific WeKnora Client (如果启用了的话)
+	var wkClient *weknora.Client
+	if h.TokenManager != nil && !session.IsSandbox {
+		client, err := h.TokenManager.GetClientForUser(context.Background(), studentID)
+		if err == nil {
+			wkClient = client
+		} else {
+			slogSession.Warn("failed to get user-specific weknora client", "session", session.ID, "err", err)
+		}
+	}
+
 	// Build TurnContext with WebSocket callbacks
 	agentCtx, agentCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer agentCancel()
@@ -435,6 +449,7 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 		IsSandbox:        session.IsSandbox,
 		ProviderOverride: payload.ProviderOverride,
 		ModelOverride:    payload.ModelOverride,
+		WeKnoraClient:    wkClient,
 
 		OnThinking: func(status string) {
 			h.sendEvent(ws, agent.EventAgentThinking, agent.ThinkingPayload{

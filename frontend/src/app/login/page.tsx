@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { login } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import ThemeToggle from '@/components/ThemeToggle';
 import styles from './page.module.css';
 
 export default function LoginPage() {
@@ -43,6 +44,9 @@ export default function LoginPage() {
 
     return (
         <div className={styles.loginPage}>
+            <div className={styles.themeToggleCorner}>
+                <ThemeToggle />
+            </div>
             <div className={styles.loginCard}>
                 <div className={styles.logo}>
                     <div className={styles.logoIcon}>🎓</div>
