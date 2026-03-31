@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	"github.com/hflms/hanfledge/internal/repository"
+	"gorm.io/gorm"
 )
 
 var slogDash = logger.L("Dashboard")
@@ -20,6 +22,7 @@ var slogDash = logger.L("Dashboard")
 
 // DashboardHandler handles learning analytics dashboard APIs.
 type DashboardHandler struct {
+	DB         *gorm.DB
 	Courses    repository.CourseRepository
 	Users      repository.UserRepository
 	KPs        repository.KnowledgePointRepository
@@ -30,6 +33,7 @@ type DashboardHandler struct {
 
 // NewDashboardHandler creates a new DashboardHandler.
 func NewDashboardHandler(
+	db *gorm.DB,
 	courses repository.CourseRepository,
 	users repository.UserRepository,
 	kps repository.KnowledgePointRepository,
@@ -38,6 +42,7 @@ func NewDashboardHandler(
 	activities repository.ActivityRepository,
 ) *DashboardHandler {
 	return &DashboardHandler{
+		DB:         db,
 		Courses:    courses,
 		Users:      users,
 		KPs:        kps,
@@ -625,5 +630,441 @@ func (h *DashboardHandler) GetErrorNotebook(c *gin.Context) {
 		TotalCount:    totalCount,
 		UnresolvedCnt: unresolvedCnt,
 		ResolvedCnt:   resolvedCnt,
+	})
+}
+
+// -- Live Monitor Overview ----------------------------------------
+
+// LiveActivitySummary 单个活动的实时监控摘要。
+type LiveActivitySummary struct {
+	ActivityID        uint    `json:"activity_id"`
+	ActivityTitle     string  `json:"activity_title"`
+	ActivityStatus    string  `json:"activity_status"`
+	TotalStudents     int     `json:"total_students"`
+	ActiveStudents    int     `json:"active_students"`
+	CompletedStudents int     `json:"completed_students"`
+	AvgMastery        float64 `json:"avg_mastery"`
+	AvgDurationMin    float64 `json:"avg_duration_min"`
+}
+
+// LiveMonitorResponse 实时监控概览响应。
+type LiveMonitorResponse struct {
+	CourseID   uint                  `json:"course_id"`
+	Timestamp  string                `json:"timestamp"`
+	Activities []LiveActivitySummary `json:"activities"`
+}
+
+// GetLiveMonitor returns a real-time overview of all published activities for a course,
+// showing live session counts, active/completed students, and average mastery.
+// Designed for 10-second polling by the teacher dashboard.
+//
+//	@Summary      实时监控概览
+//	@Description  返回课程下所有已发布活动的实时学情概览（活跃/完成学生数、平均掌握度等）
+//	@Tags         Dashboard
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        course_id  query     int  true  "课程 ID"
+//	@Success      200        {object}  LiveMonitorResponse
+//	@Failure      400        {object}  ErrorResponse
+//	@Failure      403        {object}  ErrorResponse
+//	@Router       /dashboard/live-monitor [get]
+func (h *DashboardHandler) GetLiveMonitor(c *gin.Context) {
+	courseIDStr := c.Query("course_id")
+	if courseIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "course_id 参数必填"})
+		return
+	}
+	courseID, err := strconv.ParseUint(courseIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 course_id"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	teacherID := middleware.GetUserID(c)
+
+	// Verify teacher owns this course
+	course, err := h.Courses.FindByID(ctx, uint(courseID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
+		return
+	}
+	if course.TeacherID != teacherID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该课程数据"})
+		return
+	}
+
+	// Get all published activities for this course
+	var activities []model.LearningActivity
+	if err := h.DB.WithContext(ctx).
+		Where("course_id = ? AND status = ?", courseID, model.ActivityStatusPublished).
+		Order("created_at DESC").
+		Find(&activities).Error; err != nil {
+		slogDash.Warn("failed to query published activities", "course_id", courseID, "err", err)
+	}
+
+	summaries := make([]LiveActivitySummary, 0, len(activities))
+
+	for _, act := range activities {
+		// Get all non-sandbox sessions for this activity
+		sessions, err := h.Sessions.ListByActivityID(ctx, act.ID, true)
+		if err != nil {
+			slogDash.Warn("failed to query sessions", "activity_id", act.ID, "err", err)
+			continue
+		}
+
+		activeCount := 0
+		completedCount := 0
+		var totalDuration float64
+		now := time.Now()
+
+		// Collect student IDs and KP IDs for batch mastery lookup
+		studentKPMap := make(map[uint]uint) // studentID -> latest currentKP
+		for _, s := range sessions {
+			switch s.Status {
+			case model.SessionStatusActive:
+				activeCount++
+			case model.SessionStatusCompleted:
+				completedCount++
+			}
+			studentKPMap[s.StudentID] = s.CurrentKP
+
+			endTime := now
+			if s.EndedAt != nil {
+				endTime = *s.EndedAt
+			}
+			totalDuration += endTime.Sub(s.StartedAt).Minutes()
+		}
+
+		avgDuration := 0.0
+		if len(sessions) > 0 {
+			avgDuration = totalDuration / float64(len(sessions))
+		}
+
+		// Batch mastery lookup
+		avgMastery := 0.0
+		if len(studentKPMap) > 0 {
+			studentIDs := make([]uint, 0, len(studentKPMap))
+			kpIDSet := make(map[uint]bool)
+			for sid, kpid := range studentKPMap {
+				studentIDs = append(studentIDs, sid)
+				kpIDSet[kpid] = true
+			}
+			kpIDs := make([]uint, 0, len(kpIDSet))
+			for kp := range kpIDSet {
+				kpIDs = append(kpIDs, kp)
+			}
+			masteries, err := h.Mastery.FindByStudentsAndKPs(ctx, studentIDs, kpIDs)
+			if err == nil && len(masteries) > 0 {
+				totalM := 0.0
+				for _, m := range masteries {
+					totalM += m.MasteryScore
+				}
+				avgMastery = totalM / float64(len(masteries))
+			}
+		}
+
+		summaries = append(summaries, LiveActivitySummary{
+			ActivityID:        act.ID,
+			ActivityTitle:     act.Title,
+			ActivityStatus:    string(act.Status),
+			TotalStudents:     len(sessions),
+			ActiveStudents:    activeCount,
+			CompletedStudents: completedCount,
+			AvgMastery:        avgMastery,
+			AvgDurationMin:    avgDuration,
+		})
+	}
+
+	c.JSON(http.StatusOK, LiveMonitorResponse{
+		CourseID:   uint(courseID),
+		Timestamp:  time.Now().Format(time.RFC3339),
+		Activities: summaries,
+	})
+}
+
+// -- Activity Live Detail ----------------------------------------
+
+// LiveStudentInfo 单个学生的实时学习状态。
+type LiveStudentInfo struct {
+	StudentID        uint    `json:"student_id"`
+	StudentName      string  `json:"student_name"`
+	SessionID        uint    `json:"session_id"`
+	Status           string  `json:"status"`
+	DurationMin      float64 `json:"duration_min"`
+	MasteryScore     float64 `json:"mastery_score"`
+	InteractionCount int64   `json:"interaction_count"`
+	LastActiveAt     string  `json:"last_active_at"`
+	ScaffoldLevel    string  `json:"scaffold_level"`
+}
+
+// LiveStepInfo 单个教学环节的学生分布。
+type LiveStepInfo struct {
+	KPID     uint              `json:"kp_id"`
+	KPTitle  string            `json:"kp_title"`
+	StepIdx  int               `json:"step_index"`
+	Students []LiveStudentInfo `json:"students"`
+}
+
+// StudentAlert 学生预警信息。
+type StudentAlert struct {
+	StudentID   uint   `json:"student_id"`
+	StudentName string `json:"student_name"`
+	SessionID   uint   `json:"session_id"`
+	AlertType   string `json:"alert_type"` // "stuck" | "struggling" | "idle"
+	Message     string `json:"message"`
+}
+
+// KPSequenceItem 知识点序列条目。
+type KPSequenceItem struct {
+	KPID    uint   `json:"kp_id"`
+	KPTitle string `json:"kp_title"`
+}
+
+// ActivityLiveDetailResponse 活动实时详情响应。
+type ActivityLiveDetailResponse struct {
+	ActivityID uint             `json:"activity_id"`
+	Title      string           `json:"title"`
+	KPSequence []KPSequenceItem `json:"kp_sequence"`
+	Steps      []LiveStepInfo   `json:"steps"`
+	Alerts     []StudentAlert   `json:"alerts"`
+	Timestamp  string           `json:"timestamp"`
+}
+
+// GetActivityLiveDetail returns detailed per-step student breakdown for a specific activity.
+// Shows which students are on which step, how long they've been there, and auto-detects
+// students who may need intervention (stuck, struggling, idle).
+//
+//	@Summary      活动实时详情
+//	@Description  返回指定活动的按环节学生分布、停留时长、掌握度和预警信息
+//	@Tags         Dashboard
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "活动 ID"
+//	@Success      200 {object}  ActivityLiveDetailResponse
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /dashboard/activities/{id}/live [get]
+func (h *DashboardHandler) GetActivityLiveDetail(c *gin.Context) {
+	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的活动 ID"})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Verify activity exists and teacher owns it
+	activity, err := h.Activities.FindByID(ctx, uint(activityID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "学习活动不存在"})
+		return
+	}
+	teacherID := middleware.GetUserID(c)
+	if activity.TeacherID != teacherID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "无权查看该活动数据"})
+		return
+	}
+
+	// Parse KP sequence from activity.KPIDS (JSONB array of ints)
+	var kpIDs []uint
+	if activity.KPIDS != "" {
+		var rawIDs []int
+		if err := json.Unmarshal([]byte(activity.KPIDS), &rawIDs); err != nil {
+			slogDash.Warn("failed to parse kp_ids", "activity_id", activityID, "err", err)
+		} else {
+			for _, id := range rawIDs {
+				kpIDs = append(kpIDs, uint(id))
+			}
+		}
+	}
+
+	// Load KP titles
+	kpTitleMap := make(map[uint]string)
+	if len(kpIDs) > 0 {
+		kps, err := h.KPs.FindByIDs(ctx, kpIDs)
+		if err != nil {
+			slogDash.Warn("failed to load KPs", "err", err)
+		}
+		for _, kp := range kps {
+			kpTitleMap[kp.ID] = kp.Title
+		}
+	}
+
+	// Build ordered KP sequence
+	kpSequence := make([]KPSequenceItem, 0, len(kpIDs))
+	kpIndexMap := make(map[uint]int) // kpID -> step index
+	for i, kpID := range kpIDs {
+		kpSequence = append(kpSequence, KPSequenceItem{
+			KPID:    kpID,
+			KPTitle: kpTitleMap[kpID],
+		})
+		kpIndexMap[kpID] = i
+	}
+
+	// Get all non-sandbox sessions for this activity
+	sessions, err := h.Sessions.ListByActivityID(ctx, uint(activityID), true)
+	if err != nil {
+		slogDash.Warn("failed to query sessions", "activity_id", activityID, "err", err)
+	}
+
+	now := time.Now()
+
+	// Batch-load student names
+	studentIDSet := make(map[uint]bool)
+	for _, s := range sessions {
+		studentIDSet[s.StudentID] = true
+	}
+	studentNameMap := make(map[uint]string)
+	if len(studentIDSet) > 0 {
+		idList := make([]uint, 0, len(studentIDSet))
+		for id := range studentIDSet {
+			idList = append(idList, id)
+		}
+		students, err := h.Users.FindByIDs(ctx, idList, "id, display_name")
+		if err != nil {
+			slogDash.Warn("failed to load student names", "err", err)
+		}
+		for _, s := range students {
+			studentNameMap[s.ID] = s.DisplayName
+		}
+	}
+
+	// Batch-load mastery data
+	type masteryKey struct{ StudentID, KPID uint }
+	masteryMap := make(map[masteryKey]float64)
+	if len(studentIDSet) > 0 && len(kpIDs) > 0 {
+		sidList := make([]uint, 0, len(studentIDSet))
+		for id := range studentIDSet {
+			sidList = append(sidList, id)
+		}
+		masteries, err := h.Mastery.FindByStudentsAndKPs(ctx, sidList, kpIDs)
+		if err != nil {
+			slogDash.Warn("failed to load mastery data", "err", err)
+		}
+		for _, m := range masteries {
+			masteryMap[masteryKey{m.StudentID, m.KPID}] = m.MasteryScore
+		}
+	}
+
+	// Initialize step containers (one per KP in sequence)
+	stepStudentsMap := make(map[int][]LiveStudentInfo) // stepIndex -> students
+	var alerts []StudentAlert
+
+	for _, s := range sessions {
+		stepIdx, found := kpIndexMap[s.CurrentKP]
+		if !found {
+			stepIdx = 0 // fallback to first step
+		}
+
+		// Calculate duration
+		endTime := now
+		if s.EndedAt != nil {
+			endTime = *s.EndedAt
+		}
+		durationMin := endTime.Sub(s.StartedAt).Minutes()
+
+		// Count student interactions
+		interactionCount, err := h.Sessions.CountStudentInteractions(ctx, s.ID)
+		if err != nil {
+			slogDash.Warn("failed to count interactions", "session_id", s.ID, "err", err)
+		}
+
+		// Determine last active time by querying the latest interaction
+		lastActiveAt := s.StartedAt.Format(time.RFC3339)
+		var lastInteraction model.Interaction
+		if err := h.DB.WithContext(ctx).
+			Where("session_id = ?", s.ID).
+			Order("created_at DESC").
+			First(&lastInteraction).Error; err == nil {
+			lastActiveAt = lastInteraction.CreatedAt.Format(time.RFC3339)
+		}
+
+		masteryScore := masteryMap[masteryKey{s.StudentID, s.CurrentKP}]
+		studentName := studentNameMap[s.StudentID]
+
+		info := LiveStudentInfo{
+			StudentID:        s.StudentID,
+			StudentName:      studentName,
+			SessionID:        s.ID,
+			Status:           string(s.Status),
+			DurationMin:      durationMin,
+			MasteryScore:     masteryScore,
+			InteractionCount: interactionCount,
+			LastActiveAt:     lastActiveAt,
+			ScaffoldLevel:    string(s.Scaffold),
+		}
+		stepStudentsMap[stepIdx] = append(stepStudentsMap[stepIdx], info)
+
+		// -- Alert Detection (active sessions only) --
+		if s.Status != model.SessionStatusActive {
+			continue
+		}
+
+		// Parse last active time for alert detection
+		lastActive, parseErr := time.Parse(time.RFC3339, lastActiveAt)
+
+		// Alert: idle — no interaction for > 10 minutes
+		if parseErr == nil && now.Sub(lastActive).Minutes() > 10 {
+			idleMins := int(now.Sub(lastActive).Minutes())
+			alerts = append(alerts, StudentAlert{
+				StudentID:   s.StudentID,
+				StudentName: studentName,
+				SessionID:   s.ID,
+				AlertType:   "idle",
+				Message:     "已超过 " + strconv.Itoa(idleMins) + " 分钟无互动",
+			})
+		}
+
+		// Alert: stuck — on same step > 15 min with < 3 interactions
+		if durationMin > 15 && interactionCount < 3 {
+			alerts = append(alerts, StudentAlert{
+				StudentID:   s.StudentID,
+				StudentName: studentName,
+				SessionID:   s.ID,
+				AlertType:   "stuck",
+				Message:     "在当前环节停留超过 15 分钟且互动较少",
+			})
+		}
+
+		// Alert: struggling — mastery < 0.3 after > 5 attempts
+		if masteryScore < 0.3 && interactionCount > 5 {
+			alerts = append(alerts, StudentAlert{
+				StudentID:   s.StudentID,
+				StudentName: studentName,
+				SessionID:   s.ID,
+				AlertType:   "struggling",
+				Message:     "掌握度偏低（" + strconv.Itoa(int(masteryScore*100)) + "%），可能需要教师干预",
+			})
+		}
+	}
+
+	// Build ordered steps response
+	steps := make([]LiveStepInfo, len(kpSequence))
+	for i, kpItem := range kpSequence {
+		students := stepStudentsMap[i]
+		if students == nil {
+			students = []LiveStudentInfo{}
+		}
+		steps[i] = LiveStepInfo{
+			KPID:     kpItem.KPID,
+			KPTitle:  kpItem.KPTitle,
+			StepIdx:  i,
+			Students: students,
+		}
+	}
+
+	if alerts == nil {
+		alerts = []StudentAlert{}
+	}
+
+	c.JSON(http.StatusOK, ActivityLiveDetailResponse{
+		ActivityID: uint(activityID),
+		Title:      activity.Title,
+		KPSequence: kpSequence,
+		Steps:      steps,
+		Alerts:     alerts,
+		Timestamp:  now.Format(time.RFC3339),
 	})
 }
