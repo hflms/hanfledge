@@ -422,97 +422,6 @@
     font-weight: 600;
 }
 
-.activityForm {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.activityRow {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-}
-
-.toggleRow {
-    display: flex;
-    align-items: center;
-}
-
-.toggleLabel {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-muted);
-}
-
-.selectSection {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.selectHeader {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 13px;
-    color: var(--text-muted);
-}
-
-.selectActions {
-    display: flex;
-    gap: 8px;
-}
-
-.linkBtn {
-    background: none;
-    border: none;
-    color: var(--accent);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 0;
-}
-
-.selectList {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-height: 240px;
-    overflow: auto;
-    padding-right: 4px;
-}
-
-.selectGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 8px;
-}
-
-.selectItem {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text);
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-card);
-}
-
-.selectGroup {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.groupTitle {
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
 .emptyHint {
     font-size: 12px;
     color: var(--text-muted);
@@ -545,6 +454,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg-card);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.activityItem:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent);
 }
 
 .activityName {

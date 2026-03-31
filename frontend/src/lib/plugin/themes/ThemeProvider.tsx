@@ -28,7 +28,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 function applyTheme(theme: ThemeConfig) {
   const root = document.documentElement;
 
-  // Apply CSS variables
+  // Apply all CSS variables from the theme preset
   for (const [key, cssVar] of Object.entries(THEME_CSS_VAR_MAP)) {
     const value = theme.colors[key as keyof ThemeColors];
     if (value) {
@@ -36,11 +36,14 @@ function applyTheme(theme: ThemeConfig) {
     }
   }
 
-  // Apply data attribute for CSS selectors
+  // Derived variable: --shadow-glow depends on --accent-glow
+  root.style.setProperty('--shadow-glow', `0 0 30px ${theme.colors.accentGlow}`);
+
+  // Apply data attributes for CSS selectors
   root.setAttribute('data-theme', theme.id);
   root.setAttribute('data-theme-type', theme.type);
 
-  // Apply custom CSS if provided
+  // Apply custom CSS if provided (school branding)
   let customStyleEl = document.getElementById('hanfledge-theme-custom');
   if (theme.customCSS) {
     if (!customStyleEl) {

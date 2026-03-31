@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -584,10 +585,15 @@ func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material Personaliz
 func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResponse) error {
 	now := time.Now()
 
+	// 解析当前目标 KP 和步骤索引
+	kpID, stepIndex := o.resolveCurrentStep(tc)
+
 	// 保存学生输入
 	if tc.UserInput != "" {
 		studentMsg := model.Interaction{
 			SessionID: tc.SessionID,
+			KPID:      kpID,
+			StepIndex: stepIndex,
 			Role:      "student",
 			Content:   tc.UserInput,
 			CreatedAt: now,
@@ -600,6 +606,8 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 	// 保存 Coach 回复
 	coachMsg := model.Interaction{
 		SessionID:  tc.SessionID,
+		KPID:       kpID,
+		StepIndex:  stepIndex,
 		Role:       "coach",
 		Content:    response.Content,
 		SkillID:    response.SkillID,
@@ -629,6 +637,55 @@ func (o *AgentOrchestrator) saveInteraction(tc *TurnContext, response *DraftResp
 	}
 
 	return nil
+}
+
+// resolveCurrentStep 从 TurnContext 中解析当前目标知识点 ID 和步骤索引。
+// 优先使用 Prescription 的 TargetKPSequence, 回退到 session.CurrentKP。
+// 步骤索引通过在活动的 KP 序列中查找当前 KP 位置获得。
+func (o *AgentOrchestrator) resolveCurrentStep(tc *TurnContext) (kpID uint, stepIndex int) {
+	// 1. 解析 kpID
+	if tc.Prescription != nil && len(tc.Prescription.TargetKPSequence) > 0 {
+		kpID = tc.Prescription.TargetKPSequence[0].KPID
+	}
+	if kpID == 0 {
+		var session model.StudentSession
+		if err := o.db.WithContext(tc.Ctx).Select("current_kp", "activity_id").First(&session, tc.SessionID).Error; err == nil {
+			kpID = session.CurrentKP
+			// 2. 解析 stepIndex: 从活动的 kp_ids JSON 数组查找当前 KP 位置
+			if kpID != 0 && session.ActivityID != 0 {
+				stepIndex = o.findStepIndex(tc.Ctx, session.ActivityID, kpID)
+				return
+			}
+		}
+	}
+	// 用 tc.ActivityID 解析 stepIndex
+	if kpID != 0 && tc.ActivityID != 0 {
+		stepIndex = o.findStepIndex(tc.Ctx, tc.ActivityID, kpID)
+	}
+	return
+}
+
+// findStepIndex 在活动的 kp_ids JSON 数组中查找指定 KP 的位置索引。
+func (o *AgentOrchestrator) findStepIndex(ctx context.Context, activityID, kpID uint) int {
+	var kpIDsJSON string
+	if err := o.db.WithContext(ctx).
+		Model(&model.LearningActivity{}).
+		Where("id = ?", activityID).
+		Pluck("kpids", &kpIDsJSON).Error; err != nil || kpIDsJSON == "" {
+		return 0
+	}
+
+	// 解析 JSON 数组 e.g. [1, 2, 3]
+	var kpIDs []uint
+	if err := json.Unmarshal([]byte(kpIDsJSON), &kpIDs); err != nil {
+		return 0
+	}
+	for i, id := range kpIDs {
+		if id == kpID {
+			return i
+		}
+	}
+	return 0
 }
 
 // updateMasteryAndFadeScaffold 每轮交互后更新 BKT 掌握度并检查支架衰减。

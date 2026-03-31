@@ -95,7 +95,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	userHandler := handler.NewUserHandler(deps.DB)
 	courseHandler := handler.NewCourseHandler(courseRepo, docRepo, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry, deps.LLMProvider)
-	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus, deps.Registry, deps.FileStorage, deps.LLMProvider)
+	activityHandler := handler.NewActivityHandler(deps.DB, deps.Orchestrator, deps.EventBus, deps.Registry, deps.FileStorage, deps.LLMProvider, deps.RedisCache)
 
 	var tokenMgr *weknora.TokenManager
 	if deps.WeKnoraClient != nil {

@@ -88,6 +88,9 @@ export default function SessionPage() {
     // Agent thinking state (T-4.14)
     const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
 
+    // Step transition summary (shown briefly between steps)
+    const [transitionSummary, setTransitionSummary] = useState<string | null>(null);
+
     // Streaming token buffer
     const [streamingContent, setStreamingContent] = useState('');
     const lastResponseRef = useRef('');
@@ -301,18 +304,31 @@ export default function SessionPage() {
         if (currentStepIndex < steps.length - 1) {
             const nextStep = steps[currentStepIndex + 1];
             try {
-                await updateSessionStep(sessionId, nextStep.kpId, nextStep.skill);
+                const result = await updateSessionStep(sessionId, nextStep.kpId, nextStep.skill);
                 setSession(prev => prev ? { ...prev, current_kp_id: nextStep.kpId, active_skill: nextStep.skill } : null);
                 
-                // Clear messages to trigger auto-start in the new renderer
-                setMessages([]);
-                
-                // Optional: send a kickstart message immediately via WS
-                agentChannel.send(JSON.stringify({
-                    event: 'user_message',
-                    payload: { text: `[系统] 学生已进入下一步学习阶段：${nextStep.label}。请根据当前知识点和技能重新开始引导。` },
-                    timestamp: Math.floor(Date.now() / 1000)
-                }));
+                // Show transition summary card if available
+                if (result.step_summary) {
+                    setTransitionSummary(result.step_summary);
+                    setMessages([]);
+                    // Auto-dismiss after 4 seconds and kickstart next step
+                    setTimeout(() => {
+                        setTransitionSummary(null);
+                        agentChannel.send(JSON.stringify({
+                            event: 'user_message',
+                            payload: { text: `[系统] 学生已进入下一步学习阶段：${nextStep.label}。请根据当前知识点和技能重新开始引导。` },
+                            timestamp: Math.floor(Date.now() / 1000)
+                        }));
+                    }, 4000);
+                } else {
+                    // No summary — proceed immediately
+                    setMessages([]);
+                    agentChannel.send(JSON.stringify({
+                        event: 'user_message',
+                        payload: { text: `[系统] 学生已进入下一步学习阶段：${nextStep.label}。请根据当前知识点和技能重新开始引导。` },
+                        timestamp: Math.floor(Date.now() / 1000)
+                    }));
+                }
 
                 toast('已进入下一步', 'success');
             } catch (err) {
@@ -325,18 +341,29 @@ export default function SessionPage() {
         if (currentStepIndex > 0) {
             const prevStep = steps[currentStepIndex - 1];
             try {
-                await updateSessionStep(sessionId, prevStep.kpId, prevStep.skill);
+                const result = await updateSessionStep(sessionId, prevStep.kpId, prevStep.skill);
                 setSession(prev => prev ? { ...prev, current_kp_id: prevStep.kpId, active_skill: prevStep.skill } : null);
                 
-                // Clear messages to trigger auto-start in the new renderer
-                setMessages([]);
-                
-                // Optional: send a kickstart message immediately via WS
-                agentChannel.send(JSON.stringify({
-                    event: 'user_message',
-                    payload: { text: `[系统] 学生已返回上一步学习阶段：${prevStep.label}。请恢复该阶段的引导。` },
-                    timestamp: Math.floor(Date.now() / 1000)
-                }));
+                // Show transition summary card if available
+                if (result.step_summary) {
+                    setTransitionSummary(result.step_summary);
+                    setMessages([]);
+                    setTimeout(() => {
+                        setTransitionSummary(null);
+                        agentChannel.send(JSON.stringify({
+                            event: 'user_message',
+                            payload: { text: `[系统] 学生已返回上一步学习阶段：${prevStep.label}。请恢复该阶段的引导。` },
+                            timestamp: Math.floor(Date.now() / 1000)
+                        }));
+                    }, 4000);
+                } else {
+                    setMessages([]);
+                    agentChannel.send(JSON.stringify({
+                        event: 'user_message',
+                        payload: { text: `[系统] 学生已返回上一步学习阶段：${prevStep.label}。请恢复该阶段的引导。` },
+                        timestamp: Math.floor(Date.now() / 1000)
+                    }));
+                }
 
                 toast('已返回上一步', 'success');
             } catch (err) {
@@ -622,6 +649,23 @@ export default function SessionPage() {
                             className={styles.stepBtn}
                         >
                             下一步
+                        </button>
+                    </div>
+                )}
+
+                {/* Step Transition Summary Card */}
+                {transitionSummary && (
+                    <div className={styles.transitionCard}>
+                        <div className={styles.transitionCardHeader}>
+                            <span className={styles.transitionCardIcon}>&#x1f4cb;</span>
+                            <span>上一环节学习回顾</span>
+                        </div>
+                        <p className={styles.transitionCardBody}>{transitionSummary}</p>
+                        <button
+                            className={styles.transitionCardDismiss}
+                            onClick={() => setTransitionSummary(null)}
+                        >
+                            继续学习
                         </button>
                     </div>
                 )}

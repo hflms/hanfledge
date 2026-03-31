@@ -81,6 +81,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.StudentSession{},
 		&model.Interaction{},
 		&model.StudentKPMastery{},
+		&model.StepSummary{},
 		&model.ErrorNotebookEntry{},
 		// 文档与向量
 		&model.Document{},
