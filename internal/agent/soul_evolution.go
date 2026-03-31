@@ -125,7 +125,26 @@ func (s *SoulEvolutionService) StartAutoEvolution(ctx context.Context) {
 
 			// Store suggestion for admin review
 			log.Printf("[SoulEvolution] New suggestion generated:\n%s", suggestion)
-			// TODO: Send notification to admin
+
+			// Notify all system admins
+			var admins []model.User
+			s.db.Joins("JOIN user_school_roles ON users.id = user_school_roles.user_id").
+				Joins("JOIN roles ON user_school_roles.role_id = roles.id").
+				Where("roles.name = ?", model.RoleSysAdmin).
+				Find(&admins)
+
+			for _, admin := range admins {
+				notif := model.Notification{
+					UserID:    admin.ID,
+					Type:      "soul_evolution",
+					Title:     "Soul 规则进化建议已生成",
+					Content:   suggestion,
+					IsRead:    false,
+					CreatedAt: time.Now(),
+				}
+				s.db.Create(&notif)
+			}
+			log.Printf("[SoulEvolution] Notified %d admins", len(admins))
 		}
 	}
 }
