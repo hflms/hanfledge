@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { apiFetch, getToken, setToken, clearToken } from './api';
+import { apiFetch, getToken, setToken, clearToken, getLiveMonitor, getActivityLiveDetail } from './api';
 
 // -- Helpers -------------------------------------------------------
 
@@ -130,5 +130,99 @@ describe('apiFetch', () => {
     // When json fails, catch returns { error: res.statusText } = { error: 'Internal Server Error' }
     // So err.error = 'Internal Server Error'
     await expect(apiFetch('/error')).rejects.toThrow('Internal Server Error');
+  });
+});
+
+// -- Live Monitor API Functions ------------------------------------
+
+describe('getLiveMonitor', () => {
+  it('calls the correct endpoint with course_id', async () => {
+    setToken('test-token');
+    const mockData = {
+      course_id: 1,
+      timestamp: '2026-03-31T12:00:00Z',
+      activities: [
+        {
+          activity_id: 10,
+          activity_title: 'Physics Lab',
+          activity_status: 'active',
+          total_students: 30,
+          active_students: 25,
+          completed_students: 5,
+          avg_mastery: 0.72,
+          avg_duration_min: 15.5,
+        },
+      ],
+    };
+    const fetchSpy = mockFetchResponse(200, mockData);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await getLiveMonitor(1);
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toContain('/dashboard/live-monitor?course_id=1');
+    expect(result.course_id).toBe(1);
+    expect(result.activities).toHaveLength(1);
+    expect(result.activities[0].activity_title).toBe('Physics Lab');
+  });
+
+  it('propagates errors from apiFetch', async () => {
+    setToken('test-token');
+    const fetchSpy = mockFetchResponse(500, { error: '服务器错误' });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(getLiveMonitor(1)).rejects.toThrow('服务器错误');
+  });
+});
+
+describe('getActivityLiveDetail', () => {
+  it('calls the correct endpoint with activity_id', async () => {
+    setToken('test-token');
+    const mockData = {
+      activity_id: 10,
+      title: 'Physics Lab',
+      kp_sequence: [{ kp_id: 1, kp_title: 'Newton Laws' }],
+      steps: [],
+      alerts: [],
+      timestamp: '2026-03-31T12:00:00Z',
+    };
+    const fetchSpy = mockFetchResponse(200, mockData);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await getActivityLiveDetail(10);
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toContain('/dashboard/activities/10/live');
+    expect(result.activity_id).toBe(10);
+    expect(result.title).toBe('Physics Lab');
+    expect(result.kp_sequence).toHaveLength(1);
+  });
+
+  it('returns alerts when students are struggling', async () => {
+    setToken('test-token');
+    const mockData = {
+      activity_id: 10,
+      title: 'Physics Lab',
+      kp_sequence: [],
+      steps: [],
+      alerts: [
+        {
+          student_id: 5,
+          student_name: 'Alice',
+          session_id: 100,
+          alert_type: 'stuck',
+          message: '停滞超过 5 分钟',
+        },
+      ],
+      timestamp: '2026-03-31T12:00:00Z',
+    };
+    const fetchSpy = mockFetchResponse(200, mockData);
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await getActivityLiveDetail(10);
+
+    expect(result.alerts).toHaveLength(1);
+    expect(result.alerts[0].alert_type).toBe('stuck');
+    expect(result.alerts[0].student_name).toBe('Alice');
   });
 });
