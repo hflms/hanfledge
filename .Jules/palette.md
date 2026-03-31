@@ -8,3 +8,7 @@
 ## 2026-03-30 - Proper ARIA Dialog Semantics & Keyboard Shortcuts
 **Learning:** Custom modal dialogs often miss crucial native dialog capabilities: keyboard dismissability (the ESC key) and proper announcement by screen readers upon opening.
 **Action:** Always implement `role="dialog"`, `aria-modal="true"`, and use `React.useId()` to link `aria-labelledby` with the modal title. Additionally, bind a document-level `keydown` listener for 'Escape' in a `useEffect` to safely handle keyboard dismissal, ensuring clean up on unmount or close.
+
+## 2025-03-31 - [Add copy feedback to code blocks]
+**Learning:** Adding a temporary visual state ("已复制!") and updating the `aria-label` provides a massive accessibility win for screen-reader users and visual reassurance for all users when interacting with clipboard APIs. Using `setTimeout` within a React `useCallback` requires proper cleanup using `useRef` to prevent state updates on unmounted components and overlapping timers.
+**Action:** Whenever implementing a clipboard copy action, always extract the button into a stateful component that manages a `copied` boolean and provides visual/ARIA feedback. Ensure to clear timeouts in both the copy handler and the `useEffect` unmount cleanup.
