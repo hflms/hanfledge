@@ -45,6 +45,7 @@ const providerKeyMap: Record<string, {
 
 const defaultBaseUrlMap: Record<string, string> = {
   ollama:     'http://localhost:11434',
+  dashscope:  'https://dashscope.aliyuncs.com/compatible-mode/v1',
   doubao:     'https://ark.cn-beijing.volces.com/api/v3',
   deepseek:   'https://api.deepseek.com/v1',
   openrouter: 'https://openrouter.ai/api/v1',
@@ -476,13 +477,23 @@ export default function SystemSettingsPage() {
       if (modelModal.type === 'chat') {
         const res = await apiFetch<{ message: string; latency?: number }>('/system/config/test-chat-model', {
           method: 'POST',
-          body: JSON.stringify({ provider: modelModal.provider, model }),
+          body: JSON.stringify({
+            provider: modelModal.provider,
+            model,
+            apiKey:  modelModal.apiKey,
+            baseUrl: modelModal.baseUrl,
+          }),
         });
         setModalTestResult(`✅ ${res.message}${res.latency !== undefined ? `，耗时 ${res.latency}ms` : ''}`);
       } else {
         const res = await apiFetch<{ message: string; latency?: number; dimension?: number }>('/system/config/test-embedding-model', {
           method: 'POST',
-          body: JSON.stringify({ provider: modelModal.provider, model }),
+          body: JSON.stringify({
+            provider: modelModal.provider,
+            model,
+            apiKey:  modelModal.apiKey,
+            baseUrl: modelModal.baseUrl,
+          }),
         });
         const dimInfo = res.dimension !== undefined ? `，维度 ${res.dimension}` : '';
         setModalTestResult(`✅ ${res.message}${res.latency !== undefined ? `，耗时 ${res.latency}ms` : ''}${dimInfo}`);
