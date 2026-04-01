@@ -71,6 +71,190 @@
   margin-top: 6px;
 }
 
+.sectionIntro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.sectionIntro h2 {
+  margin: 0 0 6px;
+}
+
+.sectionIntro p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.modelSection {
+  margin-top: 24px;
+}
+
+.modelSection:first-of-type {
+  margin-top: 0;
+}
+
+.modelSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.modelSectionHeader h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: var(--text-main);
+}
+
+.modelSectionHeader p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.modelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.modelCard {
+  --model-accent: var(--primary-color);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 168px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--model-accent) 18%, var(--border-color) 82%);
+  border-radius: 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 90%, var(--model-accent) 10%), var(--bg-card));
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.modelCard:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--model-accent) 60%, var(--border-color) 40%);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.activeModelCard {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--model-accent) 45%, transparent), 0 16px 36px rgba(15, 23, 42, 0.1);
+}
+
+.activeBadge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--model-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.modelCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+
+.modelKind,
+.modelProvider,
+.modelMeta {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.modelKind {
+  gap: 8px;
+  background: color-mix(in srgb, var(--model-accent) 14%, transparent);
+  color: var(--model-accent);
+}
+
+.modelProvider,
+.modelMeta {
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text-muted);
+}
+
+.modelName {
+  font-size: 18px;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
+.modelHint {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.providerBadge,
+.modalProviderIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.providerBadge {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.modelCardActions {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.addModelCard {
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  background: color-mix(in srgb, var(--model-accent) 5%, var(--bg-card) 95%);
+  text-align: center;
+}
+
+.addModelIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--model-accent) 12%, transparent);
+  color: var(--model-accent);
+  font-size: 28px;
+  line-height: 1;
+}
+
 .inlineRow {
   display: flex;
   gap: 12px;
@@ -136,6 +320,123 @@
   margin-top: 32px;
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: min(100%, 560px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 0;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text-main);
+}
+
+.modalDescription {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.modalClose {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modalBody {
+  padding: 20px;
+}
+
+.modalProviderSummary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-card) 90%, var(--bg-body) 10%);
+}
+
+.modalProviderSummary strong {
+  display: block;
+  color: var(--text-main);
+}
+
+.modalProviderSummary p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.modalProviderIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.modalTestPanel {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-card) 92%, var(--bg-body) 8%);
+}
+
+.modalTestHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modalTestHeader strong {
+  color: var(--text-main);
+}
+
+.modalTestHeader p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
 .button {
   padding: 10px 24px;
   border-radius: 6px;
@@ -157,4 +458,60 @@
 
 .primaryButton:hover:not(:disabled) {
   opacity: 0.9;
+}
+
+.ghostButton {
+  padding: 8px 14px;
+  background: color-mix(in srgb, var(--model-accent) 8%, transparent);
+  color: var(--text-main);
+  border: 1px solid color-mix(in srgb, var(--model-accent) 20%, var(--border-color) 80%);
+}
+
+.ghostButton:hover:not(:disabled) {
+  border-color: var(--model-accent);
+}
+
+.dangerButton {
+  margin-right: auto;
+  background: #dc2626;
+  color: #fff;
+}
+
+.dangerButton:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+@media (max-width: 720px) {
+  .container {
+    padding: 16px;
+  }
+
+  .card {
+    padding: 18px;
+  }
+
+  .inlineRow,
+  .modelSectionHeader,
+  .modalProviderSummary,
+  .modalTestHeader,
+  .modalActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .button {
+    width: 100%;
+  }
+
+  .dangerButton {
+    margin-right: 0;
+  }
+
+  .modalOverlay {
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 24px);
+  }
 }
