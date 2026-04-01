@@ -37,6 +37,11 @@
     background: var(--bg-card);
 }
 
+.tabBtn:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: -2px;
+}
+
 .tabBtnActive {
     color: var(--accent);
     background: rgba(108, 92, 231, 0.08); /* Assuming purple tint */

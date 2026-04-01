@@ -12,3 +12,7 @@
 ## 2025-03-31 - [Add copy feedback to code blocks]
 **Learning:** Adding a temporary visual state ("已复制!") and updating the `aria-label` provides a massive accessibility win for screen-reader users and visual reassurance for all users when interacting with clipboard APIs. Using `setTimeout` within a React `useCallback` requires proper cleanup using `useRef` to prevent state updates on unmounted components and overlapping timers.
 **Action:** Whenever implementing a clipboard copy action, always extract the button into a stateful component that manages a `copied` boolean and provides visual/ARIA feedback. Ensure to clear timeouts in both the copy handler and the `useEffect` unmount cleanup.
+
+## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
+**Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
+**Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.

@@ -67,20 +67,32 @@ export default function StudentActivitiesPage() {
                 <h1 className={styles.pageTitle}>学习活动</h1>
             </div>
 
-            <div className={styles.tabs}>
+            <div className={styles.tabs} role="tablist" aria-label="活动分类">
                 <button
+                    id="tab-active"
+                    role="tab"
+                    aria-selected={activeTab === 'active'}
+                    aria-controls="activities-panel"
                     className={`${styles.tabBtn} ${activeTab === 'active' ? styles.tabBtnActive : ''}`}
                     onClick={() => setActiveTab('active')}
                 >
                     需处理
                 </button>
                 <button
+                    id="tab-completed"
+                    role="tab"
+                    aria-selected={activeTab === 'completed'}
+                    aria-controls="activities-panel"
                     className={`${styles.tabBtn} ${activeTab === 'completed' ? styles.tabBtnActive : ''}`}
                     onClick={() => setActiveTab('completed')}
                 >
                     已完成
                 </button>
                 <button
+                    id="tab-all"
+                    role="tab"
+                    aria-selected={activeTab === 'all'}
+                    aria-controls="activities-panel"
                     className={`${styles.tabBtn} ${activeTab === 'all' ? styles.tabBtnActive : ''}`}
                     onClick={() => setActiveTab('all')}
                 >
@@ -88,18 +100,23 @@ export default function StudentActivitiesPage() {
                 </button>
             </div>
 
-            {activities.length === 0 ? (
-                <div className={styles.emptyState}>
-                    <div className={styles.emptyIcon}>📋</div>
-                    <div className={styles.emptyText}>暂无可用的学习活动</div>
-                </div>
-            ) : filteredActivities.length === 0 ? (
-                <div className={styles.emptyState}>
-                    <div className={styles.emptyIcon}>🔍</div>
-                    <div className={styles.emptyText}>当前分类下无活动</div>
-                </div>
-            ) : (
-                <div className={styles.activityGrid}>
+            <div
+                id="activities-panel"
+                role="tabpanel"
+                aria-labelledby={`tab-${activeTab}`}
+            >
+                {activities.length === 0 ? (
+                    <div className={styles.emptyState}>
+                        <div className={styles.emptyIcon}>📋</div>
+                        <div className={styles.emptyText}>暂无可用的学习活动</div>
+                    </div>
+                ) : filteredActivities.length === 0 ? (
+                    <div className={styles.emptyState}>
+                        <div className={styles.emptyIcon}>🔍</div>
+                        <div className={styles.emptyText}>当前分类下无活动</div>
+                    </div>
+                ) : (
+                    <div className={styles.activityGrid}>
                     {filteredActivities.map(activity => (
                         <div key={activity.id} className={`card ${styles.activityCard}`}>
                             <div className={styles.cardHeader}>
@@ -164,7 +181,8 @@ export default function StudentActivitiesPage() {
                         </div>
                     ))}
                 </div>
-            )}
+                )}
+            </div>
         </div>
     );
 }
