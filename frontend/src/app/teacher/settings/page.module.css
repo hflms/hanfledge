@@ -1,6 +1,6 @@
 .container {
   padding: 24px;
-  max-width: 800px;
+  max-width: 1280px;
   margin: 0 auto;
 }
 
@@ -10,20 +10,20 @@
 
 .header h1 {
   font-size: 24px;
-  color: var(--text-main);
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 .header p {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 24px;
+  padding: 20px;
   margin-bottom: 24px;
 }
 
@@ -35,32 +35,32 @@
   display: block;
   font-weight: 500;
   margin-bottom: 8px;
-  color: var(--text-main);
+  color: var(--text-primary);
 }
 
 .input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg-body);
-  color: var(--text-main);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 14px;
   transition: border-color 0.2s;
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--primary-color);
+  border-color: var(--accent);
 }
 
 .select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg-body);
-  color: var(--text-main);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 14px;
 }
 
@@ -85,12 +85,12 @@
 
 .sectionIntro p {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
 .modelSection {
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .modelSection:first-of-type {
@@ -102,39 +102,39 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .modelSectionHeader h3 {
   margin: 0 0 4px;
   font-size: 18px;
-  color: var(--text-main);
+  color: var(--text-primary);
 }
 
 .modelSectionHeader p {
   margin: 0;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .modelGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 
 .modelCard {
-  --model-accent: var(--primary-color);
+  --model-accent: var(--accent);
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  min-height: 168px;
-  padding: 18px;
-  border: 1px solid color-mix(in srgb, var(--model-accent) 18%, var(--border-color) 82%);
-  border-radius: 12px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 90%, var(--model-accent) 10%), var(--bg-card));
+  gap: 8px;
+  min-height: 132px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--model-accent) 18%, var(--border) 82%);
+  border-radius: 10px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 90%, var(--model-accent) 10%), var(--bg-secondary));
   text-align: left;
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
@@ -142,26 +142,26 @@
 
 .modelCard:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--model-accent) 60%, var(--border-color) 40%);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  border-color: color-mix(in srgb, var(--model-accent) 60%, var(--border) 40%);
+  box-shadow: var(--shadow-md);
 }
 
 .activeModelCard {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--model-accent) 45%, transparent), 0 16px 36px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--model-accent) 45%, transparent), var(--shadow-md);
 }
 
 .activeBadge {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: var(--model-accent);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -171,7 +171,7 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 12px;
+  gap: 8px;
 }
 
 .modelKind,
@@ -179,33 +179,34 @@
 .modelMeta {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .modelKind {
-  gap: 8px;
+  gap: 6px;
   background: color-mix(in srgb, var(--model-accent) 14%, transparent);
   color: var(--model-accent);
 }
 
 .modelProvider,
 .modelMeta {
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--text-muted);
+  background: var(--bg-card);
+  color: var(--text-secondary);
 }
 
 .modelName {
-  font-size: 18px;
-  color: var(--text-main);
+  font-size: 15px;
+  color: var(--text-primary);
   word-break: break-word;
+  line-height: 1.35;
 }
 
 .modelHint {
   color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .providerBadge,
@@ -219,10 +220,10 @@
 }
 
 .providerBadge {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .modelCardActions {
@@ -231,14 +232,14 @@
   display: flex;
   justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .addModelCard {
   align-items: center;
   justify-content: center;
   border-style: dashed;
-  background: color-mix(in srgb, var(--model-accent) 5%, var(--bg-card) 95%);
+  background: color-mix(in srgb, var(--model-accent) 5%, var(--bg-secondary) 95%);
   text-align: center;
 }
 
@@ -246,12 +247,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--model-accent) 12%, transparent);
   color: var(--model-accent);
-  font-size: 28px;
+  font-size: 22px;
   line-height: 1;
 }
 
@@ -279,8 +280,9 @@
   gap: 6px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--text-main);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   font-size: 12px;
 }
 
@@ -294,23 +296,23 @@
 }
 
 .tagRemove:hover {
-  color: var(--text-main);
+  color: var(--text-primary);
 }
 
 .secondaryButton {
   background: transparent;
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
 }
 
 .secondaryButton:hover:not(:disabled) {
-  border-color: var(--primary-color);
+  border-color: var(--accent);
 }
 
 .testResult {
   margin-top: 10px;
   font-size: 13px;
-  color: var(--text-main);
+  color: var(--text-primary);
 }
 
 .actions {
@@ -320,6 +322,8 @@
   margin-top: 32px;
 }
 
+/* -- Modal ------------------------------------------------ */
+
 .modalOverlay {
   position: fixed;
   inset: 0;
@@ -328,7 +332,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(4px);
 }
 
@@ -336,10 +340,10 @@
   width: min(100%, 560px);
   max-height: calc(100vh - 48px);
   overflow: auto;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--shadow-lg);
 }
 
 .modalHeader {
@@ -353,13 +357,13 @@
 .modalTitle {
   margin: 0;
   font-size: 20px;
-  color: var(--text-main);
+  color: var(--text-primary);
 }
 
 .modalDescription {
   margin: 8px 0 0;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .modalClose {
@@ -369,6 +373,10 @@
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
+}
+
+.modalClose:hover {
+  color: var(--text-primary);
 }
 
 .modalBody {
@@ -381,20 +389,20 @@
   gap: 14px;
   margin-bottom: 20px;
   padding: 14px 16px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-card) 90%, var(--bg-body) 10%);
+  background: var(--bg-tertiary);
 }
 
 .modalProviderSummary strong {
   display: block;
-  color: var(--text-main);
+  color: var(--text-primary);
 }
 
 .modalProviderSummary p {
   margin: 4px 0 0;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .modalProviderIcon {
@@ -408,9 +416,9 @@
 .modalTestPanel {
   margin-top: 24px;
   padding: 16px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-card) 92%, var(--bg-body) 8%);
+  background: var(--bg-tertiary);
 }
 
 .modalTestHeader {
@@ -421,13 +429,13 @@
 }
 
 .modalTestHeader strong {
-  color: var(--text-main);
+  color: var(--text-primary);
 }
 
 .modalTestHeader p {
   margin: 4px 0 0;
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .modalActions {
@@ -438,7 +446,7 @@
 }
 
 .button {
-  padding: 10px 24px;
+  padding: 9px 18px;
   border-radius: 6px;
   font-weight: 500;
   cursor: pointer;
@@ -452,7 +460,7 @@
 }
 
 .primaryButton {
-  background: var(--primary-color);
+  background: var(--accent);
   color: white;
 }
 
@@ -461,10 +469,11 @@
 }
 
 .ghostButton {
-  padding: 8px 14px;
+  padding: 6px 10px;
   background: color-mix(in srgb, var(--model-accent) 8%, transparent);
-  color: var(--text-main);
-  border: 1px solid color-mix(in srgb, var(--model-accent) 20%, var(--border-color) 80%);
+  color: var(--text-primary);
+  border: 1px solid color-mix(in srgb, var(--model-accent) 20%, var(--border) 80%);
+  font-size: 12px;
 }
 
 .ghostButton:hover:not(:disabled) {
@@ -473,7 +482,7 @@
 
 .dangerButton {
   margin-right: auto;
-  background: #dc2626;
+  background: var(--danger);
   color: #fff;
 }
 
@@ -514,4 +523,22 @@
   .modal {
     max-height: calc(100vh - 24px);
   }
+}
+
+/* ── Checkbox ──────────────────────────────────────────── */
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex-shrink: 0;
 }
