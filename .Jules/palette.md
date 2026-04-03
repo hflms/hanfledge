@@ -16,3 +16,6 @@
 ## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
 **Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
 **Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.
+## 2024-04-03 - Dynamic Theming Constraints & Accessibility
+**Learning:** Hardcoded hex colors in CSS Modules (like `#e74c3c` or `#999`) bypass the global design system variables defined in `globals.css` and break contrast accessibility when users toggle between light and dark modes. The NotificationBell component previously suffered from invisible text in dark mode due to this pattern.
+**Action:** Always use semantic CSS variables (`var(--bg-card)`, `var(--text-primary)`, `var(--border)`, `var(--danger)`) rather than direct hex codes when building UI components to guarantee cross-theme accessibility and consistent contrast ratios.
