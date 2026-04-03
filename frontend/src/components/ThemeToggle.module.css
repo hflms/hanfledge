@@ -23,6 +23,12 @@
   transform: scale(0.95);
 }
 
+.toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 .icon {
   display: flex;
   align-items: center;
