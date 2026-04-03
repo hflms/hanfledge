@@ -16,3 +16,7 @@
 ## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
 **Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
 **Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.
+
+## 2026-04-03 - Accessible Expanding Drawers and Text-Only Icons
+**Learning:** Drawers toggled by icon-only or text-only buttons (like `←` and `→`) can lack accessibility context for screen readers. Merely having a `title` is not sufficient. Furthermore, custom drawer containers need a proper role and identifier.
+**Action:** Always link the toggle button to the drawer container using `aria-controls` and an ID generated via `React.useId()`. Use `aria-expanded` on the toggle to communicate state, provide a descriptive `aria-label`, and hide the visual text icon with `aria-hidden="true"`. Mark the custom drawer container with `role="region"` and an appropriate `aria-label` to group its contents effectively.
