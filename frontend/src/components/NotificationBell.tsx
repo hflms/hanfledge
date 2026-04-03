@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import styles from './NotificationBell.module.css';
 
@@ -47,22 +47,50 @@ export default function NotificationBell() {
   };
 
   const unreadCount = notifications.length;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownId = React.useId();
+
+  useEffect(() => {
+    if (!showDropdown) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowDropdown(false);
+        // Optional: focus back to the button? It's fine for a micro-UX, Escape is what was needed
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showDropdown]);
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       <button 
         className={styles.bell}
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label={unreadCount > 0 ? `通知（${unreadCount}条未读）` : '通知'}
         aria-expanded={showDropdown}
         aria-haspopup="true"
+        aria-controls={showDropdown ? dropdownId : undefined}
       >
         <span aria-hidden="true">🔔</span>
         {unreadCount > 0 && <span className={styles.badge} aria-hidden="true">{unreadCount}</span>}
       </button>
 
       {showDropdown && (
-        <div className={styles.dropdown}>
+        <div id={dropdownId} className={styles.dropdown}>
           <div className={styles.header}>通知</div>
           {notifications.length === 0 ? (
             <div className={styles.empty}>暂无通知</div>
