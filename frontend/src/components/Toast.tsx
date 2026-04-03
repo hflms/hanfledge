@@ -66,13 +66,22 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className={styles.overlay}>
         {toasts.map((t) => (
-          <div key={t.id} className={`${styles.toast} ${styles[t.variant]}`}>
-            <span className={styles.icon}>{ICONS[t.variant]}</span>
+          <div
+            key={t.id}
+            className={`${styles.toast} ${styles[t.variant]}`}
+            role={t.variant === 'error' ? 'alert' : 'status'}
+            aria-live={t.variant === 'error' ? 'assertive' : 'polite'}
+          >
+            <span className={styles.icon} aria-hidden="true">{ICONS[t.variant]}</span>
             <div className={styles.body}>
               <p className={styles.message}>{t.message}</p>
             </div>
-            <button className={styles.close} onClick={() => removeToast(t.id)}>
-              &times;
+            <button
+              className={styles.close}
+              onClick={() => removeToast(t.id)}
+              aria-label="Close notification"
+            >
+              <span aria-hidden="true">&times;</span>
             </button>
           </div>
         ))}

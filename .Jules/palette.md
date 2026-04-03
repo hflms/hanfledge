@@ -16,3 +16,7 @@
 ## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
 **Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
 **Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.
+
+## 2026-04-02 - Accessible Dynamic Toasts & Alerts
+**Learning:** Toast notifications dynamically injected into the DOM must use `role="status"` or `role="alert"` alongside the correct `aria-live` settings ('polite' vs 'assertive') to be reliably announced by screen readers. Furthermore, interactive icon-only close buttons inside these toasts often mistakenly lack `aria-label`s, resulting in confusing announcements like "times" or "multiplication".
+**Action:** When implementing toast notifications, assign `role="alert"` and `aria-live="assertive"` for critical/error variants, and `role="status"` and `aria-live="polite"` for general info/success variants. Ensure any close buttons include a descriptive `aria-label` and mask visually decorative text inside them with `aria-hidden="true"`.
