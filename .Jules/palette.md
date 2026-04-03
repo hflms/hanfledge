@@ -16,3 +16,6 @@
 ## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
 **Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
 **Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.
+## 2025-04-03 - [Theming and Keyboard A11y in Popovers]
+**Learning:** Hardcoded hex colors (e.g. `#fff`, `#ddd`) in CSS Modules break global dark/light mode switching, notably in dropdowns and tooltips. Popovers like notification dropdowns must be naturally dismissable by both the Escape key and clicking outside to meet accessibility requirements.
+**Action:** Always prefer global CSS variables (`var(--bg-card)`, `var(--text-primary)`, `var(--border)`) over hardcoded hex values in `.module.css` files. Implement `aria-controls` with generated IDs and use native `keydown` (`Escape`) and `mousedown` outside click listeners for custom dropdown components.
