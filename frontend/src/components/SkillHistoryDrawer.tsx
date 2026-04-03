@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import styles from './SkillHistoryDrawer.module.css';
 
 export interface SkillHistoryItem {
@@ -18,6 +18,8 @@ interface SkillHistoryDrawerProps {
 
 export default function SkillHistoryDrawer({ items, onItemClick }: SkillHistoryDrawerProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const id = useId();
+    const drawerId = `drawer-${id}`;
 
     return (
         <>
@@ -26,12 +28,18 @@ export default function SkillHistoryDrawer({ items, onItemClick }: SkillHistoryD
                 className={styles.toggleBtn}
                 onClick={() => setIsOpen(!isOpen)}
                 title={isOpen ? '收起历史' : '展开历史'}
+                aria-label={isOpen ? '收起历史' : '展开历史'}
+                aria-expanded={isOpen}
+                aria-controls={drawerId}
             >
-                {isOpen ? '→' : '←'}
+                <span aria-hidden="true">{isOpen ? '→' : '←'}</span>
             </button>
 
             {/* Drawer */}
-            <div className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ''}`}>
+            <div
+                id={drawerId}
+                className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ''}`}
+            >
                 <div className={styles.drawerHeader}>
                     <h3 className={styles.drawerTitle}>📚 生成历史</h3>
                     <span className={styles.itemCount}>{items.length}</span>
@@ -39,7 +47,7 @@ export default function SkillHistoryDrawer({ items, onItemClick }: SkillHistoryD
                 <div className={styles.drawerContent}>
                     {items.length === 0 ? (
                         <div className={styles.emptyState}>
-                            <span className={styles.emptyIcon}>📭</span>
+                            <span className={styles.emptyIcon} aria-hidden="true">📭</span>
                             <p className={styles.emptyText}>暂无生成内容</p>
                         </div>
                     ) : (
@@ -49,8 +57,9 @@ export default function SkillHistoryDrawer({ items, onItemClick }: SkillHistoryD
                                     key={item.id}
                                     className={styles.historyItem}
                                     onClick={() => onItemClick(item)}
+                                    aria-label={`查看历史项: ${item.title}`}
                                 >
-                                    <span className={styles.itemIcon}>{item.icon}</span>
+                                    <span className={styles.itemIcon} aria-hidden="true">{item.icon}</span>
                                     <div className={styles.itemInfo}>
                                         <div className={styles.itemTitle}>{item.title}</div>
                                         <div className={styles.itemTime}>
