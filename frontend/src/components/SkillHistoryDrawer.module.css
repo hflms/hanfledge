@@ -26,6 +26,11 @@
     box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
 }
 
+.toggleBtn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .drawer {
     position: fixed;
     right: -320px;
@@ -117,6 +122,13 @@
     background: #f0f0f0;
     border-color: #667eea;
     transform: translateX(-4px);
+}
+
+.historyItem:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    background: #f0f0f0;
+    border-color: #667eea;
 }
 
 .itemIcon {
