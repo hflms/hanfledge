@@ -18,6 +18,7 @@ interface SkillHistoryDrawerProps {
 
 export default function SkillHistoryDrawer({ items, onItemClick }: SkillHistoryDrawerProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const drawerId = React.useId();
 
     return (
         <>
@@ -26,12 +27,15 @@ export default function SkillHistoryDrawer({ items, onItemClick }: SkillHistoryD
                 className={styles.toggleBtn}
                 onClick={() => setIsOpen(!isOpen)}
                 title={isOpen ? '收起历史' : '展开历史'}
+                aria-label={isOpen ? '收起历史' : '展开历史'}
+                aria-expanded={isOpen}
+                aria-controls={drawerId}
             >
-                {isOpen ? '→' : '←'}
+                <span aria-hidden="true">{isOpen ? '→' : '←'}</span>
             </button>
 
             {/* Drawer */}
-            <div className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ''}`}>
+            <div id={drawerId} className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ''}`}>
                 <div className={styles.drawerHeader}>
                     <h3 className={styles.drawerTitle}>📚 生成历史</h3>
                     <span className={styles.itemCount}>{items.length}</span>
