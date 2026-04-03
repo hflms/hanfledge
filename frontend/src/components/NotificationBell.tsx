@@ -37,6 +37,16 @@ export default function NotificationBell() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDropdown) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showDropdown]);
+
   const markAsRead = async (id: number) => {
     try {
       await apiFetch(`/notifications/${id}/read`, { method: 'POST' });
