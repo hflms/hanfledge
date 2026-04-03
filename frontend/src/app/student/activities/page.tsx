@@ -164,7 +164,12 @@ export default function StudentActivitiesPage() {
                                             继续学习
                                         </button>
                                     ) : (
-                                        <button className="btn btn-secondary" disabled>
+                                        <button
+                                            className="btn btn-secondary"
+                                            disabled
+                                            aria-disabled="true"
+                                            aria-label="活动已完成"
+                                        >
                                             已完成
                                         </button>
                                     )
@@ -173,6 +178,8 @@ export default function StudentActivitiesPage() {
                                         className="btn btn-primary"
                                         onClick={() => handleJoin(activity.id)}
                                         disabled={joining === activity.id}
+                                        aria-disabled={joining === activity.id}
+                                        aria-busy={joining === activity.id}
                                     >
                                         {joining === activity.id ? '加入中...' : '开始学习'}
                                     </button>
