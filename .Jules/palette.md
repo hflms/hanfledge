@@ -16,3 +16,7 @@
 ## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
 **Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
 **Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.
+
+## 2026-04-02 - Accessible Custom Toggle Buttons
+**Learning:** Custom toggle buttons, especially those using icons (like a theme toggle), often lack clear focus indicators for keyboard navigation. Standard browser focus outlines are sometimes overridden or not prominent enough against custom backgrounds, making it difficult for keyboard users to know which element has focus.
+**Action:** Always add explicit `:focus-visible` styles to custom interactive elements (buttons, links, toggles) using CSS. Utilize the application's theme colors (like `var(--accent)`) to create a clear, visible outline that integrates well with the design system, ensuring keyboard accessibility without compromising aesthetics for mouse users.
