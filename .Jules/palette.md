@@ -16,3 +16,7 @@
 ## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
 **Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
 **Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.
+
+## 2026-04-02 - Dropdown/Popover Dismissability & Linking
+**Learning:** Custom dropdown and popover components (like a notification bell menu) often lack native dismissability features expected by users, such as closing when the Escape key is pressed or when clicking outside the component. They also frequently miss explicit linkage to their trigger button, leaving screen reader users without context of what element is controlled by the toggle.
+**Action:** Always implement a document-level `keydown` listener for the 'Escape' key and a `mousedown` listener to detect outside clicks within a `useEffect`, ensuring the dropdown state is dismissed. Use `React.useId()` to generate an ID for the dropdown and link it to the trigger button using `aria-controls={id}` when the dropdown is visible.
