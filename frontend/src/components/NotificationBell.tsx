@@ -39,6 +39,29 @@ export default function NotificationBell() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!showDropdown) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [showDropdown]);
+
   const markAsRead = async (id: number) => {
     try {
       await apiFetch(`/notifications/${id}/read`, { method: 'POST' });
