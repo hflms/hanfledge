@@ -55,11 +55,8 @@ export function useSessionWebSocket({
 
     const agentChannel = useMemo<AgentWebSocketChannel>(() => ({
         send: (message: string) => {
-            console.log('[WS DEBUG] 发送消息:', message.substring(0, 500));
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                 wsRef.current.send(message);
-            } else {
-                console.warn('[WS DEBUG] WebSocket 未就绪, readyState:', wsRef.current?.readyState);
             }
         },
         onMessage: (handler: (data: string) => void) => {
@@ -85,7 +82,6 @@ export function useSessionWebSocket({
         if (wsRef.current) {
             const state = wsRef.current.readyState;
             if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
-                console.warn('[WS DEBUG] WebSocket 已存在，跳过重复连接');
                 return;
             }
             if (state === WebSocket.CLOSING) {
@@ -94,7 +90,6 @@ export function useSessionWebSocket({
         }
 
         const wsUrl = createWSUrl(sessionId);
-        console.log('[WS DEBUG] 连接 URL:', wsUrl);
         setWsStatus(reconnectCountRef.current > 0 ? 'reconnecting' : 'connecting');
 
         const ws = new WebSocket(wsUrl);
@@ -115,7 +110,6 @@ export function useSessionWebSocket({
         ws.onmessage = (event) => {
             try {
                 const wsEvent: WSEvent = JSON.parse(event.data);
-                console.log('[WS DEBUG] 收到事件:', wsEvent.event, JSON.stringify(wsEvent.payload).substring(0, 200));
                 for (const handler of wsMessageHandlersRef.current) {
                     handler(event.data);
                 }

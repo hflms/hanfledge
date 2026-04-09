@@ -48,18 +48,17 @@ export default function NotificationBell() {
       }
     };
 
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleOutsideClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-
+    document.addEventListener('mousedown', handleOutsideClick);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleOutsideClick);
     };
   }, [showDropdown]);
 
@@ -72,6 +71,27 @@ export default function NotificationBell() {
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDropdown) {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
+
   const unreadCount = notifications.length;
 
   return (
@@ -81,6 +101,7 @@ export default function NotificationBell() {
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label={unreadCount > 0 ? `通知（${unreadCount}条未读）` : '通知'}
         aria-expanded={showDropdown}
+        aria-controls={showDropdown ? dropdownId : undefined}
         aria-haspopup="true"
         aria-controls={showDropdown ? dropdownId : undefined}
       >
