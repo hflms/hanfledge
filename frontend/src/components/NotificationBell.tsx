@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useId } from 'react';
 import { apiFetch } from '@/lib/api';
 import styles from './NotificationBell.module.css';
 
@@ -17,7 +17,7 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const dropdownId = React.useId();
+  const dropdownId = useId();
 
   useEffect(() => {
     let mounted = true;
@@ -49,10 +49,8 @@ export default function NotificationBell() {
   };
 
   useEffect(() => {
-    if (!showDropdown) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && showDropdown) {
         setShowDropdown(false);
       }
     };
@@ -65,7 +63,6 @@ export default function NotificationBell() {
 
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('mousedown', handleClickOutside);
-
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousedown', handleClickOutside);
@@ -81,6 +78,7 @@ export default function NotificationBell() {
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label={unreadCount > 0 ? `通知（${unreadCount}条未读）` : '通知'}
         aria-expanded={showDropdown}
+        aria-controls={showDropdown ? dropdownId : undefined}
         aria-haspopup="true"
         aria-controls={showDropdown ? dropdownId : undefined}
       >
@@ -89,7 +87,7 @@ export default function NotificationBell() {
       </button>
 
       {showDropdown && (
-        <div id={dropdownId} className={styles.dropdown}>
+        <div className={styles.dropdown} id={dropdownId}>
           <div className={styles.header}>通知</div>
           {notifications.length === 0 ? (
             <div className={styles.empty}>暂无通知</div>
