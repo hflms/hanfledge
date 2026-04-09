@@ -80,6 +80,7 @@ export default function NotificationBell() {
         aria-expanded={showDropdown}
         aria-controls={showDropdown ? dropdownId : undefined}
         aria-haspopup="true"
+        aria-controls={showDropdown ? dropdownId : undefined}
       >
         <span aria-hidden="true">🔔</span>
         {unreadCount > 0 && <span className={styles.badge} aria-hidden="true">{unreadCount}</span>}
