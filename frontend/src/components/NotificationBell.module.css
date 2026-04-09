@@ -87,3 +87,8 @@
 .markRead:hover {
   background: #2980b9;
 }
+
+.markRead:focus-visible {
+  outline: 2px solid var(--accent, #3498db);
+  outline-offset: 2px;
+}
