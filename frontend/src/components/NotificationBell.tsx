@@ -71,6 +71,27 @@ export default function NotificationBell() {
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDropdown) {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
+
   const unreadCount = notifications.length;
 
   return (
@@ -82,13 +103,14 @@ export default function NotificationBell() {
         aria-expanded={showDropdown}
         aria-controls={showDropdown ? dropdownId : undefined}
         aria-haspopup="true"
+        aria-controls={showDropdown ? dropdownId : undefined}
       >
         <span aria-hidden="true">🔔</span>
         {unreadCount > 0 && <span className={styles.badge} aria-hidden="true">{unreadCount}</span>}
       </button>
 
       {showDropdown && (
-        <div id={dropdownId} className={styles.dropdown}>
+        <div className={styles.dropdown} id={dropdownId}>
           <div className={styles.header}>通知</div>
           {notifications.length === 0 ? (
             <div className={styles.empty}>暂无通知</div>
