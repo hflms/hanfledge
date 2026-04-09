@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useId } from 'react';
 import { apiFetch } from '@/lib/api';
 import styles from './NotificationBell.module.css';
 
@@ -16,6 +16,8 @@ interface Notification {
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownId = useId();
 
   useEffect(() => {
     let mounted = true;
@@ -46,15 +48,37 @@ export default function NotificationBell() {
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDropdown) {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
+
   const unreadCount = notifications.length;
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       <button 
         className={styles.bell}
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label={unreadCount > 0 ? `通知（${unreadCount}条未读）` : '通知'}
         aria-expanded={showDropdown}
+        aria-controls={showDropdown ? dropdownId : undefined}
         aria-haspopup="true"
       >
         <span aria-hidden="true">🔔</span>
@@ -62,7 +86,7 @@ export default function NotificationBell() {
       </button>
 
       {showDropdown && (
-        <div className={styles.dropdown}>
+        <div className={styles.dropdown} id={dropdownId}>
           <div className={styles.header}>通知</div>
           {notifications.length === 0 ? (
             <div className={styles.empty}>暂无通知</div>
