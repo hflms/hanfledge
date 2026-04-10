@@ -23,3 +23,7 @@
 ## 2024-05-19 - Accessible Dismissable Dropdowns
 **Learning:** Dropdowns and popovers need proper keyboard dismissability (the ESC key) and click-outside handling to be fully accessible and intuitive. Without these, users can get trapped or struggle to close the UI, and screen readers lack semantic linkage between the trigger button and the popup.
 **Action:** Always implement a `keydown` listener for 'Escape' and a `mousedown` listener for outside clicks in a `useEffect`. Additionally, use `React.useId()` to dynamically link the trigger button's `aria-controls` attribute to the popup container's `id`.
+
+## 2024-05-24 - Accessibility improvements for Interactive Elements
+**Learning:** Decorative icons (like the sun/moon in a theme toggle) often lack `aria-hidden="true"`, causing screen readers to incorrectly read out the raw SVGs or text symbols when the button itself already has a comprehensive `aria-label`.
+**Action:** Always add `aria-hidden="true"` to purely decorative icons inside interactive buttons when the button provides its own accessible label.
