@@ -41,6 +41,111 @@ function formatSelection(question: SurveyQuestion, selection: string | string[],
     return base + String(selection);
 }
 
+function LikertQuestion({
+    question,
+    selection,
+    scaleLabels,
+    onSelect
+}: {
+    question: SurveyQuestion;
+    selection?: string;
+    scaleLabels: string[];
+    onSelect: (index: number, label: string) => void;
+}) {
+    return (
+        <div className={styles.likertRow}>
+            {(question.scale_labels || scaleLabels).map((label, index) => (
+                <span
+                    key={index}
+                    className={styles.likertOption}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelect(index, label)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(index, label);
+                        }
+                    }}
+                    aria-pressed={selection === String(index + 1)}
+                >
+                    {label}
+                </span>
+            ))}
+        </div>
+    );
+}
+
+function MultipleChoiceQuestion({
+    question,
+    selections = [],
+    onSelect
+}: {
+    question: SurveyQuestion;
+    selections?: string[];
+    onSelect: (key: string) => void;
+}) {
+    if (!question.options) return null;
+    return (
+        <ul className={styles.optionList}>
+            {question.options.map(option => (
+                <li
+                    key={option.key}
+                    className={styles.optionItem}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelect(option.key)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(option.key);
+                        }
+                    }}
+                    aria-pressed={selections.includes(option.key)}
+                >
+                    <span className={styles.optionKey}>{option.key}.</span>
+                    <span>{option.text}</span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function SingleChoiceQuestion({
+    question,
+    selection,
+    onSelect
+}: {
+    question: SurveyQuestion;
+    selection?: string;
+    onSelect: (key: string) => void;
+}) {
+    if (!question.options) return null;
+    return (
+        <ul className={styles.optionList}>
+            {question.options.map(option => (
+                <li
+                    key={option.key}
+                    className={styles.optionItem}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelect(option.key)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(option.key);
+                        }
+                    }}
+                    aria-pressed={selection === option.key}
+                >
+                    <span className={styles.optionKey}>{option.key}.</span>
+                    <span>{option.text}</span>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
 export default function SurveyBlock({ survey, onSelect }: SurveyBlockProps) {
     const [selections, setSelections] = useState<SelectionState>({});
     const scaleLabels = useMemo(
@@ -89,75 +194,29 @@ export default function SurveyBlock({ survey, onSelect }: SurveyBlockProps) {
                             {question.id}. {question.stem}
                         </div>
 
-                        {question.type === 'single_choice' && question.options && (
-                            <ul className={styles.optionList}>
-                                {question.options.map(option => (
-                                    <li
-                                        key={option.key}
-                                        className={styles.optionItem}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => handleSingleChoice(question, option.key)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                e.preventDefault();
-                                                handleSingleChoice(question, option.key);
-                                            }
-                                        }}
-                                        aria-pressed={selections[question.id] === option.key}
-                                    >
-                                        <span className={styles.optionKey}>{option.key}.</span>
-                                        <span>{option.text}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                        {question.type === 'single_choice' && (
+                            <SingleChoiceQuestion
+                                question={question}
+                                selection={selections[question.id] as string}
+                                onSelect={(key) => handleSingleChoice(question, key)}
+                            />
                         )}
 
-                        {question.type === 'multiple_choice' && question.options && (
-                            <ul className={styles.optionList}>
-                                {question.options.map(option => (
-                                    <li
-                                        key={option.key}
-                                        className={styles.optionItem}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => handleMultipleChoice(question, option.key)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                e.preventDefault();
-                                                handleMultipleChoice(question, option.key);
-                                            }
-                                        }}
-                                        aria-pressed={Array.isArray(selections[question.id]) && (selections[question.id] as string[]).includes(option.key)}
-                                    >
-                                        <span className={styles.optionKey}>{option.key}.</span>
-                                        <span>{option.text}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                        {question.type === 'multiple_choice' && (
+                            <MultipleChoiceQuestion
+                                question={question}
+                                selections={selections[question.id] as string[]}
+                                onSelect={(key) => handleMultipleChoice(question, key)}
+                            />
                         )}
 
                         {question.type === 'likert_scale' && (
-                            <div className={styles.likertRow}>
-                                {(question.scale_labels || scaleLabels).map((label, index) => (
-                                    <span
-                                        key={index}
-                                        className={styles.likertOption}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => handleLikert(question, index, label)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                e.preventDefault();
-                                                handleLikert(question, index, label);
-                                            }
-                                        }}
-                                        aria-pressed={selections[question.id] === String(index + 1)}
-                                    >
-                                        {label}
-                                    </span>
-                                ))}
-                            </div>
+                            <LikertQuestion
+                                question={question}
+                                selection={selections[question.id] as string}
+                                scaleLabels={scaleLabels}
+                                onSelect={(index, label) => handleLikert(question, index, label)}
+                            />
                         )}
 
                         {question.type === 'open_ended' && (
