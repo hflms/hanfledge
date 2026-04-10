@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useId } from 'react';
+import { useEffect, useState, useId, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import styles from './NotificationBell.module.css';
 
