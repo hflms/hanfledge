@@ -16,32 +16,8 @@ interface Notification {
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showDropdown) {
-        setShowDropdown(false);
-      }
-    };
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
-      }
-    };
-
-    if (showDropdown) {
-      document.addEventListener('keydown', handleKeyDown);
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showDropdown]);
+  const dropdownId = useId();
 
   useEffect(() => {
     let mounted = true;
@@ -63,6 +39,29 @@ export default function NotificationBell() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!showDropdown) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [showDropdown]);
+
   const markAsRead = async (id: number) => {
     try {
       await apiFetch(`/notifications/${id}/read`, { method: 'POST' });
@@ -71,6 +70,27 @@ export default function NotificationBell() {
       console.error('Failed to mark as read:', err);
     }
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDropdown) {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
 
   const unreadCount = notifications.length;
 
@@ -81,6 +101,7 @@ export default function NotificationBell() {
         onClick={() => setShowDropdown(!showDropdown)}
         aria-label={unreadCount > 0 ? `通知（${unreadCount}条未读）` : '通知'}
         aria-expanded={showDropdown}
+        aria-controls={showDropdown ? dropdownId : undefined}
         aria-haspopup="true"
         aria-controls={showDropdown ? dropdownId : undefined}
       >
@@ -89,7 +110,7 @@ export default function NotificationBell() {
       </button>
 
       {showDropdown && (
-        <div id={dropdownId} className={styles.dropdown}>
+        <div className={styles.dropdown} id={dropdownId}>
           <div className={styles.header}>通知</div>
           {notifications.length === 0 ? (
             <div className={styles.empty}>暂无通知</div>

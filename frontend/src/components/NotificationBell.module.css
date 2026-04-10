@@ -92,3 +92,8 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+.markRead:focus-visible {
+  outline: 2px solid var(--accent, #3498db);
+  outline-offset: 2px;
+}
