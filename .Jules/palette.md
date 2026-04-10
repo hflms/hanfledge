@@ -16,7 +16,23 @@
 ## 2026-04-01 - Native ARIA Tablist Patterns for Custom Tabs
 **Learning:** Custom React tab implementations that just use buttons inside a container (acting as filters) fail to communicate their relationship and state to screen readers. Users won't know they are in a tablist, how many tabs there are, or which one is selected. Also, missing keyboard focus styles makes navigation difficult.
 **Action:** Always implement the standard ARIA tablist pattern: `role="tablist"` on the container, `role="tab"` and `aria-selected` on the buttons, and `aria-controls` linking to a container with `role="tabpanel"` and `aria-labelledby`. Ensure tab buttons have a clear `:focus-visible` style for keyboard accessibility.
+<<<<<<< palette-notification-bell-dismiss-1549734540890033349
 
 ## 2026-04-02 - Dropdown Dismissability and ARIA Linking
 **Learning:** Custom interactive dropdowns (like notification menus) often stay open when users interact elsewhere on the page, leading to a frustrating experience. Additionally, toggling them doesn't provide structural context if the trigger isn't explicitly linked to the dropdown panel.
 **Action:** Always implement 'click-outside' (via document `mousedown`) and keyboard dismissal ('Escape' key via `keydown`) within a `useEffect` for dropdown components. Ensure the trigger button uses `aria-controls` dynamically linked (via `React.useId()`) to the dropdown panel's `id` to associate the toggle with its content.
+=======
+<<<<<<< palette-notification-bell-ux-6178981162158979742
+## 2025-04-03 - [Theming and Keyboard A11y in Popovers]
+**Learning:** Hardcoded hex colors (e.g. `#fff`, `#ddd`) in CSS Modules break global dark/light mode switching, notably in dropdowns and tooltips. Popovers like notification dropdowns must be naturally dismissable by both the Escape key and clicking outside to meet accessibility requirements.
+**Action:** Always prefer global CSS variables (`var(--bg-card)`, `var(--text-primary)`, `var(--border)`) over hardcoded hex values in `.module.css` files. Implement `aria-controls` with generated IDs and use native `keydown` (`Escape`) and `mousedown` outside click listeners for custom dropdown components.
+=======
+
+## 2026-04-02 - Dropdown/Popover Dismissability & Linking
+**Learning:** Custom dropdown and popover components (like a notification bell menu) often lack native dismissability features expected by users, such as closing when the Escape key is pressed or when clicking outside the component. They also frequently miss explicit linkage to their trigger button, leaving screen reader users without context of what element is controlled by the toggle.
+**Action:** Always implement a document-level `keydown` listener for the 'Escape' key and a `mousedown` listener to detect outside clicks within a `useEffect`, ensuring the dropdown state is dismissed. Use `React.useId()` to generate an ID for the dropdown and link it to the trigger button using `aria-controls={id}` when the dropdown is visible.
+## 2024-05-19 - Accessible Dismissable Dropdowns
+**Learning:** Dropdowns and popovers need proper keyboard dismissability (the ESC key) and click-outside handling to be fully accessible and intuitive. Without these, users can get trapped or struggle to close the UI, and screen readers lack semantic linkage between the trigger button and the popup.
+**Action:** Always implement a `keydown` listener for 'Escape' and a `mousedown` listener for outside clicks in a `useEffect`. Additionally, use `React.useId()` to dynamically link the trigger button's `aria-controls` attribute to the popup container's `id`.
+>>>>>>> main
+>>>>>>> main

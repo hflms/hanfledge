@@ -23,6 +23,11 @@
   transform: scale(0.95);
 }
 
+.toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .icon {
   display: flex;
   align-items: center;
