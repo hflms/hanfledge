@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 )
 
 // JWTClaims defines the custom claims in the JWT token.
@@ -18,7 +19,8 @@ type JWTClaims struct {
 
 // JWTAuth returns a Gin middleware that validates JWT tokens.
 // On success, it injects user info into the Gin context.
-func JWTAuth(secret string) gin.HandlerFunc {
+// If redisCache is provided, it validates the token against the active session cache.
+func JWTAuth(secret string, redisCache *cache.RedisCache) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract token from Authorization header
 		authHeader := c.GetHeader("Authorization")
@@ -56,6 +58,17 @@ func JWTAuth(secret string) gin.HandlerFunc {
 				"error": "认证令牌无效或已过期",
 			})
 			return
+		}
+
+		// Verify session in Redis (if enabled)
+		if redisCache != nil {
+			cachedUserID, err := redisCache.GetUserSession(c.Request.Context(), tokenStr)
+			if err != nil || cachedUserID != claims.UserID {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "会话已过期或在其他设备登录",
+				})
+				return
+			}
 		}
 
 		// Inject user info into context

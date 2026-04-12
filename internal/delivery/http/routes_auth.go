@@ -19,7 +19,7 @@ func registerAuthRoutes(v1 *gin.RouterGroup, jwtSecret string, authHandler *hand
 
 	// Protected
 	authProtected := v1.Group("/auth")
-	authProtected.Use(middleware.JWTAuth(jwtSecret))
+	authProtected.Use(middleware.JWTAuth(jwtSecret, authHandler.RedisCache))
 	{
 		authProtected.GET("/me", authHandler.GetMe)
 	}
