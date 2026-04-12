@@ -1,10 +1,6 @@
 'use client';
 
-<<<<<<< palette-notification-bell-dismiss-1549734540890033349
-import React, { useEffect, useState, useRef } from 'react';
-=======
-import { useEffect, useState, useId, useRef } from 'react';
->>>>>>> main
+import React, { useEffect, useState, useId, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import styles from './NotificationBell.module.css';
 
@@ -140,11 +136,7 @@ export default function NotificationBell() {
       </button>
 
       {showDropdown && (
-<<<<<<< palette-notification-bell-dismiss-1549734540890033349
-        <div id={dropdownId} className={styles.dropdown}>
-=======
         <div className={styles.dropdown} id={dropdownId}>
->>>>>>> main
           <div className={styles.header}>通知</div>
           {notifications.length === 0 ? (
             <div className={styles.empty}>暂无通知</div>
