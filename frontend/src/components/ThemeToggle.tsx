@@ -22,7 +22,7 @@ export default function ThemeToggle() {
       aria-label={isDark ? '切换到浅色模式' : '切换到深色模式'}
       title={isDark ? '浅色模式' : '深色模式'}
     >
-      <span className={`${styles.icon} ${isDark ? styles.iconDark : styles.iconLight}`}>
+      <span className={`${styles.icon} ${isDark ? styles.iconDark : styles.iconLight}`} aria-hidden="true">
         {isDark ? (
           /* Sun icon */
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

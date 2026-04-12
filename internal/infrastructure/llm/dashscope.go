@@ -339,7 +339,7 @@ func (c *DashScopeClient) EmbedBatch(ctx context.Context, texts []string) ([][]f
 			Input: batch,
 		}
 
-		body, err := c.doPost(ctx, dashScopeEmbedEndpoint, reqBody, false)
+		body, err := c.doPost(ctx, c.compatEmbedURL(), reqBody, false)
 		if err != nil {
 			return nil, fmt.Errorf("dashscope embed batch failed: %w", err)
 		}
@@ -406,12 +406,19 @@ func (c *DashScopeClient) buildOpenAIRequest(messages []ChatMessage, opts *ChatO
 	return req
 }
 
-func (c *DashScopeClient) compatChatURL() string {
-	base := c.CompatBaseURL
-	if base == "" {
-		base = dashScopeBaseURL
+func (c *DashScopeClient) compatBase() string {
+	if c.CompatBaseURL != "" {
+		return strings.TrimRight(c.CompatBaseURL, "/")
 	}
-	return strings.TrimRight(base, "/") + dashScopeCompatChatPath
+	return dashScopeBaseURL
+}
+
+func (c *DashScopeClient) compatChatURL() string {
+	return c.compatBase() + dashScopeCompatChatPath
+}
+
+func (c *DashScopeClient) compatEmbedURL() string {
+	return c.compatBase() + "/embeddings"
 }
 
 func (c *DashScopeClient) doPost(ctx context.Context, endpoint string, payload interface{}, stream bool) ([]byte, error) {
@@ -420,9 +427,9 @@ func (c *DashScopeClient) doPost(ctx context.Context, endpoint string, payload i
 		return nil, err
 	}
 
-	url := dashScopeBaseURL + endpoint
-	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
-		url = endpoint
+	url := endpoint
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		url = c.compatBase() + "/" + strings.TrimLeft(endpoint, "/")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
@@ -432,9 +439,7 @@ func (c *DashScopeClient) doPost(ctx context.Context, endpoint string, payload i
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
-	if stream {
-		req.Header.Set("X-DashScope-SSE", "enable")
-	}
+	_ = stream // reserved for future use
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -460,9 +465,9 @@ func (c *DashScopeClient) doPostStream(ctx context.Context, endpoint string, pay
 		return nil, err
 	}
 
-	url := dashScopeBaseURL + endpoint
-	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
-		url = endpoint
+	url := endpoint
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		url = c.compatBase() + "/" + strings.TrimLeft(endpoint, "/")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
@@ -472,7 +477,6 @@ func (c *DashScopeClient) doPostStream(ctx context.Context, endpoint string, pay
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
-	req.Header.Set("X-DashScope-SSE", "enable")
 
 	// No timeout for streaming — context handles cancellation
 	streamClient := &http.Client{}

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/hflms/hanfledge/internal/config"
 	"github.com/hflms/hanfledge/internal/domain/model"
@@ -25,6 +26,17 @@ func NewConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+	}
+
+	// Connection Pool Optimization (§12)
+	sqlDB, err := db.DB()
+	if err == nil {
+		sqlDB.SetMaxOpenConns(25)
+		sqlDB.SetMaxIdleConns(10)
+		sqlDB.SetConnMaxLifetime(5 * time.Minute)
+		slogDB.Info("postgresql connection pool configured", "max_open", 25, "max_idle", 10)
+	} else {
+		slogDB.Warn("failed to configure postgresql connection pool", "err", err)
 	}
 
 	slogDB.Info("postgresql connected successfully")

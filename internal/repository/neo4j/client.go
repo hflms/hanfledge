@@ -97,20 +97,21 @@ func (c *Client) CreateChapterNode(ctx context.Context, courseID, chapterID uint
 }
 
 // CreateKnowledgePointNode creates a KP node linked to a chapter.
-func (c *Client) CreateKnowledgePointNode(ctx context.Context, chapterID, kpID uint, title string, difficulty float64) error {
+func (c *Client) CreateKnowledgePointNode(ctx context.Context, chapterID, kpID uint, title string, difficulty float64, description string) error {
 	session := c.Driver.NewSession(ctx, neo4j.SessionConfig{})
 	defer session.Close(ctx)
 
 	_, err := session.Run(ctx, `
 		MATCH (ch:Chapter {id: $chapterId})
 		MERGE (kp:KnowledgePoint {id: $kpId})
-		SET kp.title = $title, kp.difficulty = $difficulty
+		SET kp.title = $title, kp.difficulty = $difficulty, kp.description = $description
 		MERGE (ch)-[:HAS_KP]->(kp)
 	`, map[string]interface{}{
-		"chapterId":  fmt.Sprintf("chapter_%d", chapterID),
-		"kpId":       fmt.Sprintf("kp_%d", kpID),
-		"title":      title,
-		"difficulty": difficulty,
+		"chapterId":   fmt.Sprintf("chapter_%d", chapterID),
+		"kpId":        fmt.Sprintf("kp_%d", kpID),
+		"title":       title,
+		"difficulty":  difficulty,
+		"description": description,
 	})
 	return err
 }

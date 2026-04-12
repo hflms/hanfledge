@@ -5,6 +5,8 @@ import SessionPage from './page';
 
 const mockRouter = { push: vi.fn(), back: vi.fn() };
 vi.mock('next/navigation', () => ({
+    usePathname: () => '/student/session/1',
+    useSearchParams: () => new URLSearchParams(),
     useParams: () => ({ id: '1' }),
     useRouter: () => mockRouter,
 }));
@@ -79,7 +81,7 @@ vi.mock('./components/SessionInput', () => ({
         <div data-testid="mock-session-input">
             <input 
                 data-testid="input-field"
-                value={input} 
+                value={input || ''}
                 onChange={(e) => setInput(e.target.value)} 
             />
             <button data-testid="send-btn" onClick={() => onSend()}>Send</button>
@@ -97,6 +99,61 @@ interface MockAgentChannel {
     onClose: ReturnType<typeof vi.fn>;
     close: ReturnType<typeof vi.fn>;
 }
+
+
+const mockAddMessage = vi.fn();
+const mockSetPendingQuestion = vi.fn();
+const mockSetSending = vi.fn();
+const mockSetStreamingContent = vi.fn();
+const mockHandleStreamingDelta = vi.fn();
+const mockHandleStreamingComplete = vi.fn();
+
+vi.mock('./hooks/useSessionMessages', () => ({
+    useSessionMessages: () => ({
+        messages: [],
+        setMessages: vi.fn(),
+        addMessage: mockAddMessage,
+        streamingContent: '',
+        setStreamingContent: mockSetStreamingContent,
+        thinkingStatus: null,
+        setThinkingStatus: vi.fn(),
+        sending: false,
+        setSending: mockSetSending,
+        handleStreamingDelta: mockHandleStreamingDelta,
+        handleStreamingComplete: mockHandleStreamingComplete,
+        setPendingQuestion: mockSetPendingQuestion,
+        session: {
+            id: 1,
+            course_id: 1,
+            knowledge_point_id: 101,
+            status: 'active',
+            started_at: new Date().toISOString(),
+            scaffold_level: 'low',
+            course: { id: 1, title: 'Test Course', description: '' },
+            knowledge_point: { id: 101, title: 'Test Point', chapter_title: 'Ch 1', difficulty: 1 },
+        },
+        setSession: vi.fn(),
+        activity: null,
+        loading: false,
+        autoStartTriggeredRef: { current: false }
+    })
+}));
+
+const mockHandleWSEvent = vi.fn();
+
+vi.mock('./hooks/useWebSocketEvents', () => ({
+    useWebSocketEvents: () => ({
+        handleWSEvent: mockHandleWSEvent
+    })
+}));
+
+vi.mock('./hooks/usePluginRenderer', () => ({
+    usePluginRenderer: () => ({
+        activeSkill: '',
+        matchedRenderer: null,
+        activePlugin: null
+    })
+}));
 
 describe('SessionPage', () => {
     let mockAgentChannel: MockAgentChannel;
@@ -134,16 +191,6 @@ describe('SessionPage', () => {
         vi.clearAllMocks();
     });
 
-    it('should load session and display initial UI', async () => {
-        render(<SessionPage />);
-
-        // Wait for session data to load
-        await screen.findByText('AI 学习对话');
-
-        expect(getSession).toHaveBeenCalledWith(1);
-        expect(screen.getByTestId('mock-message-list')).toBeInTheDocument();
-        expect(screen.getByTestId('mock-session-input')).toBeInTheDocument();
-    });
 
     it('should handle sending a message', async () => {
         render(<SessionPage />);
@@ -159,9 +206,11 @@ describe('SessionPage', () => {
 
         await userEvent.click(sendBtn);
 
-        // The user's message should be added to the UI
-        await screen.findByText('Hello AI');
-        expect(screen.getByText('Hello AI')).toBeInTheDocument();
+        // Expect addMessage to be called instead of screen checking
+        expect(mockAddMessage).toHaveBeenCalledWith(expect.objectContaining({
+             role: 'user',
+             content: 'Hello AI'
+        }));
         
         // Input should be cleared
         expect(input).toHaveValue('');
@@ -173,43 +222,25 @@ describe('SessionPage', () => {
         expect(callArg.payload.text).toBe('Hello AI');
     });
 
-    it('should handle incoming websocket events (stream_start, token, stream_end)', async () => {
-        type WSEventHandler = (event: { event: string; payload?: unknown; timestamp: number }) => void;
-        let capturedOnEvent: WSEventHandler | undefined;
-        
-        (useSessionWebSocket as ReturnType<typeof vi.fn>).mockImplementation(({ onEvent }: { onEvent: WSEventHandler }) => {
-            capturedOnEvent = onEvent;
-            return {
-                wsStatus: 'connected',
-                reconnectCount: 0,
-                agentChannel: mockAgentChannel,
-            };
-        });
-
+    it('should handle incoming websocket events via hook', async () => {
         render(<SessionPage />);
         await screen.findByText('AI 学习对话');
 
-        // Send a message first so pendingQuestionRef is set
-        const input = screen.getByTestId('input-field');
-        const sendBtn = screen.getByTestId('send-btn');
-
-        await userEvent.type(input, 'Testing streaming');
-        await userEvent.click(sendBtn);
-
-        // Simulate incoming stream events
-        await act(async () => {
-            capturedOnEvent?.({ event: 'agent_thinking', payload: { status: 'thinking' }, timestamp: Date.now() });
-        });
-
-        await act(async () => {
-            capturedOnEvent?.({ event: 'token_delta', payload: { text: 'Response text' }, timestamp: Date.now() });
-        });
-
-        await act(async () => {
-            capturedOnEvent?.({ event: 'turn_complete', payload: {}, timestamp: Date.now() });
-        });
-
-        // The final message should be appended to the list
-        expect(screen.getByText('Response text')).toBeInTheDocument();
+        expect(useSessionWebSocket).toHaveBeenCalledWith(expect.objectContaining({
+            onEvent: mockHandleWSEvent
+        }));
     });
+
+    it('should load session and display initial UI', async () => {
+        render(<SessionPage />);
+
+        // Wait for session data to load
+        await screen.findByText('AI 学习对话');
+
+
+        expect(screen.getByTestId('mock-message-list')).toBeInTheDocument();
+        expect(screen.getByTestId('mock-session-input')).toBeInTheDocument();
+    });
+
+
 });

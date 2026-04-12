@@ -186,8 +186,29 @@ func (p *DistillationPipeline) BuildSFTDataset(ctx context.Context, logs []inter
 
 	// 按 session 分组
 	sessionGroups := make(map[uint][]interactionLogRow)
+	var sessionIDs []uint
 	for _, row := range logs {
+		if len(sessionGroups[row.SessionID]) == 0 {
+			sessionIDs = append(sessionIDs, row.SessionID)
+		}
 		sessionGroups[row.SessionID] = append(sessionGroups[row.SessionID], row)
+	}
+
+	// 批量加载所有 session 的完整对话上下文
+	var allInteractions []interactionLogRow
+	if len(sessionIDs) > 0 {
+		if err := p.DB.WithContext(ctx).Table("interactions").
+			Where("session_id IN ?", sessionIDs).
+			Order("session_id ASC, id ASC").
+			Find(&allInteractions).Error; err != nil {
+			return nil, fmt.Errorf("failed to batch load interactions: %w", err)
+		}
+	}
+
+	// 按 session 组织上下文
+	allMsgsBySession := make(map[uint][]interactionLogRow)
+	for _, msg := range allInteractions {
+		allMsgsBySession[msg.SessionID] = append(allMsgsBySession[msg.SessionID], msg)
 	}
 
 	var samples []SFTSample
@@ -198,15 +219,8 @@ func (p *DistillationPipeline) BuildSFTDataset(ctx context.Context, logs []inter
 	totalRAGAS := 0.0
 
 	for sessionID, interactions := range sessionGroups {
-		// 加载该 session 的完整对话上下文
-		var allMsgs []interactionLogRow
-		if err := p.DB.WithContext(ctx).Table("interactions").
-			Where("session_id = ?", sessionID).
-			Order("id ASC").
-			Find(&allMsgs).Error; err != nil {
-			slogDistill.Warn("skipping session", "session_id", sessionID, "err", err)
-			continue
-		}
+		// 获取该 session 的完整对话上下文
+		allMsgs := allMsgsBySession[sessionID]
 
 		// 构建 SFT 消息序列
 		var msgs []SFTMsg

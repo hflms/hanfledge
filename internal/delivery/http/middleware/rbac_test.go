@@ -78,7 +78,7 @@ func TestRBAC_UserHasRequiredRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.Use(RBAC(db, model.RoleTeacher))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -102,7 +102,7 @@ func TestRBAC_UserLacksRequiredRole(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.Use(RBAC(db, model.RoleSysAdmin)) // requires SYS_ADMIN
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -129,7 +129,7 @@ func TestRBAC_UserHasOneOfMultipleRoles(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.Use(RBAC(db, model.RoleSysAdmin, model.RoleTeacher)) // either role works
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -159,7 +159,7 @@ func TestRBAC_NoRoles(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.Use(RBAC(db, model.RoleTeacher))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -183,7 +183,7 @@ func TestRBAC_SetsUserRolesInContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.Use(RBAC(db, model.RoleTeacher))
 	r.GET("/test", func(c *gin.Context) {
 		roles, exists := c.Get("user_roles")

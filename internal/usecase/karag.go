@@ -220,12 +220,22 @@ func (e *KARAGEngine) hybridSlice(text string) []string {
 // and their relationships, then writes them to Neo4j.
 func (e *KARAGEngine) buildKnowledgeGraph(ctx context.Context, courseID uint, chunks []string) error {
 	// Prepare a summary of the document for LLM analysis
-	// Use first 10 chunks as representative sample
-	sampleSize := 10
-	if len(chunks) < sampleSize {
-		sampleSize = len(chunks)
+	// Use uniformly spaced chunks as a representative sample
+	targetSampleSize := 12
+	var sampledChunks []string
+	if len(chunks) <= targetSampleSize {
+		sampledChunks = chunks
+	} else {
+		step := float64(len(chunks)-1) / float64(targetSampleSize-1)
+		for i := 0; i < targetSampleSize; i++ {
+			idx := int(float64(i) * step)
+			if idx >= len(chunks) {
+				idx = len(chunks) - 1
+			}
+			sampledChunks = append(sampledChunks, chunks[idx])
+		}
 	}
-	sample := strings.Join(chunks[:sampleSize], "\n---\n")
+	sample := strings.Join(sampledChunks, "\n---\n")
 
 	prompt := fmt.Sprintf(`你是一位教学大纲分析专家。请分析以下教材内容，提取出章节和知识点结构。
 
@@ -237,14 +247,32 @@ func (e *KARAGEngine) buildKnowledgeGraph(ctx context.Context, courseID uint, ch
       "knowledge_points": [
         {
           "title": "知识点名称",
+          "description": "详细的知识点定义与描述",
           "difficulty": 0.5,
           "is_key_point": true,
-          "prerequisites": ["前置知识点名称"]
+          "prerequisites": ["前置知识点名称"],
+          "misconceptions": [
+            {
+              "description": "常见的认知误区或陷阱描述",
+              "trap_type": "conceptual",
+              "severity": 0.8
+            }
+          ],
+          "related_points": [
+            {
+              "title": "相关知识点名称",
+              "link_type": "analogy"
+            }
+          ]
         }
       ]
     }
   ]
 }
+
+说明：
+1. trap_type: 可选 conceptual (概念错误), procedural (操作错误), intuitive (直觉偏差), transfer (迁移混淆)。
+2. link_type: 可选 analogy (类比), shared_model (共享模型), application (应用)。
 
 教材内容节选：
 %s`, sample)
@@ -275,10 +303,26 @@ type OutlineChapter struct {
 
 // OutlineKP represents a knowledge point in the extracted outline.
 type OutlineKP struct {
-	Title         string   `json:"title"`
-	Difficulty    float64  `json:"difficulty"`
-	IsKeyPoint    bool     `json:"is_key_point"`
-	Prerequisites []string `json:"prerequisites"`
+	Title          string                 `json:"title"`
+	Description    string                 `json:"description"`
+	Difficulty     float64                `json:"difficulty"`
+	IsKeyPoint     bool                   `json:"is_key_point"`
+	Prerequisites  []string               `json:"prerequisites"`
+	Misconceptions []OutlineMisconception `json:"misconceptions"`
+	RelatedPoints  []OutlineRelatedPoint  `json:"related_points"`
+}
+
+// OutlineMisconception represents a misconception or trap.
+type OutlineMisconception struct {
+	Description string  `json:"description"`
+	TrapType    string  `json:"trap_type"`
+	Severity    float64 `json:"severity"`
+}
+
+// OutlineRelatedPoint represents a related knowledge point.
+type OutlineRelatedPoint struct {
+	Title    string `json:"title"`
+	LinkType string `json:"link_type"`
 }
 
 // parseAndStoreOutline parses the LLM JSON response and stores
@@ -322,10 +366,11 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 
 		for _, kpData := range ch.KnowledgePoints {
 			kp := model.KnowledgePoint{
-				ChapterID:  chapter.ID,
-				Title:      kpData.Title,
-				Difficulty: kpData.Difficulty,
-				IsKeyPoint: kpData.IsKeyPoint,
+				ChapterID:   chapter.ID,
+				Title:       kpData.Title,
+				Description: kpData.Description,
+				Difficulty:  kpData.Difficulty,
+				IsKeyPoint:  kpData.IsKeyPoint,
 			}
 			e.DB.Create(&kp)
 
@@ -335,14 +380,31 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 
 			// Neo4j
 			if e.Neo4j != nil {
-				e.Neo4j.CreateKnowledgePointNode(ctx, chapter.ID, kp.ID, kpData.Title, kpData.Difficulty)
+				e.Neo4j.CreateKnowledgePointNode(ctx, chapter.ID, kp.ID, kpData.Title, kpData.Difficulty, kpData.Description)
+			}
+
+			// Store Misconceptions
+			for _, trapData := range kpData.Misconceptions {
+				trap := model.Misconception{
+					KPID:        kp.ID,
+					Description: trapData.Description,
+					TrapType:    model.TrapType(trapData.TrapType),
+					Severity:    trapData.Severity,
+				}
+				e.DB.Create(&trap)
+				trapNeo4jID := fmt.Sprintf("misconception_%d", trap.ID)
+				e.DB.Model(&trap).Update("neo4j_node_id", trapNeo4jID)
+
+				if e.Neo4j != nil {
+					e.Neo4j.CreateMisconceptionNode(ctx, kp.ID, trap.ID, trapData.Description, trapData.TrapType)
+				}
 			}
 
 			kpTitleToID[kpData.Title] = kp.ID
 		}
 	}
 
-	// Create prerequisite relationships
+	// Create prerequisite and related relationships
 	if e.Neo4j != nil {
 		for _, ch := range outline.Chapters {
 			for _, kpData := range ch.KnowledgePoints {
@@ -350,9 +412,26 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 				if !ok {
 					continue
 				}
+				// Prerequisites
 				for _, prereqTitle := range kpData.Prerequisites {
 					if toID, ok := kpTitleToID[prereqTitle]; ok {
 						e.Neo4j.CreateRequiresRelation(ctx, fromID, toID)
+					}
+				}
+
+				// Related Points
+				for _, related := range kpData.RelatedPoints {
+					if toID, ok := kpTitleToID[related.Title]; ok {
+						// Create in PG
+						crossLink := model.CrossLink{
+							FromKPID: fromID,
+							ToKPID:   toID,
+							LinkType: related.LinkType,
+							Weight:   1.0,
+						}
+						e.DB.Create(&crossLink)
+						// Create in Neo4j
+						e.Neo4j.CreateCrossLink(ctx, fromID, toID, related.LinkType, 1.0)
 					}
 				}
 			}

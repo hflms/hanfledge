@@ -25,6 +25,11 @@
     color: var(--text-primary);
 }
 
+.toggleBtn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .inputArea {
     display: flex;
     flex-direction: column;
@@ -77,6 +82,11 @@
     cursor: not-allowed;
 }
 
+.sendBtn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 .collapseBtn {
     padding: 8px 12px;
     background: var(--bg-surface-hover);
@@ -84,4 +94,9 @@
     border-radius: 8px;
     color: var(--text-secondary);
     cursor: pointer;
+}
+
+.collapseBtn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }

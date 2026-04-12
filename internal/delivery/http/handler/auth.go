@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/hflms/hanfledge/internal/delivery/http/middleware"
 	"github.com/hflms/hanfledge/internal/domain/model"
+	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/plugin"
 	"github.com/hflms/hanfledge/internal/repository"
 	"golang.org/x/crypto/bcrypt"
@@ -16,19 +18,21 @@ import (
 
 // AuthHandler handles authentication-related requests.
 type AuthHandler struct {
-	Users     repository.UserRepository
-	JWTSecret string
-	JWTExpiry int // hours
-	EventBus  *plugin.EventBus
+	Users      repository.UserRepository
+	JWTSecret  string
+	JWTExpiry  int // hours
+	EventBus   *plugin.EventBus
+	RedisCache *cache.RedisCache
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(users repository.UserRepository, jwtSecret string, jwtExpiry int, eventBus *plugin.EventBus) *AuthHandler {
+func NewAuthHandler(users repository.UserRepository, jwtSecret string, jwtExpiry int, eventBus *plugin.EventBus, redisCache *cache.RedisCache) *AuthHandler {
 	return &AuthHandler{
-		Users:     users,
-		JWTSecret: jwtSecret,
-		JWTExpiry: jwtExpiry,
-		EventBus:  eventBus,
+		Users:      users,
+		JWTSecret:  jwtSecret,
+		JWTExpiry:  jwtExpiry,
+		EventBus:   eventBus,
+		RedisCache: redisCache,
 	}
 }
 
@@ -115,6 +119,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"display_name": user.DisplayName,
 	})
 
+	if h.RedisCache != nil {
+		if err := h.RedisCache.SetUserSession(c.Request.Context(), tokenStr, user.ID); err != nil {
+			// Log error but don't fail the login
+			// Use the existing context or simply ignore for now
+		}
+	}
+
 	c.JSON(http.StatusOK, LoginResponse{
 		Token: tokenStr,
 		User:  *user,
@@ -134,10 +145,25 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) GetMe(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
+	if h.RedisCache != nil {
+		if cachedUserJSON, err := h.RedisCache.GetUserCache(c.Request.Context(), userID); err == nil && cachedUserJSON != "" {
+			// Found in cache, stream back the JSON
+			c.Data(http.StatusOK, "application/json", []byte(cachedUserJSON))
+			return
+		}
+	}
+
 	user, err := h.Users.FindByID(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
+	}
+
+	if h.RedisCache != nil {
+		importJSON, err := json.Marshal(user)
+		if err == nil {
+			_ = h.RedisCache.SetUserCache(c.Request.Context(), userID, string(importJSON))
+		}
 	}
 
 	c.JSON(http.StatusOK, user)

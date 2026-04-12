@@ -621,15 +621,24 @@ func (h *ActivityHandler) PreviewActivity(c *gin.Context) {
 		firstKP = kpIDs[0]
 	}
 
+	var firstStepID *uint
+	if activity.Type == model.ActivityTypeGuided {
+		var firstStep model.ActivityStep
+		if err := h.DB.Where("activity_id = ?", activityID).Order("sort_order ASC").First(&firstStep).Error; err == nil {
+			firstStepID = &firstStep.ID
+		}
+	}
+
 	// Create sandbox session — StudentID = teacherID (teacher acts as student)
 	session := model.StudentSession{
-		StudentID:  teacherID,
-		ActivityID: uint(activityID),
-		CurrentKP:  firstKP,
-		Scaffold:   model.ScaffoldHigh,
-		IsSandbox:  true,
-		Status:     model.SessionStatusActive,
-		StartedAt:  time.Now(),
+		StudentID:     teacherID,
+		ActivityID:    uint(activityID),
+		CurrentKP:     firstKP,
+		CurrentStepID: firstStepID,
+		Scaffold:      model.ScaffoldHigh,
+		IsSandbox:     true,
+		Status:        model.SessionStatusActive,
+		StartedAt:     time.Now(),
 	}
 
 	if err := h.DB.Create(&session).Error; err != nil {
@@ -766,14 +775,23 @@ func (h *ActivityHandler) JoinActivity(c *gin.Context) {
 		firstKP = kpIDs[0]
 	}
 
+	var firstStepID *uint
+	if activity.Type == model.ActivityTypeGuided {
+		var firstStep model.ActivityStep
+		if err := h.DB.Where("activity_id = ?", activityID).Order("sort_order ASC").First(&firstStep).Error; err == nil {
+			firstStepID = &firstStep.ID
+		}
+	}
+
 	// Create new session
 	session := model.StudentSession{
-		StudentID:  studentID,
-		ActivityID: uint(activityID),
-		CurrentKP:  firstKP,
-		Scaffold:   model.ScaffoldHigh, // Start with high scaffold
-		Status:     model.SessionStatusActive,
-		StartedAt:  time.Now(),
+		StudentID:     studentID,
+		ActivityID:    uint(activityID),
+		CurrentKP:     firstKP,
+		CurrentStepID: firstStepID,
+		Scaffold:      model.ScaffoldHigh, // Start with high scaffold
+		Status:        model.SessionStatusActive,
+		StartedAt:     time.Now(),
 	}
 
 	if err := h.DB.Create(&session).Error; err != nil {
@@ -784,6 +802,99 @@ func (h *ActivityHandler) JoinActivity(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message":    "已加入学习活动",
 		"session_id": session.ID,
+	})
+}
+
+// NextGuidedStep advances the session to the next ActivityStep for guided activities.
+//
+//	@Summary      进入下一个环节 (Guided)
+//	@Description  对于 Guided 模式的学习活动，将会话状态推进到下一个 ActivityStep
+//	@Tags         Sessions
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id  path      int  true  "会话 ID"
+//	@Success      200 {object}  map[string]interface{}
+//	@Failure      400 {object}  ErrorResponse
+//	@Failure      403 {object}  ErrorResponse
+//	@Failure      404 {object}  ErrorResponse
+//	@Router       /sessions/{id}/next-step [post]
+func (h *ActivityHandler) NextGuidedStep(c *gin.Context) {
+	sessionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的会话 ID"})
+		return
+	}
+
+	studentID := middleware.GetUserID(c)
+
+	var session model.StudentSession
+	if err := h.DB.First(&session, "id = ? AND student_id = ?", sessionID, studentID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "会话不存在"})
+		return
+	}
+
+	var activity model.LearningActivity
+	if err := h.DB.Preload("Steps", func(db *gorm.DB) *gorm.DB {
+		return db.Order("sort_order ASC")
+	}).First(&activity, session.ActivityID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法加载关联的活动信息"})
+		return
+	}
+
+	if activity.Type != model.ActivityTypeGuided {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "此端点仅适用于引导式学习活动"})
+		return
+	}
+
+	if len(activity.Steps) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该活动未配置任何学习环节"})
+		return
+	}
+
+	// 查找当前步骤的索引
+	currentIndex := -1
+	for i, step := range activity.Steps {
+		if session.CurrentStepID != nil && step.ID == *session.CurrentStepID {
+			currentIndex = i
+			break
+		}
+	}
+
+	// 推进到下一步
+	nextIndex := currentIndex + 1
+	if nextIndex >= len(activity.Steps) {
+		// 没有下一步，标记会话完成
+		session.Status = model.SessionStatusCompleted
+		now := time.Now()
+		session.EndedAt = &now
+		h.DB.Save(&session)
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "活动已完成",
+			"status":  "completed",
+		})
+		return
+	}
+
+	nextStep := activity.Steps[nextIndex]
+
+	// 更新 session
+	session.CurrentStepID = &nextStep.ID
+	session.SkillState = nil // 切换步骤时清除旧状态
+	if err := h.DB.Save(&session).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新会话环节失败"})
+		return
+	}
+
+	// Clear redis history cache
+	if h.Cache != nil {
+		h.Cache.InvalidateSessionHistory(c.Request.Context(), uint(sessionID))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "已进入下一个环节",
+		"current_step_id": nextStep.ID,
+		"step_title":      nextStep.Title,
 	})
 }
 
