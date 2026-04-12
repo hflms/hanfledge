@@ -203,24 +203,25 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 		return
 	}
 
-	// Extract text from PDF
-	rawText, pageCount, err := extractPDFText(filePath)
-	if err != nil {
-		h.Docs.UpdateFields(context.Background(), doc.ID, map[string]interface{}{
-			"status":        model.DocStatusFailed,
-			"error_message": "PDF 解析失败: " + err.Error(),
-		})
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 解析失败: " + err.Error()})
-		return
-	}
-	if updateErr := h.Docs.UpdateFields(c.Request.Context(), doc.ID, map[string]interface{}{"page_count": pageCount}); updateErr != nil {
-		slogCourse.Warn("failed to update page_count", "doc_id", doc.ID, "err", updateErr)
-	}
 
 	// Trigger KA-RAG pipeline asynchronously
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
+		// Extract text from PDF asynchronously
+		rawText, pageCount, err := extractPDFText(filePath)
+		if err != nil {
+			slogCourse.Error("pdf extraction failed", "doc_id", doc.ID, "err", err)
+			h.Docs.UpdateFields(ctx, doc.ID, map[string]interface{}{
+				"status":        model.DocStatusFailed,
+				"error_message": "PDF 解析失败: " + err.Error(),
+			})
+			return
+		}
+
+		if updateErr := h.Docs.UpdateFields(ctx, doc.ID, map[string]interface{}{"page_count": pageCount}); updateErr != nil {
+			slogCourse.Warn("failed to update page_count", "doc_id", doc.ID, "err", updateErr)
+		}
 
 		if err := h.KARAG.ProcessDocument(ctx, &doc, rawText); err != nil {
 			slogCourse.Error("ka-rag pipeline failed", "doc_id", doc.ID, "err", err)
@@ -246,10 +247,8 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 	}()
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"message":     "文件已上传，正在后台处理知识图谱...",
-		"document":    doc,
-		"page_count":  pageCount,
-		"text_length": len(rawText),
+		"message":  "文件已上传，正在后台处理知识图谱...",
+		"document": doc,
 	})
 }
 
@@ -490,30 +489,37 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 	// Resolve local path for PDF text extraction
 	filePath, _ := h.Storage.URL(ctx, doc.FilePath)
 
-	// Re-extract text
-	rawText, pageCount, err := extractPDFText(filePath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "PDF 解析失败: " + err.Error()})
-		return
-	}
 
 	// Delete old chunks before reprocessing
 	if err := h.Docs.DeleteChunksByDocumentID(ctx, doc.ID); err != nil {
 		slogCourse.Warn("failed to delete old chunks", "doc_id", doc.ID, "err", err)
 	}
 
-	// Update status to processing
 	if err := h.Docs.UpdateFields(ctx, doc.ID, map[string]interface{}{
 		"status":     model.DocStatusProcessing,
-		"page_count": pageCount,
 	}); err != nil {
 		slogCourse.Warn("failed to update doc to processing", "doc_id", doc.ID, "err", err)
 	}
 
-	// Trigger KA-RAG pipeline asynchronously
+
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
+
+		// Extract text from PDF asynchronously
+		rawText, pageCount, err := extractPDFText(filePath)
+		if err != nil {
+			slogCourse.Error("pdf extraction failed", "doc_id", doc.ID, "err", err)
+			h.Docs.UpdateFields(bgCtx, doc.ID, map[string]interface{}{
+				"status":        model.DocStatusFailed,
+				"error_message": "PDF 解析失败: " + err.Error(),
+			})
+			return
+		}
+
+		if updateErr := h.Docs.UpdateFields(bgCtx, doc.ID, map[string]interface{}{"page_count": pageCount}); updateErr != nil {
+			slogCourse.Warn("failed to update page_count", "doc_id", doc.ID, "err", updateErr)
+		}
 
 		if err := h.KARAG.ProcessDocument(bgCtx, doc, rawText); err != nil {
 			slogCourse.Error("ka-rag retry failed", "doc_id", doc.ID, "err", err)
@@ -523,7 +529,6 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 			})
 			return
 		}
-
 		if err := h.Docs.UpdateFields(bgCtx, doc.ID, map[string]interface{}{
 			"status": model.DocStatusCompleted,
 		}); err != nil {
@@ -539,9 +544,8 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 	}()
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"message":    "文档重新处理已启动",
-		"document":   doc,
-		"page_count": pageCount,
+		"message":  "文档重新处理已启动",
+		"document": doc,
 	})
 }
 
