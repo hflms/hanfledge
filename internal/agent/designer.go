@@ -191,7 +191,7 @@ func (a *DesignerAgent) Assemble(tc *TurnContext, prescription LearningPrescript
 		Find(&stepSummaries)
 
 	// Step 7: 组装系统 Prompt
-	systemPrompt := a.buildSystemPrompt(prescription, mergedChunks, graphNodes, misconceptions, stepSummaries)
+	systemPrompt := a.buildSystemPrompt(tc, prescription, mergedChunks, graphNodes, misconceptions, stepSummaries)
 
 	// Step 7.5: CRAG 回退处理 — 如果检索质量不达标，触发回退策略
 	if !relevance.Passed {
@@ -425,7 +425,7 @@ func rrfMerge(semantic, graph []RetrievedChunk, topN int) []RetrievedChunk {
 // ── Prompt Assembly ─────────────────────────────────────────
 
 // buildSystemPrompt 根据检索结果和处方组装系统 Prompt。
-func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chunks []RetrievedChunk, nodes []GraphNode, misconceptions []MisconceptionItem, stepSummaries []model.StepSummary) string {
+func (a *DesignerAgent) buildSystemPrompt(tc *TurnContext, prescription LearningPrescription, chunks []RetrievedChunk, nodes []GraphNode, misconceptions []MisconceptionItem, stepSummaries []model.StepSummary) string {
 	var sb strings.Builder
 
 	sb.WriteString("你是一位 AI 学习教练，正在帮助学生学习。\n\n")
@@ -449,8 +449,28 @@ func (a *DesignerAgent) buildSystemPrompt(prescription LearningPrescription, chu
 		sb.WriteString("\n")
 	}
 
+	if tc.ActivityType == model.ActivityTypeGuided && tc.CurrentStepID != nil {
+		var step model.ActivityStep
+		if err := a.db.First(&step, *tc.CurrentStepID).Error; err == nil {
+			sb.WriteString("【当前教学环节 (由教师指定)】\n")
+			sb.WriteString(fmt.Sprintf("环节名称: %s\n", step.Title))
+			if step.Description != "" {
+				sb.WriteString(fmt.Sprintf("环节描述: %s\n", step.Description))
+			}
+			if step.ContentBlocks != "" && step.ContentBlocks != "[]" {
+				sb.WriteString("教师为本环节指定的材料内容如下：\n")
+				// Try to format ContentBlocks nicely if it's JSON array
+				sb.WriteString(step.ContentBlocks)
+				sb.WriteString("\n\n")
+			}
+			sb.WriteString("**你必须围绕上述教师指定的材料和环节要求进行教学。**\n\n")
+		} else {
+			slogDesigner.Warn("failed to load guided step for prompt", "step_id", *tc.CurrentStepID, "err", err)
+		}
+	}
+
 	// 当前教学目标知识点
-	if len(prescription.TargetKPSequence) > 0 {
+	if len(prescription.TargetKPSequence) > 0 && tc.ActivityType != model.ActivityTypeGuided {
 		currentKP := prescription.TargetKPSequence[0]
 		sb.WriteString("【当前教学目标】\n")
 		sb.WriteString(fmt.Sprintf("知识点 ID: %d\n", currentKP.KPID))

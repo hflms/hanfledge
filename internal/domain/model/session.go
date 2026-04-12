@@ -25,13 +25,14 @@ const (
 
 // StudentSession 学生学习会话表。
 type StudentSession struct {
-	ID          uint          `gorm:"primaryKey" json:"id"`
-	StudentID   uint          `gorm:"not null;index" json:"student_id"`
-	ActivityID  uint          `gorm:"not null;index" json:"activity_id"`
-	CurrentKP   uint          `gorm:"not null" json:"current_kp_id"`
-	ActiveSkill string        `gorm:"size:100" json:"active_skill"`
-	Scaffold    ScaffoldLevel `gorm:"size:20" json:"scaffold_level"`
-	SkillState  *string       `gorm:"type:jsonb" json:"skill_state,omitempty"` // 技能级会话状态 (e.g., FallacySessionState)
+	ID            uint          `gorm:"primaryKey" json:"id"`
+	StudentID     uint          `gorm:"not null;index" json:"student_id"`
+	ActivityID    uint          `gorm:"not null;index" json:"activity_id"`
+	CurrentKP     uint          `gorm:"not null" json:"current_kp_id"`
+	CurrentStepID *uint         `gorm:"index" json:"current_step_id,omitempty"`
+	ActiveSkill   string        `gorm:"size:100" json:"active_skill"`
+	Scaffold      ScaffoldLevel `gorm:"size:20" json:"scaffold_level"`
+	SkillState    *string       `gorm:"type:jsonb" json:"skill_state,omitempty"` // 技能级会话状态 (e.g., FallacySessionState)
 	IsSandbox   bool          `gorm:"default:false" json:"is_sandbox"`         // 沙盒预览会话标记 (design.md §5.1 Step 3)
 	Status      SessionStatus `gorm:"size:20;default:active" json:"status"`
 	Mode        SessionMode   `gorm:"size:20;default:'socratic'" json:"mode"` // socratic | testing
