@@ -189,6 +189,46 @@ function parseEmbeddingModels(
   return { models, activeId: active?.id ?? models[0]?.id ?? '' };
 }
 
+function buildModelConfigPayload(
+  chatModels: ChatModelCard[],
+  embeddingModels: EmbeddingModelCard[],
+  activeEmbeddingId: string,
+): Record<string, string> {
+  const defaultChat = chatModels.find(m => m.isDefault) ?? chatModels[0];
+  const activeEmbedding = embeddingModels.find(m => m.id === activeEmbeddingId) ?? embeddingModels[0];
+
+  const payload: Record<string, string> = {
+    CHAT_MODELS: JSON.stringify(chatModels),
+    LLM_MODELS: chatModels.map(m => m.model).join(','),
+    EMBEDDING_MODELS: JSON.stringify(embeddingModels),
+  };
+
+  if (defaultChat) {
+    const keys = providerKeyMap[defaultChat.provider];
+    payload.LLM_PROVIDER = defaultChat.provider;
+    if (keys?.modelField) payload[keys.modelField] = defaultChat.model;
+    if (keys?.apiKeyField && defaultChat.apiKey) payload[keys.apiKeyField] = defaultChat.apiKey;
+    payload[keys.baseUrlField] = defaultChat.baseUrl || defaultBaseUrlMap[defaultChat.provider] || '';
+  }
+
+  for (const model of chatModels) {
+    if (model.id === defaultChat?.id) continue;
+    const keys = providerKeyMap[model.provider];
+    if (keys?.apiKeyField && model.apiKey && !payload[keys.apiKeyField]) payload[keys.apiKeyField] = model.apiKey;
+    if (keys?.baseUrlField && model.baseUrl && !payload[keys.baseUrlField]) payload[keys.baseUrlField] = model.baseUrl;
+  }
+
+  if (activeEmbedding) {
+    payload.EMBEDDING_PROVIDER = activeEmbedding.provider;
+    payload.EMBEDDING_MODEL = activeEmbedding.model;
+    const keys = providerKeyMap[activeEmbedding.provider];
+    if (keys?.apiKeyField && activeEmbedding.apiKey && !payload[keys.apiKeyField]) payload[keys.apiKeyField] = activeEmbedding.apiKey;
+    if (keys?.baseUrlField && activeEmbedding.baseUrl && !payload[keys.baseUrlField]) payload[keys.baseUrlField] = activeEmbedding.baseUrl;
+  }
+
+  return payload;
+}
+
 // -- Component ----------------------------------------
 
 export default function SystemSettingsPage() {
@@ -242,59 +282,50 @@ export default function SystemSettingsPage() {
 
   useEffect(() => { loadConfigs(); }, [loadConfigs]);
 
-  // -- Save ----------------------------------------
+  const runEmbeddingTest = useCallback(async (provider: string, model: string, silentSuccess = false) => {
+    try {
+      const res = await apiFetch<{ message: string; latency?: number; dimension?: number }>('/system/config/test-embedding-model', {
+        method: 'POST',
+        body: JSON.stringify({ provider, model }),
+      });
+      const dimInfo = res.dimension !== undefined ? `，维度 ${res.dimension}` : '';
+      if (!silentSuccess) toast(`✅ ${res.message}${res.latency !== undefined ? `，耗时 ${res.latency}ms` : ''}${dimInfo}`, 'success');
+    } catch (error) {
+      if (!silentSuccess) toast(`Embedding 模型校验失败：${error instanceof Error ? error.message : '测试失败'}`, 'error');
+    }
+  }, [toast]);
 
-  const handleSave = async () => {
+  const persistModelConfigs = useCallback(async (
+    nextChatModels: ChatModelCard[],
+    nextEmbeddingModels: EmbeddingModelCard[],
+    nextActiveEmbeddingId: string,
+    successMessage = '系统配置保存成功',
+  ) => {
     setSaving(true);
     try {
-      const defaultChat      = chatModels.find(m => m.isDefault) ?? chatModels[0];
-      const activeEmbedding  = embeddingModels.find(m => m.id === activeEmbeddingId) ?? embeddingModels[0];
-
-      const payload: Record<string, string> = {
-        CHAT_MODELS:      JSON.stringify(chatModels),
-        LLM_MODELS:       chatModels.map(m => m.model).join(','),
-        EMBEDDING_MODELS: JSON.stringify(embeddingModels),
-      };
-
-      // Write default chat model → classic backend keys
-      if (defaultChat) {
-        const k = providerKeyMap[defaultChat.provider];
-        payload.LLM_PROVIDER = defaultChat.provider;
-        if (k?.modelField)                         payload[k.modelField]   = defaultChat.model;
-        if (k?.apiKeyField && defaultChat.apiKey)  payload[k.apiKeyField]  = defaultChat.apiKey;
-        payload[k.baseUrlField] = defaultChat.baseUrl || defaultBaseUrlMap[defaultChat.provider] || '';
-      }
-
-      // Write other chat models (non-overwriting, so default model wins)
-      for (const cm of chatModels) {
-        if (cm.id === defaultChat?.id) continue;
-        const k = providerKeyMap[cm.provider];
-        if (k?.apiKeyField && cm.apiKey  && !payload[k.apiKeyField])  payload[k.apiKeyField]  = cm.apiKey;
-        if (k?.baseUrlField && cm.baseUrl && !payload[k.baseUrlField]) payload[k.baseUrlField] = cm.baseUrl;
-      }
-
-      // Write active embedding → classic backend keys
-      if (activeEmbedding) {
-        payload.EMBEDDING_PROVIDER = activeEmbedding.provider;
-        payload.EMBEDDING_MODEL    = activeEmbedding.model;
-        const k = providerKeyMap[activeEmbedding.provider];
-        if (k?.apiKeyField  && activeEmbedding.apiKey  && !payload[k.apiKeyField])  payload[k.apiKeyField]  = activeEmbedding.apiKey;
-        if (k?.baseUrlField && activeEmbedding.baseUrl && !payload[k.baseUrlField]) payload[k.baseUrlField] = activeEmbedding.baseUrl;
-      }
-
+      const payload = buildModelConfigPayload(nextChatModels, nextEmbeddingModels, nextActiveEmbeddingId);
       await apiFetch('/system/config', { method: 'PUT', body: JSON.stringify(payload) });
-      toast('系统配置保存成功', 'success');
+      toast(successMessage, 'success');
 
-      // Validate active embedding silently
+      const activeEmbedding = nextEmbeddingModels.find(m => m.id === nextActiveEmbeddingId) ?? nextEmbeddingModels[0];
       if (activeEmbedding) {
         await runEmbeddingTest(activeEmbedding.provider, activeEmbedding.model, true);
       }
+
+      return true;
     } catch (error) {
       console.error('Failed to save configs:', error);
       toast(error instanceof Error ? error.message : '保存配置失败', 'error');
+      return false;
     } finally {
       setSaving(false);
     }
+  }, [runEmbeddingTest, toast]);
+
+  // -- Save ----------------------------------------
+
+  const handleSave = async () => {
+    await persistModelConfigs(chatModels, embeddingModels, activeEmbeddingId);
   };
 
   // -- Modal open handlers ----------------------------------------
@@ -357,21 +388,32 @@ export default function SystemSettingsPage() {
 
   // -- Model mutations ----------------------------------------
 
-  const handleRemoveChatModel = (id: string) => {
-    setChatModels(prev => {
-      const wasDefault = prev.find(m => m.id === id)?.isDefault ?? false;
-      const next = prev.filter(m => m.id !== id);
-      if (wasDefault && next.length > 0) next[0] = { ...next[0], isDefault: true };
-      return next;
-    });
+  const handleRemoveChatModel = async (id: string) => {
+    const wasDefault = chatModels.find(m => m.id === id)?.isDefault ?? false;
+    const nextChatModels = chatModels.filter(m => m.id !== id);
+    if (wasDefault && nextChatModels.length > 0) {
+      nextChatModels[0] = { ...nextChatModels[0], isDefault: true };
+    }
+
+    const saved = await persistModelConfigs(nextChatModels, embeddingModels, activeEmbeddingId, '系统配置保存成功');
+    if (!saved) return false;
+
+    setChatModels(nextChatModels);
+    return true;
   };
 
-  const handleRemoveEmbeddingModel = (id: string) => {
-    setEmbeddingModels(prev => prev.filter(m => m.id !== id));
-    if (activeEmbeddingId === id) {
-      const remaining = embeddingModels.filter(m => m.id !== id);
-      setActiveEmbeddingId(remaining[0]?.id ?? '');
-    }
+  const handleRemoveEmbeddingModel = async (id: string) => {
+    const nextEmbeddingModels = embeddingModels.filter(m => m.id !== id);
+    const nextActiveEmbeddingId = activeEmbeddingId === id
+      ? (nextEmbeddingModels[0]?.id ?? '')
+      : activeEmbeddingId;
+
+    const saved = await persistModelConfigs(chatModels, nextEmbeddingModels, nextActiveEmbeddingId, '系统配置保存成功');
+    if (!saved) return false;
+
+    setEmbeddingModels(nextEmbeddingModels);
+    setActiveEmbeddingId(nextActiveEmbeddingId);
+    return true;
   };
 
   const handleSetDefaultChatModel = (id: string) => {
@@ -405,12 +447,14 @@ export default function SystemSettingsPage() {
 
   // -- Modal save ----------------------------------------
 
-  const handleSaveModelModal = () => {
+  const handleSaveModelModal = async () => {
     if (!modelModal) return;
 
     if (modelModal.type === 'chat') {
       const model = modelModal.model.trim();
       if (!model) { toast('请输入模型名称', 'error'); return; }
+
+      let nextChatModels = chatModels;
 
       if (modelModal.mode === 'add') {
         const created: ChatModelCard = {
@@ -419,24 +463,24 @@ export default function SystemSettingsPage() {
           apiKey: modelModal.apiKey, baseUrl: modelModal.baseUrl,
           isDefault: modelModal.isDefault,
         };
-        setChatModels(prev => {
-          const base = modelModal.isDefault ? prev.map(m => ({ ...m, isDefault: false })) : [...prev];
-          return [...base, created];
-        });
+        const base = modelModal.isDefault ? chatModels.map(m => ({ ...m, isDefault: false })) : [...chatModels];
+        nextChatModels = [...base, created];
       } else if (modelModal.id) {
-        setChatModels(prev => {
-          let next = prev.map(m => (
-            m.id === modelModal.id
-              ? { ...m, provider: modelModal.provider, model, apiKey: modelModal.apiKey, baseUrl: modelModal.baseUrl, isDefault: modelModal.isDefault }
-              : modelModal.isDefault ? { ...m, isDefault: false } : m
-          ));
-          // Ensure at least one default
-          if (!next.some(m => m.isDefault) && next.length > 0) {
-            next = next.map((m, i) => ({ ...m, isDefault: i === 0 }));
-          }
-          return next;
-        });
+        nextChatModels = chatModels.map(m => (
+          m.id === modelModal.id
+            ? { ...m, provider: modelModal.provider, model, apiKey: modelModal.apiKey, baseUrl: modelModal.baseUrl, isDefault: modelModal.isDefault }
+            : modelModal.isDefault ? { ...m, isDefault: false } : m
+        ));
       }
+
+      if (!nextChatModels.some(m => m.isDefault) && nextChatModels.length > 0) {
+        nextChatModels = nextChatModels.map((m, i) => ({ ...m, isDefault: i === 0 }));
+      }
+
+      const saved = await persistModelConfigs(nextChatModels, embeddingModels, activeEmbeddingId, '模型配置已保存');
+      if (!saved) return;
+
+      setChatModels(nextChatModels);
       closeModelModal();
       return;
     }
@@ -445,21 +489,30 @@ export default function SystemSettingsPage() {
     const model = modelModal.model.trim();
     if (!model) { toast('请输入 Embedding 模型名称', 'error'); return; }
 
+    let nextEmbeddingModels = embeddingModels;
+    let nextActiveEmbeddingId = activeEmbeddingId;
+
     if (modelModal.mode === 'add') {
       const created: EmbeddingModelCard = {
         id: createModelId(),
         provider: modelModal.provider, model,
         apiKey: modelModal.apiKey, baseUrl: modelModal.baseUrl,
       };
-      setEmbeddingModels(prev => [...prev, created]);
-      if (embeddingModels.length === 0) setActiveEmbeddingId(created.id);
+      nextEmbeddingModels = [...embeddingModels, created];
+      if (embeddingModels.length === 0) nextActiveEmbeddingId = created.id;
     } else if (modelModal.id) {
-      setEmbeddingModels(prev => prev.map(m => (
+      nextEmbeddingModels = embeddingModels.map(m => (
         m.id === modelModal.id
           ? { ...m, provider: modelModal.provider, model, apiKey: modelModal.apiKey, baseUrl: modelModal.baseUrl }
           : m
-      )));
+      ));
     }
+
+    const saved = await persistModelConfigs(chatModels, nextEmbeddingModels, nextActiveEmbeddingId, '模型配置已保存');
+    if (!saved) return;
+
+    setEmbeddingModels(nextEmbeddingModels);
+    setActiveEmbeddingId(nextActiveEmbeddingId);
     closeModelModal();
   };
 
@@ -505,18 +558,6 @@ export default function SystemSettingsPage() {
     }
   };
 
-  const runEmbeddingTest = async (provider: string, model: string, silentSuccess = false) => {
-    try {
-      const res = await apiFetch<{ message: string; latency?: number; dimension?: number }>('/system/config/test-embedding-model', {
-        method: 'POST',
-        body: JSON.stringify({ provider, model }),
-      });
-      const dimInfo = res.dimension !== undefined ? `，维度 ${res.dimension}` : '';
-      if (!silentSuccess) toast(`✅ ${res.message}${res.latency !== undefined ? `，耗时 ${res.latency}ms` : ''}${dimInfo}`, 'success');
-    } catch (error) {
-      if (!silentSuccess) toast(`Embedding 模型校验失败：${error instanceof Error ? error.message : '测试失败'}`, 'error');
-    }
-  };
 
   // -- Render ----------------------------------------
 
@@ -555,11 +596,18 @@ export default function SystemSettingsPage() {
             {chatModels.map(item => {
               const visual = getProviderVisual(item.provider);
               return (
-                <button
+                <div
                   key={item.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   className={`${styles.modelCard} ${item.isDefault ? styles.activeModelCard : ''}`}
                   onClick={() => openEditChatModelModal(item)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openEditChatModelModal(item);
+                    }
+                  }}
                   style={{ '--model-accent': visual.accent } as React.CSSProperties}
                 >
                   {item.isDefault && <span className={styles.activeBadge}>默认</span>}
@@ -591,7 +639,7 @@ export default function SystemSettingsPage() {
                       复制
                     </button>
                   </div>
-                </button>
+                </div>
               );
             })}
 
@@ -622,11 +670,18 @@ export default function SystemSettingsPage() {
               const isActive = isActiveEmbedding(item);
               const visual   = getProviderVisual(item.provider);
               return (
-                <button
+                <div
                   key={item.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   className={`${styles.modelCard} ${isActive ? styles.activeModelCard : ''}`}
                   onClick={() => openEditEmbeddingModal(item)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openEditEmbeddingModal(item);
+                    }
+                  }}
                   style={{ '--model-accent': visual.accent } as React.CSSProperties}
                 >
                   {isActive && <span className={styles.activeBadge}>Active</span>}
@@ -658,7 +713,7 @@ export default function SystemSettingsPage() {
                       复制
                     </button>
                   </div>
-                </button>
+                </div>
               );
             })}
 
@@ -844,17 +899,18 @@ export default function SystemSettingsPage() {
                 <button
                   type="button"
                   className={`${styles.button} ${styles.dangerButton}`}
-                  onClick={() => {
-                    if (modelModal.type === 'chat')      handleRemoveChatModel(modelModal.id!);
-                    else                                 handleRemoveEmbeddingModel(modelModal.id!);
-                    closeModelModal();
-                  }}
-                >
-                  删除模型
-                </button>
-              )}
+                      onClick={async () => {
+                     const removed = modelModal.type === 'chat'
+                       ? await handleRemoveChatModel(modelModal.id!)
+                       : await handleRemoveEmbeddingModel(modelModal.id!);
+                     if (removed) closeModelModal();
+                   }}
+                  >
+                    删除模型
+                  </button>
+                )}
               <button type="button" className={`${styles.button} ${styles.secondaryButton}`} onClick={closeModelModal}>取消</button>
-              <button type="button" className={`${styles.button} ${styles.primaryButton}`} onClick={handleSaveModelModal}>确认</button>
+              <button type="button" className={`${styles.button} ${styles.primaryButton}`} onClick={handleSaveModelModal} disabled={saving}>确认</button>
             </div>
           </div>
         </div>
