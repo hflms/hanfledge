@@ -61,56 +61,39 @@ func (o *AgentOrchestrator) HandleWhisper(ctx context.Context, session *model.St
 	// Step 1: Strategist/Designer (skip or reuse previous context)
 	// For whisper, we assume we just need the Coach to generate a new message
 	// based on recent history + the new instruction.
-	material := PersonalizedMaterial{} // Simplification: in real app we'd load context
+	material := PersonalizedMaterial{
+		Prescription: LearningPrescription{
+			RecommendedSkill: session.ActiveSkill,
+		},
+	}
 
-	// We need to fetch recent history
-	var history []model.Interaction
-	o.db.WithContext(ctx).Where("session_id = ?", session.ID).Order("created_at asc").Limit(10).Find(&history)
-
-	// Step 2: Coach generates response
-	// We inject the whisper into the Coach context.
-	// Since coach.go expects UserInput, we can pass the whisper as system context or a mock user message.
-	// Actually, appending it to history is easiest.
-
-	draft, err := o.coach.GenerateResponse(tc, material, tc.OnTokenDelta)
+	// Step 2 & 3 & 4: Call actorCriticLoop
+	// We inject the whisper into the Coach context via TurnContext.
+	// actorCriticLoop handles streaming on the final attempt.
+	finalResponse, err := o.actorCriticLoop(tc, material)
 	if err != nil {
-		slogOrch.Error("coach failed on whisper", "err", err)
+		slogOrch.Error("actorCriticLoop failed on whisper", "err", err)
 		onEvent(WSEvent{Event: "error", Payload: map[string]string{"message": "AI未能处理教师指令"}})
 		return
 	}
 
-	// Add skill metadata
-	draft.SkillID = session.ActiveSkill
-
-	// Step 3: Run Critic?
-	// For teacher whispers, we might want to bypass Critic or run it with lower threshold.
-	// Let's run it just in case.
-	review, err := o.critic.Review(tc.Ctx, draft, material)
-	tc.Review = &review
-	if err != nil {
-		slogOrch.Warn("critic failed on whisper, continuing anyway", "err", err)
-	} else if tc.Review != nil && !tc.Review.Approved {
-		slogOrch.Info("whisper response failed critic, but taking it anyway", "score", tc.Review.DepthScore)
-		// We could retry, but for simplicity we take the first draft for whispers
+	// Ensure skill metadata is set
+	if finalResponse != nil && finalResponse.SkillID == "" {
+		finalResponse.SkillID = session.ActiveSkill
 	}
 
-	// Step 4: Stream output (this happens inside Generate if OnTokenDelta is set,
-	// but coach.go Generate might not stream unless it's final attempt in actorCriticLoop.
-	// To fix this, we should just call actorCriticLoop, but we need to inject the whisper.
-	// Wait, the orchestrator HandleTurn does all this. We could just call HandleTurn with a special flag.
-
-	// For now, let's just save the interaction.
-	o.saveInteraction(tc, &draft)
+	// Save the interaction.
+	o.saveInteraction(tc, finalResponse)
 
 	// Send turn complete
 	onEvent(WSEvent{
 		Event:     EventTurnComplete,
-		Payload:   map[string]interface{}{"skill_id": draft.SkillID, "tokens": draft.TokensUsed},
+		Payload:   map[string]interface{}{"skill_id": finalResponse.SkillID, "tokens": finalResponse.TokensUsed},
 		Timestamp: time.Now().Unix(),
 	})
 
 	// Optional: advance state machines if needed
-	o.skillState.AdvanceFallacyIfActive(tc, &draft)
-	o.skillState.AdvanceQuizIfActive(tc, &draft)
-	o.skillState.AdvanceSurveyIfActive(tc, &draft)
+	o.skillState.AdvanceFallacyIfActive(tc, finalResponse)
+	o.skillState.AdvanceQuizIfActive(tc, finalResponse)
+	o.skillState.AdvanceSurveyIfActive(tc, finalResponse)
 }

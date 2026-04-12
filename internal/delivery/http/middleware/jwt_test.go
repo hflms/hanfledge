@@ -59,7 +59,7 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		userID := c.GetUint("user_id")
 		phone, _ := c.Get("phone")
@@ -94,7 +94,7 @@ func TestJWTAuth_MissingHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -114,7 +114,7 @@ func TestJWTAuth_InvalidFormat_NoBearerPrefix(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -135,7 +135,7 @@ func TestJWTAuth_InvalidFormat_JustBearer(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -167,7 +167,7 @@ func TestJWTAuth_ExpiredToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -198,7 +198,7 @@ func TestJWTAuth_WrongSecret(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -216,7 +216,7 @@ func TestJWTAuth_MalformedToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -236,7 +236,7 @@ func TestJWTAuth_QueryParamFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/ws", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"user_id": c.GetUint("user_id")})
 	})
@@ -259,7 +259,7 @@ func TestJWTAuth_BearerCaseInsensitive(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	r := gin.New()
-	r.Use(JWTAuth(testSecret))
+	r.Use(JWTAuth(testSecret, nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})

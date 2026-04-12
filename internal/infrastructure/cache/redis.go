@@ -106,6 +106,59 @@ func (rc *RedisCache) SetString(ctx context.Context, key, value string, ttl time
 	return rc.client.Set(ctx, key, value, ttl).Err()
 }
 
+// ── User Session Cache ──────────────────────────────────────
+
+func userSessionKey(token string) string {
+	return userSessionPrefix + token
+}
+
+// SetUserSession caches the user ID associated with a JWT token.
+func (rc *RedisCache) SetUserSession(ctx context.Context, token string, userID uint) error {
+	key := userSessionKey(token)
+	return rc.client.Set(ctx, key, userID, sessionCacheTTL).Err()
+}
+
+// GetUserSession retrieves the user ID associated with a JWT token.
+// Returns 0 if not found.
+func (rc *RedisCache) GetUserSession(ctx context.Context, token string) (uint, error) {
+	key := userSessionKey(token)
+	val, err := rc.client.Get(ctx, key).Uint64()
+	if err != nil {
+		if err == redis.Nil {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("redis get session %s: %w", key, err)
+	}
+	return uint(val), nil
+}
+
+// ── User Cache ──────────────────────────────────────────────
+
+func userCacheKey(userID uint) string {
+	return fmt.Sprintf("%s%d", userCachePrefix, userID)
+}
+
+// SetUserCache caches a user object (as JSON string).
+// We expect the caller to marshal the model.User and pass the string.
+func (rc *RedisCache) SetUserCache(ctx context.Context, userID uint, userJSON string) error {
+	key := userCacheKey(userID)
+	return rc.client.Set(ctx, key, userJSON, userCacheTTL).Err()
+}
+
+// GetUserCache retrieves a cached user object (as JSON string).
+// Returns empty string if not found.
+func (rc *RedisCache) GetUserCache(ctx context.Context, userID uint) (string, error) {
+	key := userCacheKey(userID)
+	val, err := rc.client.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return "", nil
+		}
+		return "", fmt.Errorf("redis get user %s: %w", key, err)
+	}
+	return val, nil
+}
+
 // ── Session History Cache ───────────────────────────────────
 
 // CachedMessage represents a single conversation message in the cache.
@@ -115,6 +168,11 @@ type CachedMessage struct {
 }
 
 const (
+	userCachePrefix   = "user:cache:"
+	userSessionPrefix = "user:session:"
+	userCacheTTL      = 1 * time.Hour
+	sessionCacheTTL   = 24 * time.Hour
+
 	sessionHistoryKeyPrefix = "session:"
 	sessionHistoryKeySuffix = ":history"
 	sessionHistoryTTL       = 30 * time.Minute

@@ -80,43 +80,36 @@ func (h *SystemConfigHandler) loadConfigMap() map[string]string {
 	return configMap
 }
 
-func (h *SystemConfigHandler) buildProviderForTest(providerType string, modelOverride string, mode string) llm.LLMProvider {
+// providerMeta maps provider name → DB key names and default values.
+var providerMeta = map[string]struct {
+	apiKeyField  string
+	modelField   string
+	baseURLField string
+	defaultModel string
+	defaultBase  string
+}{
+	"dashscope":  {"DASHSCOPE_API_KEY", "DASHSCOPE_MODEL", "DASHSCOPE_COMPAT_BASE_URL", "qwen-max", "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+	"doubao":     {"DOUBAO_API_KEY", "DOUBAO_MODEL", "DOUBAO_COMPAT_BASE_URL", "ep-xxx", "https://ark.cn-beijing.volces.com/api/v3"},
+	"deepseek":   {"DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "DEEPSEEK_COMPAT_BASE_URL", "deepseek-chat", "https://api.deepseek.com/v1"},
+	"openrouter": {"OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_COMPAT_BASE_URL", "openai/gpt-4o-mini", "https://openrouter.ai/api/v1"},
+	"moonshot":   {"MOONSHOT_API_KEY", "MOONSHOT_MODEL", "MOONSHOT_COMPAT_BASE_URL", "moonshot-v1-8k", "https://api.moonshot.cn/v1"},
+	"zhipu":      {"ZHIPU_API_KEY", "ZHIPU_MODEL", "ZHIPU_COMPAT_BASE_URL", "glm-4", "https://open.bigmodel.cn/api/paas/v4"},
+}
+
+// buildProviderForTest creates a temporary LLM client for connectivity testing.
+// apiKeyOverride and baseURLOverride, when non-empty, take precedence over DB-stored values.
+func (h *SystemConfigHandler) buildProviderForTest(providerType, modelOverride, mode, apiKeyOverride, baseURLOverride string) llm.LLMProvider {
 	configs := h.loadConfigMap()
 	if configs == nil {
 		configs = make(map[string]string)
 	}
 
-	switch providerType {
-	case "dashscope":
-		apiKey := configs["DASHSCOPE_API_KEY"]
-		chatModel := configs["DASHSCOPE_MODEL"]
-		embModel := configs["EMBEDDING_MODEL"]
-		compatURL := configs["DASHSCOPE_COMPAT_BASE_URL"]
-		if chatModel == "" {
-			chatModel = "qwen-max"
+	// Ollama uses a different client implementation.
+	if providerType == "ollama" {
+		host := baseURLOverride
+		if host == "" {
+			host = configs["OLLAMA_BASE_URL"]
 		}
-		if embModel == "" {
-			embModel = "text-embedding-v3"
-		}
-		if mode == "chat" && modelOverride != "" {
-			chatModel = modelOverride
-		}
-		if mode == "embed" && modelOverride != "" {
-			embModel = modelOverride
-		}
-		actualURL := compatURL
-		if actualURL == "" {
-			actualURL = "(default) https://dashscope.aliyuncs.com/compatible-mode/v1"
-		}
-		slog.Info("[DEBUG] buildProviderForTest dashscope", "chat_model", chatModel, "compat_url", actualURL)
-		return llm.NewDashScopeClient(llm.DashScopeConfig{
-			APIKey:         apiKey,
-			ChatModel:      chatModel,
-			EmbeddingModel: embModel,
-			CompatBaseURL:  compatURL,
-		})
-	case "ollama":
-		host := configs["OLLAMA_BASE_URL"]
 		if host == "" {
 			host = "http://localhost:11434"
 		}
@@ -135,9 +128,47 @@ func (h *SystemConfigHandler) buildProviderForTest(providerType string, modelOve
 			embModel = modelOverride
 		}
 		return llm.NewOllamaClient(host, chatModel, embModel)
-	default:
+	}
+
+	// All other providers use the OpenAI-compatible DashScopeClient.
+	meta, ok := providerMeta[providerType]
+	if !ok {
+		slog.Warn("buildProviderForTest: unknown provider, falling back", "provider", providerType)
 		return h.LLMProvider
 	}
+
+	apiKey := apiKeyOverride
+	if apiKey == "" {
+		apiKey = configs[meta.apiKeyField]
+	}
+	compatURL := baseURLOverride
+	if compatURL == "" {
+		compatURL = configs[meta.baseURLField]
+	}
+	if compatURL == "" {
+		compatURL = meta.defaultBase
+	}
+
+	chatModel := configs[meta.modelField]
+	if chatModel == "" {
+		chatModel = meta.defaultModel
+	}
+	embModel := configs["EMBEDDING_MODEL"]
+
+	if mode == "chat" && modelOverride != "" {
+		chatModel = modelOverride
+	}
+	if mode == "embed" && modelOverride != "" {
+		embModel = modelOverride
+	}
+
+	slog.Info("buildProviderForTest", "provider", providerType, "chat_model", chatModel, "compat_url", compatURL)
+	return llm.NewDashScopeClient(llm.DashScopeConfig{
+		APIKey:         apiKey,
+		ChatModel:      chatModel,
+		EmbeddingModel: embModel,
+		CompatBaseURL:  compatURL,
+	})
 }
 
 // TestChatModel verifies whether a chat model can respond via selected provider.
@@ -145,6 +176,8 @@ func (h *SystemConfigHandler) TestChatModel(c *gin.Context) {
 	var input struct {
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
+		APIKey   string `json:"apiKey"`
+		BaseURL  string `json:"baseUrl"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求数据"})
@@ -159,7 +192,7 @@ func (h *SystemConfigHandler) TestChatModel(c *gin.Context) {
 	defer cancel()
 
 	start := time.Now()
-	client := h.buildProviderForTest(input.Provider, input.Model, "chat")
+	client := h.buildProviderForTest(input.Provider, input.Model, "chat", input.APIKey, input.BaseURL)
 	resp, err := client.Chat(ctx, []llm.ChatMessage{
 		{Role: "system", Content: "你是一个简洁的 AI 助手。"},
 		{Role: "user", Content: "请回复: ok"},
@@ -184,6 +217,8 @@ func (h *SystemConfigHandler) TestEmbeddingModel(c *gin.Context) {
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
 		Text     string `json:"text"`
+		APIKey   string `json:"apiKey"`
+		BaseURL  string `json:"baseUrl"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求数据"})
@@ -201,7 +236,7 @@ func (h *SystemConfigHandler) TestEmbeddingModel(c *gin.Context) {
 	defer cancel()
 
 	start := time.Now()
-	client := h.buildProviderForTest(input.Provider, input.Model, "embed")
+	client := h.buildProviderForTest(input.Provider, input.Model, "embed", input.APIKey, input.BaseURL)
 	vec, err := client.Embed(ctx, input.Text)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

@@ -91,7 +91,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 	activityRepo := pgRepo.NewActivityRepo(deps.DB)
 
 	// ── Initialize Handlers ─────────────────────────────
-	authHandler := handler.NewAuthHandler(userRepo, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours, deps.EventBus)
+	authHandler := handler.NewAuthHandler(userRepo, deps.Cfg.JWT.Secret, deps.Cfg.JWT.ExpiryHours, deps.EventBus, deps.RedisCache)
 	userHandler := handler.NewUserHandler(deps.DB)
 	courseHandler := handler.NewCourseHandler(courseRepo, docRepo, deps.KARAG, deps.RedisCache, deps.FileStorage)
 	skillHandler := handler.NewSkillHandler(deps.DB, deps.Registry, deps.LLMProvider)
@@ -124,7 +124,7 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 
 	// Protected routes — all require JWT
 	protected := v1.Group("")
-	protected.Use(middleware.JWTAuth(deps.Cfg.JWT.Secret))
+	protected.Use(middleware.JWTAuth(deps.Cfg.JWT.Secret, deps.RedisCache))
 
 	// Domain-specific route groups
 	registerAdminRoutes(protected, deps.DB, userHandler)

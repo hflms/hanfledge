@@ -41,6 +41,7 @@ func registerActivityRoutes(
 	protected.POST("/activities/:id/join", activityHandler.JoinActivity)
 	protected.GET("/sessions/:id", activityHandler.GetSession)
 	protected.PUT("/sessions/:id/step", activityHandler.UpdateSessionStep)
+	protected.POST("/sessions/:id/next-step", activityHandler.NextGuidedStep)
 
 	// WebSocket Session Stream — Phase 4
 	protected.GET("/sessions/:id/stream", sessionHandler.StreamSession)

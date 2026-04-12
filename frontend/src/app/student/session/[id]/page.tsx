@@ -35,6 +35,10 @@ import ScaffoldPanel, {
 } from './components/ScaffoldPanel';
 import SessionInput from './components/SessionInput';
 import styles from './page.module.css';
+import { useSessionMessages } from './hooks/useSessionMessages';
+import { useWebSocketEvents } from './hooks/useWebSocketEvents';
+import { usePluginRenderer } from './hooks/usePluginRenderer';
+
 
 
 
@@ -68,183 +72,72 @@ export default function SessionPage() {
         }
     }, [toast]);
 
-    // Core state
-    const [session, setSession] = useState<StudentSession | null>(null);
-    const [activity, setActivity] = useState<LearningActivity | null>(null);
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [input, setInput] = useState('');
-    const [sending, setSending] = useState(false);
+
+
+    const onError = useCallback((msg: string) => {
+        toast(msg, 'error');
+        router.push('/student/activities');
+    }, [toast, router]);
+
+    const onSessionLoaded = useCallback((sessionData: StudentSession) => {
+         setScaffoldLevel(sessionData.scaffold_level || 'high');
+    }, []);
+
+    // Custom Hooks Integration
+    const {
+        messages,
+        setMessages,
+        addMessage,
+        streamingContent,
+        setStreamingContent,
+        thinkingStatus,
+        setThinkingStatus,
+        sending,
+        setSending,
+        handleStreamingDelta,
+        handleStreamingComplete,
+        setPendingQuestion,
+        session,
+        setSession,
+        activity,
+        loading,
+        autoStartTriggeredRef
+    } = useSessionMessages({
+        sessionId,
+        onError,
+        onSessionLoaded
+    });
+
+
+    const { activePlugin } = usePluginRenderer(session);
 
     // Override state
     const [providerOverride, setProviderOverride] = useState('');
     const [modelOverride, setModelOverride] = useState('');
+    const [input, setInput] = useState('');
 
     // Scaffold state
     const [scaffoldLevel, setScaffoldLevel] = useState<ScaffoldLevel>('high');
     const [scaffoldData] = useState<ScaffoldData>({});
     const [scaffoldTransition, setScaffoldTransition] = useState(false);
 
-    // Agent thinking state (T-4.14)
-    const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
-
     // Step transition summary (shown briefly between steps)
     const [transitionSummary, setTransitionSummary] = useState<string | null>(null);
 
-    // Streaming token buffer
-    const [streamingContent, setStreamingContent] = useState('');
-    const lastResponseRef = useRef('');
+    const { handleWSEvent } = useWebSocketEvents({
+        activePlugin,
+        setThinkingStatus,
+        handleStreamingDelta,
+        handleStreamingComplete,
+        setSession,
+        setScaffoldTransition,
+        setScaffoldLevel,
+        addMessage,
+        setSending,
+        toast,
+        setStreamingContent
+    });
 
-    // L1 cache: track pending question for caching the response
-    const pendingQuestionRef = useRef<string | null>(null);
-
-    // -- Plugin System: find matching skill renderer ----------------
-
-    const activeSkill = session?.active_skill || '';
-    const matchedRenderer = useMemo(() => {
-        if (!activeSkill) return null;
-        return getRendererBySkillId(activeSkill) || null;
-    }, [activeSkill]);
-    const activePlugin = matchedRenderer?.Component ? matchedRenderer : null;
-
-    // -- WebSocket Event Handler ------------------------------------
-
-    const handleWSEvent = useCallback((event: WSEvent) => {
-        switch (event.event) {
-            // Skill renderer 处理的事件 - 如果有 activePlugin 则跳过
-            case 'agent_thinking':
-            case 'token_delta':
-            case 'turn_complete': {
-                if (activePlugin) return; // Skill renderer 会处理这些事件
-                
-                // 原有逻辑
-                if (event.event === 'agent_thinking') {
-                    const payload = event.payload as { status: string };
-                    setThinkingStatus(payload.status);
-                } else if (event.event === 'token_delta') {
-                    const payload = event.payload as { text?: string; content?: string; delta?: string };
-                    const delta = payload.text ?? payload.content ?? payload.delta ?? '';
-                    if (!delta) break;
-                    setThinkingStatus(null);
-                    setStreamingContent(prev => {
-                        const next = prev + delta;
-                        lastResponseRef.current = next;
-                        return next;
-                    });
-                } else if (event.event === 'turn_complete') {
-                    console.log('[SESSION DEBUG] ✅ turn_complete 收到, 流式内容长度:', streamingContent.length);
-                    setThinkingStatus(null);
-                    setSending(false);
-
-                    setStreamingContent(prev => {
-                        const content = prev || lastResponseRef.current;
-                        if (content) {
-                            setMessages(msgs => [
-                                ...msgs,
-                                {
-                                    id: generateId('coach'),
-                                    role: 'coach',
-                                    content,
-                                    timestamp: Date.now(),
-                                },
-                            ]);
-
-                            const pendingQ = pendingQuestionRef.current;
-                            if (pendingQ) {
-                                setCachedResponse(sessionId, pendingQ, content);
-                                pendingQuestionRef.current = null;
-                            }
-                        }
-                        lastResponseRef.current = '';
-                        return '';
-                    });
-                }
-                break;
-            }
-
-            case 'ui_scaffold_change': {
-                const payload = event.payload as {
-                    action: string;
-                    data: {
-                        new_skill?: string;
-                        new_level?: string;
-                        mastery?: number;
-                        direction?: string;
-                    };
-                };
-
-                if (payload.action === 'skill_change') {
-                    const newSkill = payload.data.new_skill as string;
-                    setSession(prev => prev ? { ...prev, active_skill: newSkill } : null);
-                    toast(`系统已根据您的掌握度自动切换到技能: ${newSkill}`, 'success');
-                    break;
-                }
-
-                setScaffoldTransition(true);
-                setScaffoldLevel(payload.data.new_level as ScaffoldLevel);
-
-                const direction = payload.data.direction === 'fade' ? '降低' : '增强';
-                const newLabel = SCAFFOLD_LABELS[payload.data.new_level as ScaffoldLevel];
-                const mastery = payload.data.mastery ?? 0;
-                setMessages(prev => [
-                    ...prev,
-                    {
-                        id: generateId('sys'),
-                        role: 'system',
-                        content: `支架已${direction}至 ${newLabel} (掌握度: ${(mastery * 100).toFixed(0)}%)`,
-                        timestamp: Date.now(),
-                    },
-                ]);
-
-                setTimeout(() => setScaffoldTransition(false), 500);
-                break;
-            }
-
-
-            case 'system_message': {
-                const payload = event.payload as { content: string };
-                setMessages(prev => [
-                    ...prev,
-                    {
-                        id: generateId('sys'),
-                        role: 'system',
-                        content: payload.content,
-                        timestamp: Date.now(),
-                    }
-                ]);
-                break;
-            }
-
-            case 'teacher_takeover': {
-                // 教师接管事件 - 始终由 page.tsx 处理
-                const payload = event.payload as { id: number, content: string, created_at: string };
-                setMessages(prev => [
-                    ...prev,
-                    {
-                        id: generateId(`t-${payload.id || Date.now()}`),
-                        role: 'teacher',
-                        content: payload.content,
-                        timestamp: payload.created_at ? new Date(payload.created_at).getTime() : Date.now(),
-                    }
-                ]);
-                // Clear any ongoing AI thinking/streaming since teacher interrupted
-                setThinkingStatus(null);
-                setStreamingContent('');
-                break;
-            }
-
-            case 'error': {
-                const payload = event.payload as { message: string };
-                console.error('[SESSION DEBUG] ❌ 收到服务端错误:', payload.message);
-                setThinkingStatus(null);
-                setSending(false);
-                lastResponseRef.current = '';
-                toast(payload.message, 'error');
-                break;
-            }
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [toast, matchedRenderer]);
 
     // -- WebSocket Hook ---------------------------------------------
 
@@ -406,47 +299,6 @@ export default function SessionPage() {
             });
     }, []);
 
-    // -- Load session data ------------------------------------------
-
-    const autoStartTriggeredRef = useRef(false);
-
-    useEffect(() => {
-        if (!sessionId) return;
-
-        const loadSession = async () => {
-            try {
-                const data = await getSession(sessionId);
-                setSession(data.session);
-                setActivity(data.activity);
-                setScaffoldLevel(data.session.scaffold_level || 'high');
-
-                const existingMessages: ChatMessage[] = data.interactions.map(
-                    (interaction: Interaction) => ({
-                        id: `i-${interaction.id}`,
-                        role: interaction.role as ChatMessage['role'],
-                        content: interaction.content,
-                        timestamp: new Date(interaction.created_at).getTime(),
-                    })
-                );
-                setMessages(existingMessages);
-
-                // 自动开始: 如果是新会话(无历史消息),标记需要自动开始
-                if (existingMessages.length === 0 && data.session.status === 'active' && !autoStartTriggeredRef.current) {
-                    autoStartTriggeredRef.current = true;
-                    console.log('[SESSION] 新会话,准备自动开始学习活动');
-                }
-            } catch (err) {
-                console.error('Failed to load session:', err);
-                toast('加载会话失败', 'error');
-                router.push('/student/activities');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        loadSession();
-    }, [sessionId, router, toast]);
-
     // -- Auto-start session when WebSocket is ready ----------------
 
     useEffect(() => {
@@ -504,10 +356,10 @@ export default function SessionPage() {
         }
 
         // Cache miss — send via WebSocket
-        pendingQuestionRef.current = text;
+        setPendingQuestion(text);
         setSending(true);
         setStreamingContent('');
-        lastResponseRef.current = '';
+
 
 
         const payload: Record<string, string> = { text };
@@ -518,13 +370,25 @@ export default function SessionPage() {
             payload.model_override = modelOverride;
         }
 
+
         const event: WSEvent = {
             event: 'user_message',
             payload,
             timestamp: Math.floor(Date.now() / 1000),
         };
 
+        // UI Optimistic update
+        addMessage({
+            id: generateId('u'),
+            role: 'user',
+            content: text,
+            timestamp: Date.now(),
+        });
+
+        setInput('');
+
         console.log('[SESSION DEBUG] 发送消息详情:', {
+
             text: text.substring(0, 100),
             providerOverride: providerOverride || '(未设置, 使用系统默认)',
             modelOverride: modelOverride || '(未设置, 使用系统默认)',
