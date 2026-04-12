@@ -44,7 +44,7 @@ type SessionHandler struct {
 	Orchestrator   *agent.AgentOrchestrator
 	InjectionGuard *safety.InjectionGuard
 	Achievement    *AchievementHandler
-	ASR            asr.ASRProvider // ASR 语音识别 (nil-safe)
+	ASR            asr.ASRProvider       // ASR 语音识别 (nil-safe)
 	TokenManager   *weknora.TokenManager // WeKnora Token Manager (nil-safe)
 	upgrader       websocket.Upgrader
 }
@@ -152,10 +152,40 @@ func (w *wsConn) writePing() error {
 //	@Failure      404 {object}  ErrorResponse
 //	@Router       /sessions/{id}/stream [get]
 func (h *SessionHandler) StreamSession(c *gin.Context) {
+	session, ws, studentID, err := h.verifySessionAndUpgrade(c)
+	if err != nil {
+		return // Error response already handled in helper
+	}
+	defer ws.conn.Close()
+
+	// Register active session
+	h.sessionsMu.Lock()
+	h.ActiveSessions[session.ID] = ws
+	h.sessionsMu.Unlock()
+	defer func() {
+		h.sessionsMu.Lock()
+		delete(h.ActiveSessions, session.ID)
+		h.sessionsMu.Unlock()
+	}()
+
+	// Per-session turn lock — prevents concurrent HandleTurn calls
+	var turnMu sync.Mutex
+
+	slogSession.Info("websocket connected", "session", session.ID, "student", studentID)
+
+	h.handleWelcomeOrSurvey(ws, session, studentID, &turnMu)
+
+	done := h.startHeartbeats(ws, session.ID)
+	defer close(done)
+
+	h.runWebSocketReadLoop(ws, session, studentID, &turnMu)
+}
+
+func (h *SessionHandler) verifySessionAndUpgrade(c *gin.Context) (*model.StudentSession, *wsConn, uint, error) {
 	sessionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的会话 ID"})
-		return
+		return nil, nil, 0, err
 	}
 
 	studentID := middleware.GetUserID(c)
@@ -164,46 +194,33 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 	var session model.StudentSession
 	if err := h.DB.First(&session, sessionID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "会话不存在"})
-		return
+		return nil, nil, 0, err
 	}
 	if session.StudentID != studentID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权访问此会话"})
-		return
+		return nil, nil, 0, fmt.Errorf("forbidden")
 	}
 	if session.Status != model.SessionStatusActive {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "该会话已结束"})
-		return
+		return nil, nil, 0, fmt.Errorf("session ended")
 	}
 
 	// Upgrade to WebSocket
 	rawWS, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		slogSession.Warn("websocket upgrade failed", "err", err)
-		return
+		return nil, nil, 0, err
 	}
-	defer rawWS.Close()
 
 	ws := &wsConn{conn: rawWS}
+	return &session, ws, studentID, nil
+}
 
-	// Register active session
-	h.sessionsMu.Lock()
-	h.ActiveSessions[uint(sessionID)] = ws
-	h.sessionsMu.Unlock()
-	defer func() {
-		h.sessionsMu.Lock()
-		delete(h.ActiveSessions, uint(sessionID))
-		h.sessionsMu.Unlock()
-	}()
-
-	// Per-session turn lock — prevents concurrent HandleTurn calls
-	var turnMu sync.Mutex
-
-	slogSession.Info("websocket connected", "session", sessionID, "student", studentID)
-
+func (h *SessionHandler) handleWelcomeOrSurvey(ws *wsConn, session *model.StudentSession, studentID uint, turnMu *sync.Mutex) {
 	// ── Welcome Message (first connection only) ──────────────
 	// Check if session has any prior interactions; if not, send a welcome message
 	var interactionCount int64
-	h.DB.Model(&model.Interaction{}).Where("session_id = ?", sessionID).Count(&interactionCount)
+	h.DB.Model(&model.Interaction{}).Where("session_id = ?", session.ID).Count(&interactionCount)
 	if interactionCount == 0 {
 		// Load activity and knowledge point context for the greeting
 		var activity model.LearningActivity
@@ -225,7 +242,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		}
 
 		if isSurvey {
-			slogSession.Info("proactively starting survey session", "session_id", sessionID)
+			slogSession.Info("proactively starting survey session", "session_id", session.ID)
 			// 发送一个系统提示开始
 			h.sendEvent(ws, "system_message", map[string]string{
 				"content": "👋 欢迎开始学情问卷！\n\n正在为您生成定制化学习问卷，请稍候...",
@@ -241,7 +258,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 						Text: "你好，我准备好开始学情问卷了。",
 					},
 				}
-				h.handleUserMessage(ws, &session, studentID, startEvent)
+				h.handleUserMessage(ws, session, studentID, startEvent)
 			}()
 		} else {
 			// Build welcome content
@@ -256,22 +273,23 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			})
 		}
 	}
+}
 
+func (h *SessionHandler) startHeartbeats(ws *wsConn, sessionID uint) chan struct{} {
 	// ── Heartbeat: pong detection ────────────────────────────
-	rawWS.SetReadDeadline(time.Now().Add(wsPongWait))
-	rawWS.SetPongHandler(func(string) error {
-		rawWS.SetReadDeadline(time.Now().Add(wsPongWait))
+	ws.conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	ws.conn.SetPongHandler(func(string) error {
+		ws.conn.SetReadDeadline(time.Now().Add(wsPongWait))
 		return nil
 	})
 
 	// ── Heartbeat: ping ticker ───────────────────────────────
 	ticker := time.NewTicker(wsPingInterval)
-	defer ticker.Stop()
 
 	// Ping goroutine: sends periodic pings until connection closes
 	done := make(chan struct{})
-	defer close(done)
 	go func() {
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -284,16 +302,19 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			}
 		}
 	}()
+	return done
+}
 
+func (h *SessionHandler) runWebSocketReadLoop(ws *wsConn, session *model.StudentSession, studentID uint, turnMu *sync.Mutex) {
 	// Main read loop
 	var voiceBuffer []byte // Accumulates audio chunks during voice recording
 	var voiceLang string   // Language from voice_start
 
 	for {
-		_, msgBytes, err := rawWS.ReadMessage()
+		_, msgBytes, err := ws.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				slogSession.Info("client disconnected", "session", sessionID)
+				slogSession.Info("client disconnected", "session", session.ID)
 			} else {
 				slogSession.Warn("websocket read error", "err", err)
 			}
@@ -306,7 +327,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		}
 		var event agent.WSEvent
 		if err := json.Unmarshal(msgBytes, &event); err != nil {
-			slogSession.Warn("bad ws message", "session", sessionID, "raw", truncateStr(string(msgBytes), 120), "err", err)
+			slogSession.Warn("bad ws message", "session", session.ID, "raw", truncateStr(string(msgBytes), 120), "err", err)
 			h.sendWSError(ws, "消息格式错误")
 			continue
 		}
@@ -318,7 +339,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 				h.sendWSError(ws, "请等待当前回答完成后再发送新消息")
 				continue
 			}
-			h.handleUserMessage(ws, &session, studentID, event)
+			h.handleUserMessage(ws, session, studentID, event)
 			turnMu.Unlock()
 
 		case agent.EventVoiceStart:
@@ -332,7 +353,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 			if voiceLang == "" {
 				voiceLang = "zh-CN"
 			}
-			slogSession.Info("voice start", "session", sessionID, "lang", voiceLang)
+			slogSession.Info("voice start", "session", session.ID, "lang", voiceLang)
 
 		case agent.EventVoiceData:
 			// Voice data chunk — decode base64 and append to buffer
@@ -350,7 +371,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 
 		case agent.EventVoiceEnd:
 			// Voice recording ended — transcribe collected audio
-			slogSession.Info("voice end", "session", sessionID, "buffer_bytes", len(voiceBuffer))
+			slogSession.Info("voice end", "session", session.ID, "buffer_bytes", len(voiceBuffer))
 			if h.ASR == nil {
 				h.sendWSError(ws, "语音识别服务未配置")
 				continue
@@ -374,7 +395,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 					EnablePunctuation: true,
 				})
 				if err != nil {
-					slogSession.Warn("transcription failed", "session", sessionID, "err", err)
+					slogSession.Warn("transcription failed", "session", session.ID, "err", err)
 					h.sendWSError(ws, "语音识别失败，请重试")
 					return
 				}
@@ -383,7 +404,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 					Confidence: result.Confidence,
 					IsFinal:    true,
 				})
-				slogSession.Info("transcribed", "session", sessionID, "text", truncateStr(result.Text, 50))
+				slogSession.Info("transcribed", "session", session.ID, "text", truncateStr(result.Text, 50))
 			}()
 
 		case "ping":
@@ -395,7 +416,7 @@ func (h *SessionHandler) StreamSession(c *gin.Context) {
 		}
 	}
 
-	slogSession.Info("session ended", "session", sessionID)
+	slogSession.Info("session ended", "session", session.ID)
 }
 
 // handleUserMessage processes a user_message event through the Agent pipeline.

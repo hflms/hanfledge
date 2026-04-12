@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState, useId, useRef } from 'react';
+
+import React, { useEffect, useState, useId, useRef } from 'react';
+
 import { apiFetch } from '@/lib/api';
 import styles from './NotificationBell.module.css';
 
@@ -88,7 +90,7 @@ export default function NotificationBell() {
       </button>
 
       {showDropdown && (
-        <div className={styles.dropdown} id={dropdownId}>
+        <div id={dropdownId} className={styles.dropdown}>
           <div className={styles.header}>通知</div>
           {notifications.length === 0 ? (
             <div className={styles.empty}>暂无通知</div>

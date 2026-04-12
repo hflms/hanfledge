@@ -29,6 +29,7 @@ type PluginProcess struct {
 	StartedAt time.Time
 	Healthy   bool
 	cmd       *exec.Cmd
+	waitCh    chan struct{}
 }
 
 // HostManager manages gRPC plugin processes on the host side.
@@ -50,9 +51,9 @@ func NewHostManager() *HostManager {
 // The plugin binary must implement the PluginService gRPC interface.
 func (h *HostManager) Start(ctx context.Context, pluginID string, binaryPath string) (*PluginProcess, error) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	if _, exists := h.processes[pluginID]; exists {
+		h.mu.Unlock()
 		return nil, fmt.Errorf("plugin %s is already running", pluginID)
 	}
 
@@ -63,6 +64,7 @@ func (h *HostManager) Start(ctx context.Context, pluginID string, binaryPath str
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", port))
 
 	if err := cmd.Start(); err != nil {
+		h.mu.Unlock()
 		return nil, fmt.Errorf("failed to start plugin process: %w", err)
 	}
 
@@ -73,9 +75,13 @@ func (h *HostManager) Start(ctx context.Context, pluginID string, binaryPath str
 		StartedAt: time.Now(),
 		Healthy:   false,
 		cmd:       cmd,
+		waitCh:    make(chan struct{}),
 	}
 
 	slogGRPC.Info("starting plugin", "plugin", pluginID, "port", port, "binary", binaryPath)
+
+	h.processes[pluginID] = proc
+	h.mu.Unlock()
 
 	go func() {
 		err := cmd.Wait()
@@ -85,10 +91,68 @@ func (h *HostManager) Start(ctx context.Context, pluginID string, binaryPath str
 			slogGRPC.Info("plugin process exited normally", "plugin", pluginID)
 		}
 		h.updateHealth(pluginID, false)
+		close(proc.waitCh)
 	}()
 
-	proc.Healthy = true
-	h.processes[pluginID] = proc
+	// Wait for process to be healthy
+	ctxTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	isHealthy := false
+	for {
+		select {
+		case <-ctxTimeout.Done():
+			goto DoneWaiting
+		case <-proc.waitCh:
+			goto DoneWaiting
+		default:
+			// We no longer hold h.mu, so we can safely call HealthCheck
+			healthy, err := h.HealthCheck(ctxTimeout, pluginID)
+			if err == nil && healthy {
+				isHealthy = true
+				goto DoneWaiting
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+DoneWaiting:
+	if !isHealthy {
+		// Clean up on failure
+		if proc.cmd.Process != nil {
+			proc.cmd.Process.Kill()
+		}
+		h.mu.Lock()
+		delete(h.processes, pluginID)
+		h.mu.Unlock()
+		return nil, fmt.Errorf("plugin %s failed to become healthy within timeout or exited prematurely", pluginID)
+	}
+
+	h.updateHealth(pluginID, true)
+
+	// Background health check monitor
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-proc.waitCh:
+				return // Process exited, stop monitoring
+			case <-ticker.C:
+				// Background monitor should use a short timeout and update state
+				ctxCheck, cancelCheck := context.WithTimeout(context.Background(), 2*time.Second)
+				healthy, err := h.HealthCheck(ctxCheck, pluginID)
+				cancelCheck()
+
+				if err != nil || !healthy {
+					h.updateHealth(pluginID, false)
+				} else {
+					h.updateHealth(pluginID, true)
+				}
+			}
+		}
+	}()
 
 	return proc, nil
 }
@@ -96,14 +160,18 @@ func (h *HostManager) Start(ctx context.Context, pluginID string, binaryPath str
 // Stop terminates a running plugin process.
 func (h *HostManager) Stop(ctx context.Context, pluginID string) error {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	proc, exists := h.processes[pluginID]
 	if !exists {
+		h.mu.Unlock()
 		return fmt.Errorf("plugin %s is not running", pluginID)
 	}
 
 	slogGRPC.Info("stopping plugin", "plugin", pluginID, "port", proc.Port)
+
+	// We release the lock immediately to not block other operations while waiting for shutdown.
+	// We'll reacquire it at the end to delete the process from the map.
+	h.mu.Unlock()
 
 	if proc.cmd != nil && proc.cmd.Process != nil {
 		err := proc.cmd.Process.Signal(os.Interrupt)
@@ -111,23 +179,26 @@ func (h *HostManager) Stop(ctx context.Context, pluginID string) error {
 			slogGRPC.Warn("failed to send interrupt signal, killing immediately", "plugin", pluginID, "error", err)
 			proc.cmd.Process.Kill()
 		} else {
-			// Instead of Wait, since we are already waiting in a goroutine in Start(),
-			// we can't call Wait() again.
-			// We can use a simpler approach: check if process is alive periodically
-			// or just use time.AfterFunc to kill it. Wait() will clean up anyway.
-			timer := time.AfterFunc(5*time.Second, func() {
+			// Wait for process to exit or timeout
+			select {
+			case <-proc.waitCh:
+				slogGRPC.Info("plugin process exited gracefully", "plugin", pluginID)
+			case <-time.After(5 * time.Second):
 				slogGRPC.Warn("plugin process did not exit gracefully, killing", "plugin", pluginID)
 				proc.cmd.Process.Kill()
-			})
-
-			// If we wanted to wait synchronously in Stop, we'd need a channel in proc.
-			// The original code was fine with just deleting it from map and returning.
-			// time.AfterFunc is sufficient to ensure it dies.
-			_ = timer
+				// Wait for waitCh to ensure resources are reclaimed, but with a short timeout just in case
+				select {
+				case <-proc.waitCh:
+				case <-time.After(1 * time.Second):
+				}
+			}
 		}
 	}
 
+	h.mu.Lock()
 	delete(h.processes, pluginID)
+	h.mu.Unlock()
+
 	return nil
 }
 
