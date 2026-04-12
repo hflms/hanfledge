@@ -342,6 +342,15 @@ func (h *SessionHandler) runWebSocketReadLoop(ws *wsConn, session *model.Student
 			h.handleUserMessage(ws, session, studentID, event)
 			turnMu.Unlock()
 
+		case agent.EventTeacherWhisper:
+			// Acquire turn lock to prevent concurrent pipeline execution
+			if !turnMu.TryLock() {
+				h.sendWSError(ws, "请等待当前回答完成后再发送教师指令")
+				continue
+			}
+			h.handleTeacherWhisper(ws, session, studentID, event)
+			turnMu.Unlock()
+
 		case agent.EventVoiceStart:
 			// Voice recording started — reset buffer and parse config
 			voiceBuffer = voiceBuffer[:0]
@@ -517,6 +526,96 @@ func (h *SessionHandler) handleUserMessage(ws *wsConn, session *model.StudentSes
 		h.sendWSError(ws, "AI 处理失败: "+err.Error())
 	} else {
 		slogSession.Info("[DEBUG] pipeline completed successfully", "session", session.ID)
+	}
+}
+
+// handleTeacherWhisper processes a teacher_whisper event through the Agent pipeline.
+func (h *SessionHandler) handleTeacherWhisper(ws *wsConn, session *model.StudentSession, studentID uint, event agent.WSEvent) {
+	// Extract text from payload
+	payloadBytes, _ := json.Marshal(event.Payload)
+	var payload agent.TeacherWhisperPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil || payload.Text == "" {
+		h.sendWSError(ws, "教师指令不能为空")
+		return
+	}
+
+	// ── 不进行 Prompt Injection 检测，因为教师指令可能包含类似系统 prompt 的关键词 ──
+
+	slogSession.Info("teacher whisper", "session", session.ID, "text", safety.RedactForLog(payload.Text, 50))
+
+	// 获取 User-specific WeKnora Client (如果启用了的话)
+	var wkClient *weknora.Client
+	if h.TokenManager != nil && !session.IsSandbox {
+		client, err := h.TokenManager.GetClientForUser(context.Background(), studentID)
+		if err == nil {
+			wkClient = client
+		} else {
+			slogSession.Warn("failed to get user-specific weknora client", "session", session.ID, "err", err)
+		}
+	}
+
+	// Build TurnContext with WebSocket callbacks
+	agentCtx, agentCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer agentCancel()
+
+	tc := &agent.TurnContext{
+		Ctx:              agentCtx,
+		SessionID:        session.ID,
+		StudentID:        studentID,
+		ActivityID:       session.ActivityID,
+		UserInput:        "", // 空表示没有用户实际输入，直接由老师触发
+		TeacherWhisper:   payload.Text,
+		Scaffold:         session.Scaffold,
+		IsSandbox:        session.IsSandbox,
+		ProviderOverride: "",
+		ModelOverride:    "",
+		WeKnoraClient:    wkClient,
+
+		OnThinking: func(status string) {
+			h.sendEvent(ws, agent.EventAgentThinking, agent.ThinkingPayload{
+				Status: status,
+			})
+		},
+
+		OnTokenDelta: func(text string) {
+			h.sendEvent(ws, agent.EventTokenDelta, agent.TokenDeltaPayload{
+				Text: text,
+			})
+		},
+
+		OnScaffold: func(action string, data interface{}) {
+			h.sendEvent(ws, agent.EventUIScaffoldChange, agent.ScaffoldChangePayload{
+				Action: action,
+				Data:   data,
+			})
+
+			// ── Achievement Evaluation (design.md §5.2 Step 4) ──
+			// Skip for sandbox sessions — teacher previews should not earn achievements
+			if h.Achievement != nil && !session.IsSandbox {
+				h.evaluateAchievementsOnScaffold(action, data, studentID)
+			}
+		},
+
+		OnTurnComplete: func(totalTokens int) {
+			h.sendEvent(ws, agent.EventTurnComplete, agent.TurnCompletePayload{
+				TotalTokens: totalTokens,
+			})
+
+			// ── Deep Inquiry Achievement (design.md §5.2 Step 4) ──
+			// Skip for sandbox sessions — teacher previews should not earn achievements
+			if h.Achievement != nil && !session.IsSandbox {
+				go h.Achievement.EvaluateDeepInquiry(studentID, session.ID)
+			}
+		},
+	}
+
+	// Execute the Agent pipeline
+	slogSession.Info("[DEBUG] starting pipeline for whisper", "session", session.ID)
+	if err := h.Orchestrator.HandleTurn(tc); err != nil {
+		slogSession.Error("agent pipeline failed for whisper", "session", session.ID, "err", err)
+		h.sendWSError(ws, "AI 处理失败: "+err.Error())
+	} else {
+		slogSession.Info("[DEBUG] pipeline completed successfully for whisper", "session", session.ID)
 	}
 }
 
