@@ -314,6 +314,8 @@ type TurnContext struct {
 	SessionID        uint
 	StudentID        uint
 	ActivityID       uint
+	ActivityType     model.ActivityType
+	CurrentStepID    *uint
 	UserInput        string
 	TeacherWhisper   string // 教师干预指令 (Whisper)
 	Scaffold         ScaffoldLevel

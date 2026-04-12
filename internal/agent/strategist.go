@@ -59,87 +59,106 @@ func (a *StrategistAgent) Analyze(ctx context.Context, sessionID, studentID, act
 		designerStrategy = a.loadDesignerStrategy(activity.DesignerID, activity.DesignerConfig)
 	}
 
-	kpIDs, err := parseKPIDs(activity.KPIDS)
-	if err != nil {
-		return LearningPrescription{}, fmt.Errorf("parse kp_ids: %w", err)
+	var session model.StudentSession
+	if err := a.db.First(&session, sessionID).Error; err != nil {
+		return LearningPrescription{}, fmt.Errorf("load session %d: %w", sessionID, err)
 	}
 
-	// Step 2: 查询学生对每个 KP 的掌握度
-	var masteries []model.StudentKPMastery
-	a.db.Where("student_id = ? AND kp_id IN ?", studentID, kpIDs).Find(&masteries)
-
-	masteryMap := make(map[uint]float64)
-	for _, m := range masteries {
-		masteryMap[m.KPID] = m.MasteryScore
-	}
-
-	// Step 3: 构建目标 KP 序列（按掌握度从低到高排列）
-	targets := make([]KnowledgePointTarget, 0, len(kpIDs))
+	var targets []KnowledgePointTarget
 	var prereqGaps []string
-	// 注释掉前置知识点自动插入功能,确保只引导活动指定的知识点
-	// prereqInserted := make(map[uint]bool) // 防止重复插入前置 KP
+	var recommendedSkill string
 
-	for _, kpID := range kpIDs {
-		currentMastery := masteryMap[kpID] // 默认 0.0
-		if currentMastery == 0 {
-			currentMastery = 0.1 // BKT 初始值 P(L0) = 0.1
-		}
-
-		// 决定该 KP 的支架等级（考虑教学设计者偏好）
-		scaffold := a.scaffoldForMasteryWithDesigner(currentMastery, designerStrategy)
-
-		// 查询已挂载技能
-		skillID := a.getSkillForKP(kpID)
-
-		// 动态技能降级策略 (§5.2 Dynamic Orchestration Fallback)
-		if skillID == "" {
-			skillID = a.findDynamicSkill(currentMastery)
-			if skillID != "" {
-				slogStrat.Info("dynamic skill fallback selected", "skill", skillID, "mastery", currentMastery, "kp_id", kpID)
+	if activity.Type == model.ActivityTypeGuided {
+		// Guided Activity Logic
+		// Find current step
+		var step model.ActivityStep
+		if session.CurrentStepID != nil {
+			if err := a.db.First(&step, *session.CurrentStepID).Error; err != nil {
+				return LearningPrescription{}, fmt.Errorf("load step %d: %w", *session.CurrentStepID, err)
 			}
 		}
 
-		// Step 3.5: 渐进策略触发 — 检查是否满足技能切换条件 (§5.2 Step 2, item 4)
-		// 例如: 苏格拉底引导 mastery >= 0.8 → 自动切换为谬误侦探
-		if a.registry != nil && skillID != "" {
-			if newSkillID, switched := a.evaluateProgressiveTriggers(skillID, currentMastery); switched {
-				slogStrat.Info("progressive trigger fired",
-					"from", skillID, "to", newSkillID, "mastery", currentMastery, "kp_id", kpID)
-				skillID = newSkillID
-			}
-		}
+		// map StepType to Skill
+		recommendedSkill = mapStepTypeToSkill(string(step.StepType))
 
-		// Step 4: 检查前置知识差距 (仅记录,不自动插入)
-		// 禁用自动插入功能,确保只引导活动指定的知识点
-		/*
-		if a.neo4j != nil {
-			gapTargets, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, prereqInserted)
-			targets = append(targets, gapTargets...)
-			prereqGaps = append(prereqGaps, gapDescs...)
-		}
-		*/
-		if a.neo4j != nil {
-			prereqInserted := make(map[uint]bool)
-			_, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, prereqInserted)
-			prereqGaps = append(prereqGaps, gapDescs...)
-		}
-
+		// Target KP can just be the current session KP (if any)
 		targets = append(targets, KnowledgePointTarget{
-			KPID:           kpID,
-			CurrentMastery: currentMastery,
-			TargetMastery:  0.8, // 默认目标掌握度
-			ScaffoldLevel:  scaffold,
-			SkillID:        skillID,
+			KPID:           session.CurrentKP,
+			CurrentMastery: 0.5,
+			TargetMastery:  0.8,
+			ScaffoldLevel:  ScaffoldMedium,
+			SkillID:        recommendedSkill,
 		})
-	}
 
-	// 排序：掌握度低的优先
-	sortTargetsByMastery(targets)
+	} else {
+		// Autonomous Activity Logic
+		kpIDs, err := parseKPIDs(activity.KPIDS)
+		if err != nil {
+			return LearningPrescription{}, fmt.Errorf("parse kp_ids: %w", err)
+		}
 
-	// 选择推荐技能（取第一个目标 KP 的技能）
-	recommendedSkill := ""
-	if len(targets) > 0 && targets[0].SkillID != "" {
-		recommendedSkill = targets[0].SkillID
+		// Step 2: 查询学生对每个 KP 的掌握度
+		var masteries []model.StudentKPMastery
+		a.db.Where("student_id = ? AND kp_id IN ?", studentID, kpIDs).Find(&masteries)
+
+		masteryMap := make(map[uint]float64)
+		for _, m := range masteries {
+			masteryMap[m.KPID] = m.MasteryScore
+		}
+
+		// Step 3: 构建目标 KP 序列（按掌握度从低到高排列）
+		for _, kpID := range kpIDs {
+			currentMastery := masteryMap[kpID] // 默认 0.0
+			if currentMastery == 0 {
+				currentMastery = 0.1 // BKT 初始值 P(L0) = 0.1
+			}
+
+			// 决定该 KP 的支架等级（考虑教学设计者偏好）
+			scaffold := a.scaffoldForMasteryWithDesigner(currentMastery, designerStrategy)
+
+			// 查询已挂载技能
+			skillID := a.getSkillForKP(kpID)
+
+			// 动态技能降级策略 (§5.2 Dynamic Orchestration Fallback)
+			if skillID == "" {
+				skillID = a.findDynamicSkill(currentMastery)
+				if skillID != "" {
+					slogStrat.Info("dynamic skill fallback selected", "skill", skillID, "mastery", currentMastery, "kp_id", kpID)
+				}
+			}
+
+			// Step 3.5: 渐进策略触发 — 检查是否满足技能切换条件 (§5.2 Step 2, item 4)
+			// 例如: 苏格拉底引导 mastery >= 0.8 → 自动切换为谬误侦探
+			if a.registry != nil && skillID != "" {
+				if newSkillID, switched := a.evaluateProgressiveTriggers(skillID, currentMastery); switched {
+					slogStrat.Info("progressive trigger fired",
+						"from", skillID, "to", newSkillID, "mastery", currentMastery, "kp_id", kpID)
+					skillID = newSkillID
+				}
+			}
+
+			if a.neo4j != nil {
+				prereqInserted := make(map[uint]bool)
+				_, gapDescs := a.checkPrereqGapsEnriched(ctx, kpID, studentID, masteryMap, prereqInserted)
+				prereqGaps = append(prereqGaps, gapDescs...)
+			}
+
+			targets = append(targets, KnowledgePointTarget{
+				KPID:           kpID,
+				CurrentMastery: currentMastery,
+				TargetMastery:  0.8, // 默认目标掌握度
+				ScaffoldLevel:  scaffold,
+				SkillID:        skillID,
+			})
+		}
+
+		// 排序：掌握度低的优先
+		sortTargetsByMastery(targets)
+
+		// 选择推荐技能（取第一个目标 KP 的技能）
+		if len(targets) > 0 && targets[0].SkillID != "" {
+			recommendedSkill = targets[0].SkillID
+		}
 	}
 
 	// 日志：输出目标知识点序列
@@ -183,6 +202,30 @@ func scaffoldForMastery(mastery float64) ScaffoldLevel {
 		return ScaffoldMedium
 	default:
 		return ScaffoldHigh
+	}
+}
+
+// mapStepTypeToSkill 映射环节类型到技能。
+func mapStepTypeToSkill(stepType string) string {
+	switch model.StepType(stepType) {
+	case model.StepTypeLecture:
+		return "knowledge_explainer"
+	case model.StepTypeDiscussion:
+		return "socratic_tutor"
+	case model.StepTypeQuiz:
+		return "quiz_generator"
+	case model.StepTypePractice:
+		return "step_by_step_coach"
+	case model.StepTypeReading:
+		return "reading_guide"
+	case model.StepTypeGroupWork:
+		return "socratic_tutor"
+	case model.StepTypeReflection:
+		return "learning_survey"
+	case model.StepTypeAITutoring:
+		return "socratic_tutor"
+	default:
+		return "knowledge_explainer"
 	}
 }
 
