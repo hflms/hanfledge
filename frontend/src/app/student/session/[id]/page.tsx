@@ -79,9 +79,14 @@ export default function SessionPage() {
         router.push('/student/activities');
     }, [toast, router]);
 
+    // Move scaffold state up so it can be used in onSessionLoaded
+    const [scaffoldLevel, setScaffoldLevel] = useState<ScaffoldLevel>('high');
+    const [scaffoldData] = useState<ScaffoldData>({});
+    const [scaffoldTransition, setScaffoldTransition] = useState(false);
+
     const onSessionLoaded = useCallback((sessionData: StudentSession) => {
          setScaffoldLevel(sessionData.scaffold_level || 'high');
-    }, []);
+    }, [setScaffoldLevel]);
 
     // Custom Hooks Integration
     const {
@@ -116,10 +121,7 @@ export default function SessionPage() {
     const [modelOverride, setModelOverride] = useState('');
     const [input, setInput] = useState('');
 
-    // Scaffold state
-    const [scaffoldLevel, setScaffoldLevel] = useState<ScaffoldLevel>('high');
-    const [scaffoldData] = useState<ScaffoldData>({});
-    const [scaffoldTransition, setScaffoldTransition] = useState(false);
+    // Scaffold state (moved up)
 
     // Step transition summary (shown briefly between steps)
     const [transitionSummary, setTransitionSummary] = useState<string | null>(null);
