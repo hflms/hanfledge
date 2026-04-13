@@ -280,6 +280,11 @@ type UserMessagePayload struct {
 	ModelOverride    string `json:"model_override,omitempty"`
 }
 
+// TeacherWhisperPayload teacher_whisper 事件的载荷。
+type TeacherWhisperPayload struct {
+	Text string `json:"text"`
+}
+
 // VoiceStartPayload voice_start event payload.
 type VoiceStartPayload struct {
 	SampleRate int    `json:"sample_rate"`
