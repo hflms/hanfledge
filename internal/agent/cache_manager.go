@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"time"
+	"context"
 
 	"github.com/hflms/hanfledge/internal/infrastructure/cache"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
@@ -47,6 +48,14 @@ func (c *CacheManager) CheckSemanticCache(tc *TurnContext, getCourseID func(uint
 	}
 
 	return hit, nil
+}
+
+// CheckExactCache 检查 L3 精确输出缓存。
+func (c *CacheManager) CheckExactCache(ctx context.Context, promptHash string) (*cache.OutputCacheEntry, error) {
+	if c.cache == nil {
+		return nil, nil
+	}
+	return c.cache.GetOutputCache(ctx, promptHash)
 }
 
 // ReturnCachedResponse 发送缓存响应并持久化交互。

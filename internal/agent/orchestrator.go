@@ -142,7 +142,7 @@ func (o *AgentOrchestrator) SetWeKnoraClient(client *weknora.Client) {
 //
 // Pipeline (with L2+L3 caching, §8.1.3):
 //
-//	User Input → L2 Semantic Cache Check → L3 Output Cache Check
+//	User Input → L2 Semantic Cache Check → Strategist → Designer → L3 Output Cache Check
 //	  → HIT: Return cached response immediately
 //	  → MISS: Strategist → Designer → Coach → Critic → Save + Write Cache
 func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
@@ -420,6 +420,15 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 
 	// ── Stage 2.5: Build TaskContext for ModelRouter (§8.3.3) ──
 	tc.LLMTaskContext = o.buildTaskContext(tc, material)
+
+	// ── Stage 2.8: L3 Output Cache Check (§8.1.3) ──────────────
+	promptHash := cache.PromptHash(material.SystemPrompt, tc.UserInput, nil, nil)
+	if hit, err := o.cacheManager.CheckExactCache(tc.Ctx, promptHash); err != nil {
+		slogOrch.Warn("L3 cache check failed", "err", err)
+	} else if hit != nil {
+		slogOrch.Info("L3 cache hit, skipping LLM", "hash", promptHash[:12])
+		return o.returnCachedResponse(tc, hit.Response, hit.SkillID, start)
+	}
 
 	// ── Stage 3+4: Coach + Critic Actor-Critic 循环 ─────
 	if tc.OnThinking != nil {
