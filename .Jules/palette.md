@@ -24,3 +24,6 @@
 **Learning:** Dropdowns and popovers need proper keyboard dismissability (the ESC key) and click-outside handling to be fully accessible and intuitive. Without these, users can get trapped or struggle to close the UI, and screen readers lack semantic linkage between the trigger button and the popup.
 **Action:** Always implement a `keydown` listener for 'Escape' and a `mousedown` listener for outside clicks in a `useEffect`. Additionally, use `React.useId()` to dynamically link the trigger button's `aria-controls` attribute to the popup container's `id`.
 
+## 2026-05-18 - Missing Focus Styles on Interactive Form Elements
+**Learning:** When using `<span>` or `<li>` tags mapped as interactive custom inputs via `role="button"` and `tabIndex={0}` (such as custom Likert scales or multi-choice quiz selectors), they natively lack focus indicators that standard `<button>` tags inherit from the browser. Keyboard-only users have zero visual feedback to tell them which option they are currently tabbed onto.
+**Action:** Always verify that custom interactive elements styled as buttons implement `:focus-visible` pseudo-classes to display proper visual cues (e.g., `outline: 2px solid var(--accent); outline-offset: 2px;`).
