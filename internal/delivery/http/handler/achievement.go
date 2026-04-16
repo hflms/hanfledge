@@ -152,10 +152,26 @@ func (h *AchievementHandler) EvaluateDeepInquiry(studentID, sessionID uint) {
 	var defs []model.AchievementDefinition
 	h.DB.Where("type = ?", model.AchievementDeepInquiry).Order("threshold ASC").Find(&defs)
 
+	if len(defs) == 0 {
+		return
+	}
+
+	var defIDs []uint
 	for _, d := range defs {
-		var rec model.StudentAchievement
-		result := h.DB.Where("student_id = ? AND achievement_id = ?", studentID, d.ID).First(&rec)
-		if result.Error != nil {
+		defIDs = append(defIDs, d.ID)
+	}
+
+	var existingRecs []model.StudentAchievement
+	h.DB.Where("student_id = ? AND achievement_id IN ?", studentID, defIDs).Find(&existingRecs)
+
+	recMap := make(map[uint]model.StudentAchievement)
+	for _, r := range existingRecs {
+		recMap[r.AchievementID] = r
+	}
+
+	for _, d := range defs {
+		rec, exists := recMap[d.ID]
+		if !exists {
 			// Create new record
 			rec = model.StudentAchievement{
 				StudentID:     studentID,
@@ -196,10 +212,26 @@ func (h *AchievementHandler) updateAchievementProgress(studentID uint, achieveme
 	var defs []model.AchievementDefinition
 	h.DB.Where("type = ?", achievementType).Order("threshold ASC").Find(&defs)
 
+	if len(defs) == 0 {
+		return
+	}
+
+	var defIDs []uint
 	for _, d := range defs {
-		var rec model.StudentAchievement
-		result := h.DB.Where("student_id = ? AND achievement_id = ?", studentID, d.ID).First(&rec)
-		if result.Error != nil {
+		defIDs = append(defIDs, d.ID)
+	}
+
+	var existingRecs []model.StudentAchievement
+	h.DB.Where("student_id = ? AND achievement_id IN ?", studentID, defIDs).Find(&existingRecs)
+
+	recMap := make(map[uint]model.StudentAchievement)
+	for _, r := range existingRecs {
+		recMap[r.AchievementID] = r
+	}
+
+	for _, d := range defs {
+		rec, exists := recMap[d.ID]
+		if !exists {
 			// Create new record
 			rec = model.StudentAchievement{
 				StudentID:     studentID,
