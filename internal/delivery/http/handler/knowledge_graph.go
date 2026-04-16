@@ -258,15 +258,35 @@ func (h *KnowledgeGraphHandler) ListCrossLinks(c *gin.Context) {
 		ToKPTitle   string `json:"to_kp_title"`
 	}
 	var response []CrossLinkResponse
-	for _, link := range links {
-		var fromKP, toKP model.KnowledgePoint
-		h.DB.Select("title").First(&fromKP, link.FromKPID)
-		h.DB.Select("title").First(&toKP, link.ToKPID)
-		response = append(response, CrossLinkResponse{
-			CrossLink:   link,
-			FromKPTitle: fromKP.Title,
-			ToKPTitle:   toKP.Title,
-		})
+	if len(links) > 0 {
+		kpIDsMap := make(map[uint]bool)
+		for _, link := range links {
+			kpIDsMap[link.FromKPID] = true
+			kpIDsMap[link.ToKPID] = true
+		}
+
+		var kpIDs []uint
+		for id := range kpIDsMap {
+			kpIDs = append(kpIDs, id)
+		}
+
+		var kps []model.KnowledgePoint
+		h.DB.Select("id", "title").Where("id IN ?", kpIDs).Find(&kps)
+
+		titleMap := make(map[uint]string)
+		for _, kp := range kps {
+			titleMap[kp.ID] = kp.Title
+		}
+
+		for _, link := range links {
+			response = append(response, CrossLinkResponse{
+				CrossLink:   link,
+				FromKPTitle: titleMap[link.FromKPID],
+				ToKPTitle:   titleMap[link.ToKPID],
+			})
+		}
+	} else {
+		response = []CrossLinkResponse{}
 	}
 
 	c.JSON(http.StatusOK, response)
