@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import type { Api } from 'reveal.js';
 import 'reveal.js/dist/reveal.css';
 import 'reveal.js/dist/theme/white.css';
 import styles from './RevealDeck.module.css';
@@ -19,8 +20,7 @@ interface SlideChangeEvent {
 export default function RevealDeck({ markdown, onSlideChange, fullscreen = false }: RevealDeckProps) {
     const deckRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const revealInstance = useRef<any>(null);
+    const revealInstance = useRef<Api | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const onSlideChangeRef = useRef(onSlideChange);
 
@@ -85,10 +85,10 @@ export default function RevealDeck({ markdown, onSlideChange, fullscreen = false
 
             await revealInstance.current.initialize();
             
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            revealInstance.current.on('slidechanged', (event: any) => {
+            revealInstance.current.on('slidechanged', (event: Event) => {
+                const slideEvent = event as unknown as SlideChangeEvent;
                 if (onSlideChangeRef.current) {
-                    onSlideChangeRef.current(event.indexh, event.indexv);
+                    onSlideChangeRef.current(slideEvent.indexh, slideEvent.indexv);
                 }
             });
 

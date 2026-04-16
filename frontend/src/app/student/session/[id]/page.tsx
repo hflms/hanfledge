@@ -79,6 +79,14 @@ export default function SessionPage() {
         router.push('/student/activities');
     }, [toast, router]);
 
+    // Override state
+    const [providerOverride, setProviderOverride] = useState('');
+    const [modelOverride, setModelOverride] = useState('');
+    const [input, setInput] = useState('');
+
+    // Scaffold state
+    const [scaffoldLevel, setScaffoldLevel] = useState<ScaffoldLevel>('high');
+
     const onSessionLoaded = useCallback((sessionData: StudentSession) => {
          setScaffoldLevel(sessionData.scaffold_level || 'high');
     }, []);
@@ -110,14 +118,6 @@ export default function SessionPage() {
 
 
     const { activePlugin } = usePluginRenderer(session);
-
-    // Override state
-    const [providerOverride, setProviderOverride] = useState('');
-    const [modelOverride, setModelOverride] = useState('');
-    const [input, setInput] = useState('');
-
-    // Scaffold state
-    const [scaffoldLevel, setScaffoldLevel] = useState<ScaffoldLevel>('high');
     const [scaffoldData] = useState<ScaffoldData>({});
     const [scaffoldTransition, setScaffoldTransition] = useState(false);
 
