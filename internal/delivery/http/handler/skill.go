@@ -115,28 +115,45 @@ func (h *SkillHandler) MountSkill(c *gin.Context) {
 		req.ScaffoldLevel = model.ScaffoldHigh
 	}
 
-	// Mount skill to all knowledge points in this chapter
+	// Pre-fetch all existing mounts for the knowledge points in this chapter
+	kpIDs := make([]uint, 0, len(chapter.KnowledgePoints))
+	for _, kp := range chapter.KnowledgePoints {
+		kpIDs = append(kpIDs, kp.ID)
+	}
+
+	var existingMounts []model.KPSkillMount
+	if err := h.DB.Where("kp_id IN ? AND skill_id = ?", kpIDs, req.SkillID).Find(&existingMounts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询已有挂载记录失败: " + err.Error()})
+		return
+	}
+
+	existingSet := make(map[uint]bool)
+	for _, m := range existingMounts {
+		existingSet[m.KPID] = true
+	}
+
+	// Calculate JSON fields once
+	constraintsJSON := "{}"
+	if req.ConstraintsJSON != nil {
+		if data, err := marshalJSON(req.ConstraintsJSON); err == nil {
+			constraintsJSON = string(data)
+		}
+	}
+
+	var progressiveRule *string
+	if req.ProgressiveRule != nil {
+		if data, err := marshalJSON(req.ProgressiveRule); err == nil {
+			s := string(data)
+			progressiveRule = &s
+		}
+	}
+
+	// Prepare new mounts for all knowledge points in this chapter
 	var mounts []model.KPSkillMount
 	for _, kp := range chapter.KnowledgePoints {
-		// Check if already mounted
-		var existing model.KPSkillMount
-		if err := h.DB.Where("kp_id = ? AND skill_id = ?", kp.ID, req.SkillID).First(&existing).Error; err == nil {
-			continue // Skip if already mounted
-		}
-
-		constraintsJSON := "{}"
-		if req.ConstraintsJSON != nil {
-			if data, err := marshalJSON(req.ConstraintsJSON); err == nil {
-				constraintsJSON = string(data)
-			}
-		}
-
-		var progressiveRule *string
-		if req.ProgressiveRule != nil {
-			if data, err := marshalJSON(req.ProgressiveRule); err == nil {
-				s := string(data)
-				progressiveRule = &s
-			}
+		// Skip if already mounted
+		if existingSet[kp.ID] {
+			continue
 		}
 
 		mount := model.KPSkillMount{
@@ -147,16 +164,17 @@ func (h *SkillHandler) MountSkill(c *gin.Context) {
 			Priority:        req.Priority,
 			ProgressiveRule: progressiveRule,
 		}
-
-		if err := h.DB.Create(&mount).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "挂载技能失败: " + err.Error()})
-			return
-		}
 		mounts = append(mounts, mount)
 	}
 
 	if len(mounts) == 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "该技能已挂载到所有知识点"})
+		return
+	}
+
+	// Batch insert all new mounts
+	if err := h.DB.Create(&mounts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "批量挂载技能失败: " + err.Error()})
 		return
 	}
 
