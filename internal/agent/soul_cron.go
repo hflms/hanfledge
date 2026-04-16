@@ -2,14 +2,16 @@ package agent
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"gorm.io/gorm"
 
 	"github.com/hflms/hanfledge/internal/domain/model"
 	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 )
+
+var slogSoulCron = logger.L("SoulCron")
 
 // SoulCronService 定期触发 Soul 进化分析。
 type SoulCronService struct {
@@ -32,21 +34,21 @@ func (s *SoulCronService) Start(ctx context.Context) {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
-	log.Printf("🔄 Soul cron started, interval: %v", s.interval)
+	slogSoulCron.Info("🔄 Soul cron started", "interval", s.interval)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("🛑 Soul cron stopped")
+			slogSoulCron.Info("🛑 Soul cron stopped")
 			return
 		case <-ticker.C:
-			log.Println("⏰ Soul evolution analysis triggered")
+			slogSoulCron.Info("⏰ Soul evolution analysis triggered")
 			suggestion, err := s.evolution.AnalyzeAndSuggest(ctx)
 			if err != nil {
-				log.Printf("❌ Soul evolution failed: %v", err)
+				slogSoulCron.Error("❌ Soul evolution failed", "err", err)
 				continue
 			}
-			log.Printf("✅ Soul evolution completed, suggestion length: %d", len(suggestion))
+			slogSoulCron.Info("✅ Soul evolution completed", "suggestionLength", len(suggestion))
 			
 			// 通知所有管理员
 			var admins []model.User
@@ -66,7 +68,7 @@ func (s *SoulCronService) Start(ctx context.Context) {
 				}
 				s.db.Create(&notif)
 			}
-			log.Printf("📬 Notified %d admins", len(admins))
+			slogSoulCron.Info("📬 Notified admins", "count", len(admins))
 		}
 	}
 }
