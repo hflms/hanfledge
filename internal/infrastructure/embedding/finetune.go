@@ -2,10 +2,11 @@ package embedding
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
 	"os"
 	"path/filepath"
 	"time"
@@ -340,9 +341,12 @@ func (p *FineTunePipeline) sampleNegativeEmbeddings(ctx context.Context, pairs [
 	}
 
 	// Fisher-Yates 洗牌后取前 n 个
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := len(candidates) - 1; i > 0; i-- {
-		j := rng.Intn(i + 1)
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		if err != nil {
+			continue // Should theoretically not fail, but handled gracefully by skipping if so
+		}
+		j := int(nBig.Int64())
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	}
 
