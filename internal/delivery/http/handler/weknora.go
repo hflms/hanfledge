@@ -409,18 +409,18 @@ func (h *WeKnoraHandler) DeleteKnowledgeBase(c *gin.Context) {
 //	@Router       /weknora/login-token [get]
 func (h *WeKnoraHandler) GetWeKnoraLoginToken(c *gin.Context) {
 	userID := middleware.GetUserID(c)
-	
+
 	// Get user info
 	var user model.User
 	if err := h.db.First(&user, userID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "user not found"})
 		return
 	}
-	
+
 	// Login to WeKnora with synced credentials
 	email := fmt.Sprintf("%s@hanfledge.local", user.Phone)
 	password := user.Phone // Synced password is the phone number
-	
+
 	loginResp, err := h.client.Login(c.Request.Context(), &weknora.LoginRequest{
 		Email:    email,
 		Password: password,
@@ -436,7 +436,7 @@ func (h *WeKnoraHandler) GetWeKnoraLoginToken(c *gin.Context) {
 	if wkFrontendURL == "" {
 		wkFrontendURL = "http://localhost:9381" // Default for development
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"token":       loginResp.Token,
 		"weknora_url": wkFrontendURL,
