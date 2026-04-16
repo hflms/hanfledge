@@ -55,22 +55,15 @@ function LikertQuestion({
     return (
         <div className={styles.likertRow}>
             {(question.scale_labels || scaleLabels).map((label, index) => (
-                <span
+                <button
                     key={index}
+                    type="button"
                     className={styles.likertOption}
-                    role="button"
-                    tabIndex={0}
                     onClick={() => onSelect(index, label)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            onSelect(index, label);
-                        }
-                    }}
                     aria-pressed={selection === String(index + 1)}
                 >
                     {label}
-                </span>
+                </button>
             ))}
         </div>
     );
@@ -89,22 +82,16 @@ function MultipleChoiceQuestion({
     return (
         <ul className={styles.optionList}>
             {question.options.map(option => (
-                <li
-                    key={option.key}
-                    className={styles.optionItem}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onSelect(option.key)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            onSelect(option.key);
-                        }
-                    }}
-                    aria-pressed={selections.includes(option.key)}
-                >
-                    <span className={styles.optionKey}>{option.key}.</span>
-                    <span>{option.text}</span>
+                <li key={option.key} className={styles.optionItem}>
+                    <button
+                        type="button"
+                        className={styles.optionItemBtn}
+                        onClick={() => onSelect(option.key)}
+                        aria-pressed={selections.includes(option.key)}
+                    >
+                        <span className={styles.optionKey}>{option.key}.</span>
+                        <span>{option.text}</span>
+                    </button>
                 </li>
             ))}
         </ul>
@@ -124,22 +111,16 @@ function SingleChoiceQuestion({
     return (
         <ul className={styles.optionList}>
             {question.options.map(option => (
-                <li
-                    key={option.key}
-                    className={styles.optionItem}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onSelect(option.key)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            onSelect(option.key);
-                        }
-                    }}
-                    aria-pressed={selection === option.key}
-                >
-                    <span className={styles.optionKey}>{option.key}.</span>
-                    <span>{option.text}</span>
+                <li key={option.key} className={styles.optionItem}>
+                    <button
+                        type="button"
+                        className={styles.optionItemBtn}
+                        onClick={() => onSelect(option.key)}
+                        aria-pressed={selection === option.key}
+                    >
+                        <span className={styles.optionKey}>{option.key}.</span>
+                        <span>{option.text}</span>
+                    </button>
                 </li>
             ))}
         </ul>
