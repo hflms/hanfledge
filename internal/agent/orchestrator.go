@@ -171,72 +171,10 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 
 	// ── Stage 1: Strategist + Designer 并行预处理 ──────────────
-	if tc.OnThinking != nil {
-		tc.OnThinking("Strategist & Designer 正在并行分析...")
+	if err := o.runStrategistAndDesignerPreload(tc, start); err != nil {
+		return err
 	}
-
-	type strategistResult struct {
-		prescription LearningPrescription
-		err          error
-	}
-	type designerPreloadResult struct {
-		graphContext []map[string]interface{}
-		err          error
-	}
-
-	strategistCh := make(chan strategistResult, 1)
-	designerCh := make(chan designerPreloadResult, 1)
-
-	// 并行分支 A: Strategist 分析学情
-	go func() {
-		prescription, err := o.strategist.Analyze(ctx, tc.SessionID, tc.StudentID, tc.ActivityID)
-		strategistCh <- strategistResult{prescription, err}
-	}()
-
-	// 并行分支 B: Designer 预加载当前 KP 的图谱上下文
-	go func() {
-		var session model.StudentSession
-		if err := o.db.WithContext(ctx).First(&session, tc.SessionID).Error; err != nil {
-			designerCh <- designerPreloadResult{nil, err}
-			return
-		}
-		if session.CurrentKP == 0 {
-			designerCh <- designerPreloadResult{nil, nil}
-			return
-		}
-		graphCtx, err := o.neo4j.GetKPContext(ctx, session.CurrentKP, 2)
-		designerCh <- designerPreloadResult{graphCtx, err}
-	}()
-
-	// 汇聚层: 等待两个分支完成
-	stratResult := <-strategistCh
-	designerPreload := <-designerCh
-
-	if stratResult.err != nil {
-		return fmt.Errorf("strategist failed: %w", stratResult.err)
-	}
-	prescription := stratResult.prescription
-	tc.Prescription = &prescription
-	tc.DesignerStrategy = prescription.DesignerStrategy
-
-	slogOrch.Info("[DEBUG] strategist done", "session_id", tc.SessionID,
-		"skill", prescription.RecommendedSkill, "scaffold", prescription.InitialScaffold,
-		"designer", func() string {
-			if prescription.DesignerStrategy != nil {
-				return prescription.DesignerStrategy.ID
-			}
-			return "none"
-		}(),
-		"elapsed", time.Since(start))
-
-	slogOrch.Debug("strategist results",
-		"kp_targets", len(prescription.TargetKPSequence), "scaffold", prescription.InitialScaffold, "skill", prescription.RecommendedSkill)
-
-	if designerPreload.err != nil {
-		slogOrch.Warn("designer preload failed", "err", designerPreload.err)
-	} else if designerPreload.graphContext != nil {
-		slogOrch.Info("[DEBUG] designer preload done", "nodes", len(designerPreload.graphContext), "elapsed", time.Since(start))
-	}
+	prescription := *tc.Prescription
 
 	// ── Pre-Stage 2: Dynamic Skill Testing Intercept ──────────
 	var session model.StudentSession
@@ -245,23 +183,7 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 
 	// 检查技能是否发生了动态切换，如果是，通知前端刷新渲染器
-	if prescription.RecommendedSkill != "" && prescription.RecommendedSkill != session.ActiveSkill {
-		oldSkill := session.ActiveSkill
-		slogOrch.Info("dynamic skill transition triggered",
-			"session_id", tc.SessionID, "old_skill", oldSkill, "new_skill", prescription.RecommendedSkill)
-
-		// 更新会话的 ActiveSkill
-		o.db.WithContext(tc.Ctx).Model(&session).Update("active_skill", prescription.RecommendedSkill)
-		session.ActiveSkill = prescription.RecommendedSkill
-
-		// 通知前端发生技能切换
-		if tc.OnScaffold != nil {
-			tc.OnScaffold("skill_change", map[string]interface{}{
-				"old_skill": oldSkill,
-				"new_skill": prescription.RecommendedSkill,
-			})
-		}
-	}
+	o.handleDynamicSkillTransition(tc, &session, &prescription)
 
 	// 使用 Strategist 分析后的第一个目标知识点 (已按掌握度排序)
 	targetKPID := uint(0)
@@ -293,104 +215,17 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 	}
 
 	// 1. 如果当前处于测试模式，处理用户的回答
-	if session.Mode == model.ModeTesting {
-		if tc.OnThinking != nil {
-			tc.OnThinking("Evaluator 正在批改测试...")
-		}
-
-		// 找出上一轮 AI 发出的测试题
-		var lastCoachMsg model.Interaction
-		o.db.WithContext(tc.Ctx).Where("session_id = ? AND role = 'coach'", tc.SessionID).Order("id desc").First(&lastCoachMsg)
-
-		isCorrect, reason, err := o.evaluator.Grade(tc.Ctx, lastCoachMsg.Content, tc.UserInput)
-		if err != nil {
-			slogOrch.Warn("evaluator failed", "err", err)
-			isCorrect = false
-			reason = "评卷系统出错，请重新回答。"
-		}
-
-		// 强证据更新掌握度
-		if targetKPID > 0 {
-			update, bktErr := o.bkt.UpdateStudentMastery(tc.StudentID, targetKPID, isCorrect, EvidenceTest)
-			if bktErr != nil {
-				slogOrch.Warn("bkt update from test failed", "err", bktErr)
-			} else {
-				slogOrch.Info("test graded", "student_id", tc.StudentID, "kp_id", targetKPID, "correct", isCorrect, "new_mastery", update.NewMastery)
-			}
-		}
-
-		// 切回苏格拉底模式
-		o.db.WithContext(tc.Ctx).Model(&session).Update("mode", model.ModeSocratic)
-
-		// 构造并发送批改结果
-		feedback := reason
-		if isCorrect {
-			feedback = "回答正确！恭喜你通过了该知识点的技能测试。\n" + feedback
-		} else {
-			feedback = "回答不正确。你的掌握度已重置，让我们继续学习。\n" + feedback
-		}
-
-		if tc.OnTokenDelta != nil {
-			tc.OnTokenDelta(feedback)
-		}
-
-		if tc.OnScaffold != nil {
-			tc.OnScaffold("skill_test_result", map[string]interface{}{
-				"correct": isCorrect,
-			})
-		}
-
-		draft := &DraftResponse{
-			SessionID: tc.SessionID,
-			Content:   feedback,
-			SkillID:   "skill_test_grading",
-		}
-		_ = o.saveInteraction(tc, draft)
-		if tc.OnTurnComplete != nil {
-			tc.OnTurnComplete(0)
-		}
+	if handled, err := o.processTestingMode(tc, &session, targetKPID); err != nil {
+		return err
+	} else if handled {
 		return nil
 	}
 
 	// 2. 如果掌握度达到 0.75 且未通过测试，触发测试
-	currentMastery := o.bkt.GetMastery(tc.StudentID, targetKPID)
-	if targetKPID > 0 && currentMastery >= 0.75 && !targetKP.PassedTest {
-		slogOrch.Info("triggering dynamic skill test", "student_id", tc.StudentID, "kp_id", targetKPID, "mastery", currentMastery)
-
-		if tc.OnThinking != nil {
-			tc.OnThinking("Assessor 正在生成技能测试...")
-		}
-
-		testQuestion, err := o.assessor.GenerateTest(tc.Ctx, kpTitle)
-		if err != nil {
-			slogOrch.Warn("assessor failed to generate test", "err", err)
-			// 退回常规流程
-		} else {
-			// 切换到测试模式
-			o.db.WithContext(tc.Ctx).Model(&session).Update("mode", model.ModeTesting)
-
-			// 直接返回测试题
-			if tc.OnTokenDelta != nil {
-				tc.OnTokenDelta(testQuestion)
-			}
-
-			if tc.OnScaffold != nil {
-				tc.OnScaffold("skill_test_start", map[string]interface{}{
-					"question": testQuestion,
-				})
-			}
-
-			draft := &DraftResponse{
-				SessionID: tc.SessionID,
-				Content:   testQuestion,
-				SkillID:   "skill_test_generation",
-			}
-			_ = o.saveInteraction(tc, draft)
-			if tc.OnTurnComplete != nil {
-				tc.OnTurnComplete(0)
-			}
-			return nil
-		}
+	if handled, err := o.triggerSkillTestIfNeeded(tc, &session, targetKPID, &targetKP, kpTitle); err != nil {
+		return err
+	} else if handled {
+		return nil
 	}
 
 	// Hook: after skill match
@@ -514,6 +349,211 @@ func (o *AgentOrchestrator) HandleTurn(tc *TurnContext) error {
 // - 非最终尝试（可能被 Critic 驳回）：onToken=nil，仅累积全文
 // - 最终尝试（maxCriticRetries 或 Critic 通过）：通过 OnTokenDelta 实时流式输出
 // - 如果非最终尝试被 Critic 通过，将缓冲的全文一次性发送给前端
+
+// runStrategistAndDesignerPreload 并行执行 Strategist 和 Designer 预加载。
+func (o *AgentOrchestrator) runStrategistAndDesignerPreload(tc *TurnContext, start time.Time) error {
+	ctx := tc.Ctx
+	if tc.OnThinking != nil {
+		tc.OnThinking("Strategist & Designer 正在并行分析...")
+	}
+
+	type strategistResult struct {
+		prescription LearningPrescription
+		err          error
+	}
+	type designerPreloadResult struct {
+		graphContext []map[string]interface{}
+		err          error
+	}
+
+	strategistCh := make(chan strategistResult, 1)
+	designerCh := make(chan designerPreloadResult, 1)
+
+	// 并行分支 A: Strategist 分析学情
+	go func() {
+		prescription, err := o.strategist.Analyze(ctx, tc.SessionID, tc.StudentID, tc.ActivityID)
+		strategistCh <- strategistResult{prescription, err}
+	}()
+
+	// 并行分支 B: Designer 预加载当前 KP 的图谱上下文
+	go func() {
+		var session model.StudentSession
+		if err := o.db.WithContext(ctx).First(&session, tc.SessionID).Error; err != nil {
+			designerCh <- designerPreloadResult{nil, err}
+			return
+		}
+		if session.CurrentKP == 0 {
+			designerCh <- designerPreloadResult{nil, nil}
+			return
+		}
+		graphCtx, err := o.neo4j.GetKPContext(ctx, session.CurrentKP, 2)
+		designerCh <- designerPreloadResult{graphCtx, err}
+	}()
+
+	// 汇聚层: 等待两个分支完成
+	stratResult := <-strategistCh
+	designerPreload := <-designerCh
+
+	if stratResult.err != nil {
+		return fmt.Errorf("strategist failed: %w", stratResult.err)
+	}
+	prescription := stratResult.prescription
+	tc.Prescription = &prescription
+	tc.DesignerStrategy = prescription.DesignerStrategy
+
+	slogOrch.Info("[DEBUG] strategist done", "session_id", tc.SessionID,
+		"skill", prescription.RecommendedSkill, "scaffold", prescription.InitialScaffold,
+		"designer", func() string {
+			if prescription.DesignerStrategy != nil {
+				return prescription.DesignerStrategy.ID
+			}
+			return "none"
+		}(),
+		"elapsed", time.Since(start))
+
+	slogOrch.Debug("strategist results",
+		"kp_targets", len(prescription.TargetKPSequence), "scaffold", prescription.InitialScaffold, "skill", prescription.RecommendedSkill)
+
+	if designerPreload.err != nil {
+		slogOrch.Warn("designer preload failed", "err", designerPreload.err)
+	} else if designerPreload.graphContext != nil {
+		slogOrch.Info("[DEBUG] designer preload done", "nodes", len(designerPreload.graphContext), "elapsed", time.Since(start))
+	}
+	return nil
+}
+
+// handleDynamicSkillTransition 处理技能的动态切换并通知前端。
+func (o *AgentOrchestrator) handleDynamicSkillTransition(tc *TurnContext, session *model.StudentSession, prescription *LearningPrescription) {
+	if prescription.RecommendedSkill != "" && prescription.RecommendedSkill != session.ActiveSkill {
+		oldSkill := session.ActiveSkill
+		slogOrch.Info("dynamic skill transition triggered",
+			"session_id", tc.SessionID, "old_skill", oldSkill, "new_skill", prescription.RecommendedSkill)
+
+		// 更新会话的 ActiveSkill
+		o.db.WithContext(tc.Ctx).Model(session).Update("active_skill", prescription.RecommendedSkill)
+		session.ActiveSkill = prescription.RecommendedSkill
+
+		// 通知前端发生技能切换
+		if tc.OnScaffold != nil {
+			tc.OnScaffold("skill_change", map[string]interface{}{
+				"old_skill": oldSkill,
+				"new_skill": prescription.RecommendedSkill,
+			})
+		}
+	}
+}
+
+// processTestingMode 处理当前会话处于测试模式时的逻辑。
+// 返回 true 表示已经处理完毕，调用方应当返回 nil。
+func (o *AgentOrchestrator) processTestingMode(tc *TurnContext, session *model.StudentSession, targetKPID uint) (bool, error) {
+	if session.Mode != model.ModeTesting {
+		return false, nil
+	}
+
+	if tc.OnThinking != nil {
+		tc.OnThinking("Evaluator 正在批改测试...")
+	}
+
+	// 找出上一轮 AI 发出的测试题
+	var lastCoachMsg model.Interaction
+	o.db.WithContext(tc.Ctx).Where("session_id = ? AND role = 'coach'", tc.SessionID).Order("id desc").First(&lastCoachMsg)
+
+	isCorrect, reason, err := o.evaluator.Grade(tc.Ctx, lastCoachMsg.Content, tc.UserInput)
+	if err != nil {
+		slogOrch.Warn("evaluator failed", "err", err)
+		isCorrect = false
+		reason = "评卷系统出错，请重新回答。"
+	}
+
+	// 强证据更新掌握度
+	if targetKPID > 0 {
+		update, bktErr := o.bkt.UpdateStudentMastery(tc.StudentID, targetKPID, isCorrect, EvidenceTest)
+		if bktErr != nil {
+			slogOrch.Warn("bkt update from test failed", "err", bktErr)
+		} else {
+			slogOrch.Info("test graded", "student_id", tc.StudentID, "kp_id", targetKPID, "correct", isCorrect, "new_mastery", update.NewMastery)
+		}
+	}
+
+	// 切回苏格拉底模式
+	o.db.WithContext(tc.Ctx).Model(session).Update("mode", model.ModeSocratic)
+
+	// 构造并发送批改结果
+	feedback := reason
+	if isCorrect {
+		feedback = "回答正确！恭喜你通过了该知识点的技能测试。\n" + feedback
+	} else {
+		feedback = "回答不正确。你的掌握度已重置，让我们继续学习。\n" + feedback
+	}
+
+	if tc.OnTokenDelta != nil {
+		tc.OnTokenDelta(feedback)
+	}
+
+	if tc.OnScaffold != nil {
+		tc.OnScaffold("skill_test_result", map[string]interface{}{
+			"correct": isCorrect,
+		})
+	}
+
+	draft := &DraftResponse{
+		SessionID: tc.SessionID,
+		Content:   feedback,
+		SkillID:   "skill_test_grading",
+	}
+	_ = o.saveInteraction(tc, draft)
+	if tc.OnTurnComplete != nil {
+		tc.OnTurnComplete(0)
+	}
+	return true, nil
+}
+
+// triggerSkillTestIfNeeded 在掌握度达标时触发技能测试。
+// 返回 true 表示已触发测试，调用方应当返回 nil。
+func (o *AgentOrchestrator) triggerSkillTestIfNeeded(tc *TurnContext, session *model.StudentSession, targetKPID uint, targetKP *model.StudentKPMastery, kpTitle string) (bool, error) {
+	currentMastery := o.bkt.GetMastery(tc.StudentID, targetKPID)
+	if targetKPID > 0 && currentMastery >= 0.75 && !targetKP.PassedTest {
+		slogOrch.Info("triggering dynamic skill test", "student_id", tc.StudentID, "kp_id", targetKPID, "mastery", currentMastery)
+
+		if tc.OnThinking != nil {
+			tc.OnThinking("Assessor 正在生成技能测试...")
+		}
+
+		testQuestion, err := o.assessor.GenerateTest(tc.Ctx, kpTitle)
+		if err != nil {
+			slogOrch.Warn("assessor failed to generate test", "err", err)
+			// 退回常规流程
+			return false, nil
+		}
+
+		// 切换到测试模式
+		o.db.WithContext(tc.Ctx).Model(session).Update("mode", model.ModeTesting)
+
+		// 直接返回测试题
+		if tc.OnTokenDelta != nil {
+			tc.OnTokenDelta(testQuestion)
+		}
+
+		if tc.OnScaffold != nil {
+			tc.OnScaffold("skill_test_start", map[string]interface{}{
+				"question": testQuestion,
+			})
+		}
+
+		draft := &DraftResponse{
+			SessionID: tc.SessionID,
+			Content:   testQuestion,
+			SkillID:   "skill_test_generation",
+		}
+		_ = o.saveInteraction(tc, draft)
+		if tc.OnTurnComplete != nil {
+			tc.OnTurnComplete(0)
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func (o *AgentOrchestrator) actorCriticLoop(tc *TurnContext, material PersonalizedMaterial) (*DraftResponse, error) {
 	var draft DraftResponse
 	var err error
