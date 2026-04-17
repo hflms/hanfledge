@@ -112,11 +112,11 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
                 {/* Sidebar */}
                 <aside className={styles.sidebar}>
                     <div className={styles.sidebarBrand}>
-                        <div className={styles.brandIcon}>🎓</div>
+                        <div className={styles.brandIcon} aria-hidden="true">🎓</div>
                         <div className={styles.brandName}>Hanfledge</div>
                     </div>
 
-                    <nav className={styles.sidebarNav}>
+                    <nav className={styles.sidebarNav} aria-label="主导航">
                         <div className={styles.navSection}>
                             <div className={styles.navLabel}>{sectionLabel}</div>
                             {navItems.map(item => (
@@ -124,8 +124,9 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
                                     key={item.href}
                                     href={item.href}
                                     className={`${styles.navItem} ${pathname.startsWith(item.href) ? styles.navItemActive : ''}`}
+                                    aria-current={pathname.startsWith(item.href) ? 'page' : undefined}
                                 >
-                                    <span className={styles.navItemIcon}>{item.icon}</span>
+                                    <span className={styles.navItemIcon} aria-hidden="true">{item.icon}</span>
                                     {item.label}
                                 </Link>
                             ))}
@@ -134,7 +135,7 @@ export default function DashboardLayout({ children, variant }: DashboardLayoutPr
 
                     <div className={styles.sidebarFooter}>
                         <Link href="/help" className={styles.helpLink}>
-                            <span className={styles.navItemIcon}>❓</span>
+                            <span className={styles.navItemIcon} aria-hidden="true">❓</span>
                             帮助文档
                         </Link>
                     </div>
