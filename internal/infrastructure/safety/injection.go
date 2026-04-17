@@ -212,6 +212,13 @@ func (g *InjectionGuard) initRegexPatterns() {
 		{`on\w+\s*=\s*["']`, "事件处理器注入"},
 	}
 
+	g.loadRegexPatterns(patterns)
+}
+
+func (g *InjectionGuard) loadRegexPatterns(patterns []struct {
+	pattern string
+	desc    string
+}) {
 	g.regexPatterns = make([]*regexp.Regexp, 0, len(patterns))
 	g.regexDescriptions = make([]string, 0, len(patterns))
 
