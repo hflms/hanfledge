@@ -1,0 +1,25 @@
+<<<<<<< SEARCH
+		{
+			name:          "all approved",
+			pluginType:    "",
+			category:      "",
+			search:        "",
+			offset:        0,
+			limit:         10,
+			expectedCount: 3,
+			expectedTotal: 3,
+			firstPluginID: "p4",
+		},
+=======
+		{
+			name:          "all approved",
+			pluginType:    "",
+			category:      "",
+			search:        "",
+			offset:        0,
+			limit:         10,
+			expectedCount: 4,
+			expectedTotal: 4,
+			firstPluginID: "p4",
+		},
+>>>>>>> REPLACE
