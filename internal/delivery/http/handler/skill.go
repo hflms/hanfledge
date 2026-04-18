@@ -148,15 +148,16 @@ func (h *SkillHandler) MountSkill(c *gin.Context) {
 			ProgressiveRule: progressiveRule,
 		}
 
-		if err := h.DB.Create(&mount).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "挂载技能失败: " + err.Error()})
-			return
-		}
 		mounts = append(mounts, mount)
 	}
 
 	if len(mounts) == 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "该技能已挂载到所有知识点"})
+		return
+	}
+
+	if err := h.DB.Create(&mounts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "批量挂载技能失败: " + err.Error()})
 		return
 	}
 
