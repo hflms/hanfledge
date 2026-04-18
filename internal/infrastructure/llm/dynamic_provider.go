@@ -365,119 +365,20 @@ func (p *DynamicProvider) getProviderForRequest(opts *ChatOptions) LLMProvider {
 
 		switch opts.ProviderOverride {
 		case "dashscope":
-			apiKey := configs["DASHSCOPE_API_KEY"]
-			chatModel := opts.ModelOverride
-			compatURL := configs["DASHSCOPE_COMPAT_BASE_URL"]
-			if chatModel == "" {
-				chatModel = configs["DASHSCOPE_MODEL"]
-				if chatModel == "" {
-					chatModel = "qwen-max"
-				}
-			}
 			if embModel == "" {
 				embModel = "text-embedding-v3"
 			}
-			slogDynamic.Info("using overridden dashscope provider", "model", chatModel)
-			return NewDashScopeClient(DashScopeConfig{
-				APIKey:         apiKey,
-				ChatModel:      chatModel,
-				EmbeddingModel: embModel,
-				CompatBaseURL:  compatURL,
-			})
+			return buildCompatibleProviderOverride("dashscope", "DASHSCOPE", "qwen-max", "", opts, configs, embModel)
 		case "doubao":
-			apiKey := configs["DOUBAO_API_KEY"]
-			chatModel := opts.ModelOverride
-			compatURL := configs["DOUBAO_COMPAT_BASE_URL"]
-			if chatModel == "" {
-				chatModel = configs["DOUBAO_MODEL"]
-			}
-			if compatURL == "" {
-				compatURL = "https://ark.cn-beijing.volces.com/api/v3"
-			}
-			slogDynamic.Info("using overridden doubao provider", "model", chatModel)
-			return NewDashScopeClient(DashScopeConfig{
-				APIKey:         apiKey,
-				ChatModel:      chatModel,
-				EmbeddingModel: embModel,
-				CompatBaseURL:  compatURL,
-			})
+			return buildCompatibleProviderOverride("doubao", "DOUBAO", "", "https://ark.cn-beijing.volces.com/api/v3", opts, configs, embModel)
 		case "deepseek":
-			apiKey := configs["DEEPSEEK_API_KEY"]
-			chatModel := opts.ModelOverride
-			compatURL := configs["DEEPSEEK_COMPAT_BASE_URL"]
-			if chatModel == "" {
-				chatModel = configs["DEEPSEEK_MODEL"]
-				if chatModel == "" {
-					chatModel = "deepseek-chat"
-				}
-			}
-			if compatURL == "" {
-				compatURL = "https://api.deepseek.com/v1"
-			}
-			slogDynamic.Info("using overridden deepseek provider", "model", chatModel)
-			return NewDashScopeClient(DashScopeConfig{
-				APIKey:         apiKey,
-				ChatModel:      chatModel,
-				EmbeddingModel: embModel,
-				CompatBaseURL:  compatURL,
-			})
+			return buildCompatibleProviderOverride("deepseek", "DEEPSEEK", "deepseek-chat", "https://api.deepseek.com/v1", opts, configs, embModel)
 		case "openrouter":
-			apiKey := configs["OPENROUTER_API_KEY"]
-			chatModel := opts.ModelOverride
-			compatURL := configs["OPENROUTER_COMPAT_BASE_URL"]
-			if chatModel == "" {
-				chatModel = configs["OPENROUTER_MODEL"]
-			}
-			if compatURL == "" {
-				compatURL = "https://openrouter.ai/api/v1"
-			}
-			slogDynamic.Info("using overridden openrouter provider", "model", chatModel)
-			return NewDashScopeClient(DashScopeConfig{
-				APIKey:         apiKey,
-				ChatModel:      chatModel,
-				EmbeddingModel: embModel,
-				CompatBaseURL:  compatURL,
-			})
+			return buildCompatibleProviderOverride("openrouter", "OPENROUTER", "", "https://openrouter.ai/api/v1", opts, configs, embModel)
 		case "moonshot":
-			apiKey := configs["MOONSHOT_API_KEY"]
-			chatModel := opts.ModelOverride
-			compatURL := configs["MOONSHOT_COMPAT_BASE_URL"]
-			if chatModel == "" {
-				chatModel = configs["MOONSHOT_MODEL"]
-				if chatModel == "" {
-					chatModel = "moonshot-v1-8k"
-				}
-			}
-			if compatURL == "" {
-				compatURL = "https://api.moonshot.cn/v1"
-			}
-			slogDynamic.Info("using overridden moonshot provider", "model", chatModel)
-			return NewDashScopeClient(DashScopeConfig{
-				APIKey:         apiKey,
-				ChatModel:      chatModel,
-				EmbeddingModel: embModel,
-				CompatBaseURL:  compatURL,
-			})
+			return buildCompatibleProviderOverride("moonshot", "MOONSHOT", "moonshot-v1-8k", "https://api.moonshot.cn/v1", opts, configs, embModel)
 		case "zhipu":
-			apiKey := configs["ZHIPU_API_KEY"]
-			chatModel := opts.ModelOverride
-			compatURL := configs["ZHIPU_COMPAT_BASE_URL"]
-			if chatModel == "" {
-				chatModel = configs["ZHIPU_MODEL"]
-				if chatModel == "" {
-					chatModel = "glm-4"
-				}
-			}
-			if compatURL == "" {
-				compatURL = "https://open.bigmodel.cn/api/paas/v4"
-			}
-			slogDynamic.Info("using overridden zhipu provider", "model", chatModel)
-			return NewDashScopeClient(DashScopeConfig{
-				APIKey:         apiKey,
-				ChatModel:      chatModel,
-				EmbeddingModel: embModel,
-				CompatBaseURL:  compatURL,
-			})
+			return buildCompatibleProviderOverride("zhipu", "ZHIPU", "glm-4", "https://open.bigmodel.cn/api/paas/v4", opts, configs, embModel)
 		case "ollama":
 			host := configs["OLLAMA_BASE_URL"]
 			if host == "" {
@@ -517,4 +418,26 @@ func (p *DynamicProvider) ClearCache() {
 	defer p.mu.Unlock()
 	p.chatClients = make(map[string]LLMProvider)
 	p.embedClients = make(map[string]LLMProvider)
+}
+
+func buildCompatibleProviderOverride(providerName, prefix, defaultModel, defaultURL string, opts *ChatOptions, configs map[string]string, embModel string) LLMProvider {
+	apiKey := configs[prefix+"_API_KEY"]
+	chatModel := opts.ModelOverride
+	compatURL := configs[prefix+"_COMPAT_BASE_URL"]
+	if chatModel == "" {
+		chatModel = configs[prefix+"_MODEL"]
+		if chatModel == "" {
+			chatModel = defaultModel
+		}
+	}
+	if compatURL == "" {
+		compatURL = defaultURL
+	}
+	slogDynamic.Info("using overridden "+providerName+" provider", "model", chatModel)
+	return NewDashScopeClient(DashScopeConfig{
+		APIKey:         apiKey,
+		ChatModel:      chatModel,
+		EmbeddingModel: embModel,
+		CompatBaseURL:  compatURL,
+	})
 }
