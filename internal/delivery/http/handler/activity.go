@@ -315,11 +315,15 @@ func (h *ActivityHandler) UpdateActivity(c *gin.Context) {
 	// Update class assignments if provided
 	if req.ClassIDs != nil {
 		h.DB.Where("activity_id = ?", activityID).Delete(&model.ActivityClassAssignment{})
-		for _, classID := range req.ClassIDs {
-			h.DB.Create(&model.ActivityClassAssignment{
-				ActivityID: uint(activityID),
-				ClassID:    classID,
-			})
+		if len(req.ClassIDs) > 0 {
+			var assignments []model.ActivityClassAssignment
+			for _, classID := range req.ClassIDs {
+				assignments = append(assignments, model.ActivityClassAssignment{
+					ActivityID: uint(activityID),
+					ClassID:    classID,
+				})
+			}
+			h.DB.Create(&assignments)
 		}
 	}
 
