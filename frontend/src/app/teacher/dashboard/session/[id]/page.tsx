@@ -363,7 +363,7 @@ function InteractionLog({ data }: { data: InteractionLogResponse }) {
                 {data.interactions.map((entry) => (
                     <div
                         key={entry.id}
-                        className={`${styles.logEntry} ${entry.type === 'experiment_data' ? styles.logEntryExperiment : entry.role === 'student' ? styles.logEntryStudent : entry.role === 'teacher' ? styles.logEntryTeacher : styles.logEntryCoach}`}
+                        className={`${styles.logEntry} ${entry.role === 'experiment_data' ? styles.logEntryExperiment : entry.role === 'student' ? styles.logEntryStudent : entry.role === 'teacher' ? styles.logEntryTeacher : styles.logEntryCoach}`}
                         onClick={() => setSelectedEntry(entry)}
                         onKeyDown={handleCardKeyDown}
                         role="button"
@@ -404,12 +404,12 @@ function InteractionLog({ data }: { data: InteractionLogResponse }) {
                             {entry.role === 'coach' && entry.eval_status === 'pending' && (
                                 <span className={styles.logEvalPending}>评估中...</span>
                             )}
-                            {entry.type === 'experiment_data' && (
+                            {entry.role === 'experiment_data' && (
                                 <span className={styles.logExperimentBadge}>互动实验数据</span>
                             )}
                         </div>
                         <div className={styles.logContent}>
-                            {entry.type === 'experiment_data' ? (
+                            {entry.role === 'experiment_data' ? (
                                 <pre className={styles.experimentDataBlock}>
                                     {entry.content}
                                 </pre>

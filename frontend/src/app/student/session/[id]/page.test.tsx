@@ -208,7 +208,7 @@ describe('SessionPage', () => {
 
         // Expect addMessage to be called instead of screen checking
         expect(mockAddMessage).toHaveBeenCalledWith(expect.objectContaining({
-             role: 'user',
+             role: 'student',
              content: 'Hello AI'
         }));
         
