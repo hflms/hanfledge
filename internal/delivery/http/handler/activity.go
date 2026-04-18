@@ -159,12 +159,15 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 	}
 
 	// Assign to classes if provided
-	for _, classID := range req.ClassIDs {
-		assignment := model.ActivityClassAssignment{
-			ActivityID: activity.ID,
-			ClassID:    classID,
+	if len(req.ClassIDs) > 0 {
+		assignments := make([]model.ActivityClassAssignment, 0, len(req.ClassIDs))
+		for _, classID := range req.ClassIDs {
+			assignments = append(assignments, model.ActivityClassAssignment{
+				ActivityID: activity.ID,
+				ClassID:    classID,
+			})
 		}
-		h.DB.Create(&assignment)
+		h.DB.Create(&assignments)
 	}
 
 	c.JSON(http.StatusCreated, activity)

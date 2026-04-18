@@ -47,7 +47,7 @@ func (s *SoulCronService) Start(ctx context.Context) {
 				continue
 			}
 			log.Printf("✅ Soul evolution completed, suggestion length: %d", len(suggestion))
-			
+
 			// 通知所有管理员
 			var admins []model.User
 			s.db.Joins("JOIN user_school_roles ON users.id = user_school_roles.user_id").
@@ -70,4 +70,3 @@ func (s *SoulCronService) Start(ctx context.Context) {
 		}
 	}
 }
-
