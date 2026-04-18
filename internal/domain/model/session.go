@@ -33,11 +33,11 @@ type StudentSession struct {
 	ActiveSkill   string        `gorm:"size:100" json:"active_skill"`
 	Scaffold      ScaffoldLevel `gorm:"size:20" json:"scaffold_level"`
 	SkillState    *string       `gorm:"type:jsonb" json:"skill_state,omitempty"` // 技能级会话状态 (e.g., FallacySessionState)
-	IsSandbox   bool          `gorm:"default:false" json:"is_sandbox"`         // 沙盒预览会话标记 (design.md §5.1 Step 3)
-	Status      SessionStatus `gorm:"size:20;default:active" json:"status"`
-	Mode        SessionMode   `gorm:"size:20;default:'socratic'" json:"mode"` // socratic | testing
-	StartedAt   time.Time     `json:"started_at"`
-	EndedAt     *time.Time    `json:"ended_at,omitempty"`
+	IsSandbox     bool          `gorm:"default:false" json:"is_sandbox"`         // 沙盒预览会话标记 (design.md §5.1 Step 3)
+	Status        SessionStatus `gorm:"size:20;default:active" json:"status"`
+	Mode          SessionMode   `gorm:"size:20;default:'socratic'" json:"mode"` // socratic | testing
+	StartedAt     time.Time     `json:"started_at"`
+	EndedAt       *time.Time    `json:"ended_at,omitempty"`
 }
 
 // Interaction AI 交互记录表。

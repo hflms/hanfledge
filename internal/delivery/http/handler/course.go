@@ -203,7 +203,6 @@ func (h *CourseHandler) UploadMaterial(c *gin.Context) {
 		return
 	}
 
-
 	// Trigger KA-RAG pipeline asynchronously
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -489,18 +488,16 @@ func (h *CourseHandler) RetryDocument(c *gin.Context) {
 	// Resolve local path for PDF text extraction
 	filePath, _ := h.Storage.URL(ctx, doc.FilePath)
 
-
 	// Delete old chunks before reprocessing
 	if err := h.Docs.DeleteChunksByDocumentID(ctx, doc.ID); err != nil {
 		slogCourse.Warn("failed to delete old chunks", "doc_id", doc.ID, "err", err)
 	}
 
 	if err := h.Docs.UpdateFields(ctx, doc.ID, map[string]interface{}{
-		"status":     model.DocStatusProcessing,
+		"status": model.DocStatusProcessing,
 	}); err != nil {
 		slogCourse.Warn("failed to update doc to processing", "doc_id", doc.ID, "err", err)
 	}
-
 
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

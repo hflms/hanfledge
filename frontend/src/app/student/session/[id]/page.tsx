@@ -380,7 +380,7 @@ export default function SessionPage() {
         // UI Optimistic update
         addMessage({
             id: generateId('u'),
-            role: 'user',
+            role: 'student',
             content: text,
             timestamp: Date.now(),
         });

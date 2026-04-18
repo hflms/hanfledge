@@ -34,8 +34,8 @@ func (h *SoulHandler) GetSoul(c *gin.Context) {
 	h.db.Where("is_active = ?", true).First(&activeVersion)
 
 	c.JSON(http.StatusOK, gin.H{
-		"content": string(content),
-		"version": activeVersion.Version,
+		"content":    string(content),
+		"version":    activeVersion.Version,
 		"updated_at": activeVersion.CreatedAt,
 	})
 }
@@ -148,7 +148,7 @@ func (h *SoulHandler) Evolve(c *gin.Context) {
 	// It analyzes recent teaching data and suggests soul.md updates
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": "evolution_analysis_started",
+		"status":  "evolution_analysis_started",
 		"message": "系统正在分析教学数据，稍后将生成优化建议",
 	})
 

@@ -56,8 +56,8 @@ type KnowledgePointTarget struct {
 type DesignerStrategy struct {
 	ID                 string                 `json:"id"`
 	Name               string                 `json:"name"`
-	InterventionStyle  string                 `json:"intervention_style"` // questioning | coaching | diagnostic | facilitation
-	SkillCoordination  string                 `json:"skill_coordination"` // sequential | parallel | adaptive | cyclic
+	InterventionStyle  string                 `json:"intervention_style"`  // questioning | coaching | diagnostic | facilitation
+	SkillCoordination  string                 `json:"skill_coordination"`  // sequential | parallel | adaptive | cyclic
 	ScaffoldPreference string                 `json:"scaffold_preference"` // high | medium | low | dynamic
 	Config             map[string]interface{} `json:"config,omitempty"`
 }

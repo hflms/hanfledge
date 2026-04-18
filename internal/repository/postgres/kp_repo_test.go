@@ -29,6 +29,8 @@ func setupTestDB_kp(t *testing.T) *gorm.DB {
 		&model.KnowledgePoint{},
 		&model.Misconception{},
 		&model.CrossLink{},
+		&model.StudentKPMastery{},
+		&model.ErrorNotebookEntry{},
 	)
 	if err != nil {
 		t.Fatalf("AutoMigrate failed: %v", err)
