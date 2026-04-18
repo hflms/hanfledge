@@ -152,23 +152,41 @@ func (h *AchievementHandler) EvaluateDeepInquiry(studentID, sessionID uint) {
 	var defs []model.AchievementDefinition
 	h.DB.Where("type = ?", model.AchievementDeepInquiry).Order("threshold ASC").Find(&defs)
 
+	if len(defs) == 0 {
+		return
+	}
+
+	achievementIDs := make([]uint, len(defs))
+	for i, d := range defs {
+		achievementIDs[i] = d.ID
+	}
+
+	var existingRecords []model.StudentAchievement
+	h.DB.Where("student_id = ? AND achievement_id IN ?", studentID, achievementIDs).Find(&existingRecords)
+
+	recordMap := make(map[uint]*model.StudentAchievement)
+	for i := range existingRecords {
+		recordMap[existingRecords[i].AchievementID] = &existingRecords[i]
+	}
+
+	var toCreate []model.StudentAchievement
+
 	for _, d := range defs {
-		var rec model.StudentAchievement
-		result := h.DB.Where("student_id = ? AND achievement_id = ?", studentID, d.ID).First(&rec)
-		if result.Error != nil {
+		rec, exists := recordMap[d.ID]
+		if !exists {
 			// Create new record
-			rec = model.StudentAchievement{
+			newRec := model.StudentAchievement{
 				StudentID:     studentID,
 				AchievementID: d.ID,
 				Progress:      int(turnCount),
 			}
 			if int(turnCount) >= d.Threshold {
-				rec.Unlocked = true
+				newRec.Unlocked = true
 				now := time.Now()
-				rec.UnlockedAt = &now
+				newRec.UnlockedAt = &now
 				slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "turns", turnCount)
 			}
-			h.DB.Create(&rec)
+			toCreate = append(toCreate, newRec)
 		} else {
 			// Update only if new count is higher
 			if int(turnCount) > rec.Progress {
@@ -179,9 +197,13 @@ func (h *AchievementHandler) EvaluateDeepInquiry(studentID, sessionID uint) {
 					rec.UnlockedAt = &now
 					slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "turns", turnCount)
 				}
-				h.DB.Save(&rec)
+				h.DB.Save(rec)
 			}
 		}
+	}
+
+	if len(toCreate) > 0 {
+		h.DB.Create(&toCreate)
 	}
 }
 
@@ -196,23 +218,41 @@ func (h *AchievementHandler) updateAchievementProgress(studentID uint, achieveme
 	var defs []model.AchievementDefinition
 	h.DB.Where("type = ?", achievementType).Order("threshold ASC").Find(&defs)
 
+	if len(defs) == 0 {
+		return
+	}
+
+	achievementIDs := make([]uint, len(defs))
+	for i, d := range defs {
+		achievementIDs[i] = d.ID
+	}
+
+	var existingRecords []model.StudentAchievement
+	h.DB.Where("student_id = ? AND achievement_id IN ?", studentID, achievementIDs).Find(&existingRecords)
+
+	recordMap := make(map[uint]*model.StudentAchievement)
+	for i := range existingRecords {
+		recordMap[existingRecords[i].AchievementID] = &existingRecords[i]
+	}
+
+	var toCreate []model.StudentAchievement
+
 	for _, d := range defs {
-		var rec model.StudentAchievement
-		result := h.DB.Where("student_id = ? AND achievement_id = ?", studentID, d.ID).First(&rec)
-		if result.Error != nil {
+		rec, exists := recordMap[d.ID]
+		if !exists {
 			// Create new record
-			rec = model.StudentAchievement{
+			newRec := model.StudentAchievement{
 				StudentID:     studentID,
 				AchievementID: d.ID,
 				Progress:      value,
 			}
 			if value >= d.Threshold {
-				rec.Unlocked = true
+				newRec.Unlocked = true
 				now := time.Now()
-				rec.UnlockedAt = &now
+				newRec.UnlockedAt = &now
 				slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "value", value)
 			}
-			h.DB.Create(&rec)
+			toCreate = append(toCreate, newRec)
 		} else {
 			// Update progress (use max for cumulative achievements)
 			if value > rec.Progress {
@@ -224,7 +264,11 @@ func (h *AchievementHandler) updateAchievementProgress(studentID uint, achieveme
 				rec.UnlockedAt = &now
 				slogAchieve.Info("achievement unlocked", "student_id", studentID, "name", d.Name, "value", rec.Progress)
 			}
-			h.DB.Save(&rec)
+			h.DB.Save(rec)
 		}
+	}
+
+	if len(toCreate) > 0 {
+		h.DB.Create(&toCreate)
 	}
 }
