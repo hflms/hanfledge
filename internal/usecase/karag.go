@@ -406,6 +406,7 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 
 	// Create prerequisite and related relationships
 	if e.Neo4j != nil {
+		var crossLinks []model.CrossLink
 		for _, ch := range outline.Chapters {
 			for _, kpData := range ch.KnowledgePoints {
 				fromID, ok := kpTitleToID[kpData.Title]
@@ -422,19 +423,23 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 				// Related Points
 				for _, related := range kpData.RelatedPoints {
 					if toID, ok := kpTitleToID[related.Title]; ok {
-						// Create in PG
 						crossLink := model.CrossLink{
 							FromKPID: fromID,
 							ToKPID:   toID,
 							LinkType: related.LinkType,
 							Weight:   1.0,
 						}
-						e.DB.Create(&crossLink)
+						crossLinks = append(crossLinks, crossLink)
 						// Create in Neo4j
 						e.Neo4j.CreateCrossLink(ctx, fromID, toID, related.LinkType, 1.0)
 					}
 				}
 			}
+		}
+
+		// Bulk insert in PG
+		if len(crossLinks) > 0 {
+			e.DB.Create(&crossLinks)
 		}
 	}
 
