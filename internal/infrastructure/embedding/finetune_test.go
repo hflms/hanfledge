@@ -1,9 +1,29 @@
 package embedding
 
 import (
+	"context"
 	"math"
 	"testing"
+
+	"github.com/hflms/hanfledge/internal/infrastructure/llm"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+type mockLLMProvider struct{}
+
+func (m *mockLLMProvider) Name() string { return "mock" }
+func (m *mockLLMProvider) Chat(ctx context.Context, messages []llm.ChatMessage, opts *llm.ChatOptions) (string, error) {
+	return "", nil
+}
+func (m *mockLLMProvider) StreamChat(ctx context.Context, messages []llm.ChatMessage, opts *llm.ChatOptions, onToken func(token string)) (string, error) {
+	return "", nil
+}
+func (m *mockLLMProvider) Embed(ctx context.Context, text string) ([]float64, error) { return nil, nil }
+func (m *mockLLMProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	return nil, nil
+}
 
 // -- cosineSimilarity ---------------------------------------------
 
@@ -68,10 +88,22 @@ func TestDefaultInfoNCEConfig(t *testing.T) {
 // -- NewFineTunePipeline ------------------------------------------
 
 func TestNewFineTunePipeline(t *testing.T) {
-	p := NewFineTunePipeline(nil, nil)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("failed to open in-memory db: %v", err)
+	}
+	mockProvider := &mockLLMProvider{}
+
+	p := NewFineTunePipeline(db, mockProvider)
 
 	if p == nil {
 		t.Fatal("expected non-nil FineTunePipeline")
+	}
+	if p.DB != db {
+		t.Errorf("expected DB to be set correctly")
+	}
+	if p.LLM != mockProvider {
+		t.Errorf("expected LLM to be set correctly")
 	}
 	if p.OutputDir != "data/embedding-finetune" {
 		t.Errorf("expected OutputDir=data/embedding-finetune, got %q", p.OutputDir)
