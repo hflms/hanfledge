@@ -97,7 +97,7 @@ func (r *UserRepo) FindRoleByName(ctx context.Context, name model.RoleName) (*mo
 func (r *UserRepo) FindStudentClassIDs(ctx context.Context, studentID uint) ([]uint, error) {
 	var classIDs []uint
 	err := r.DB.WithContext(ctx).
-		Raw("SELECT class_id FROM class_students WHERE user_id = ?", studentID).
+		Raw("SELECT class_id FROM class_students WHERE student_id = ?", studentID).
 		Scan(&classIDs).Error
 	return classIDs, err
 }
