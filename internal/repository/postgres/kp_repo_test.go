@@ -14,7 +14,7 @@ import (
 
 // setupTestDB creates an in-memory SQLite database and auto-migrates the
 // tables needed for tests.
-func setupKPTestDB(t *testing.T) *gorm.DB {
+func setupTestDB_1(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
@@ -40,7 +40,7 @@ func setupKPTestDB(t *testing.T) *gorm.DB {
 }
 
 func TestKnowledgePointRepo_FindByID(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
@@ -65,7 +65,7 @@ func TestKnowledgePointRepo_FindByID(t *testing.T) {
 }
 
 func TestKnowledgePointRepo_FindByCourseID(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
@@ -104,7 +104,7 @@ func TestKnowledgePointRepo_FindByCourseID(t *testing.T) {
 }
 
 func TestKnowledgePointRepo_FindIDsByCourseID(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
@@ -127,7 +127,7 @@ func TestKnowledgePointRepo_FindIDsByCourseID(t *testing.T) {
 }
 
 func TestKnowledgePointRepo_FindByIDs(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
@@ -150,7 +150,7 @@ func TestKnowledgePointRepo_FindByIDs(t *testing.T) {
 }
 
 func TestKnowledgePointRepo_FindByIDsWithChapter(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
@@ -178,7 +178,7 @@ func TestKnowledgePointRepo_FindByIDsWithChapter(t *testing.T) {
 }
 
 func TestKnowledgePointRepo_FindWithChapterTitles(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
@@ -208,7 +208,7 @@ func TestKnowledgePointRepo_FindWithChapterTitles(t *testing.T) {
 }
 
 func TestKnowledgePointRepo_Misconceptions(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
@@ -272,7 +272,7 @@ func TestKnowledgePointRepo_Misconceptions(t *testing.T) {
 }
 
 func TestKnowledgePointRepo_CrossLinks(t *testing.T) {
-	db := setupKPTestDB(t)
+	db := setupTestDB_1(t)
 	repo := NewKnowledgePointRepo(db)
 	ctx := context.Background()
 
