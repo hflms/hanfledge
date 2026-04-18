@@ -7,6 +7,27 @@ import (
 
 // ── Injection Guard Tests ───────────────────────────────────
 
+func TestNewInjectionGuard(t *testing.T) {
+	guard := NewInjectionGuard()
+	if guard == nil {
+		t.Fatal("Expected NewInjectionGuard to return a non-nil guard")
+	}
+
+	// Basic validation of the internal state setup
+	if guard.maxInputLength <= 0 {
+		t.Errorf("Expected maxInputLength to be initialized, got %d", guard.maxInputLength)
+	}
+	if len(guard.keywordBlacklist) == 0 {
+		t.Errorf("Expected keywordBlacklist to be initialized with keywords")
+	}
+	if len(guard.regexPatterns) == 0 {
+		t.Errorf("Expected regexPatterns to be initialized")
+	}
+	if len(guard.regexPatterns) != len(guard.regexDescriptions) {
+		t.Errorf("Expected regexPatterns and regexDescriptions to have the same length")
+	}
+}
+
 func TestInjectionGuard_SafeInput(t *testing.T) {
 	guard := NewInjectionGuard()
 

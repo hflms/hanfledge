@@ -29,7 +29,7 @@ const (
 func RespondError(c *gin.Context, status int, code string, details ...interface{}) {
 	locale := i18n.GetLocale(c)
 	translator := c.MustGet("translator").(*i18n.Translator)
-	
+
 	message := translator.T(locale, code)
 	if message == code {
 		// Fallback if translation not found
