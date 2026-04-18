@@ -271,3 +271,93 @@ func newTestDashboardHandler(db *gorm.DB) *DashboardHandler {
 		pgRepo.NewActivityRepo(db),
 	)
 }
+
+func setupTestDBBench(b *testing.B) *gorm.DB {
+	b.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	if err != nil {
+		b.Fatalf("failed to open sqlite in-memory db: %v", err)
+	}
+
+	err = db.AutoMigrate(
+		&model.User{},
+		&model.School{},
+		&model.Class{},
+		&model.Role{},
+		&model.UserSchoolRole{},
+		&model.ClassStudent{},
+		&model.Course{},
+		&model.Chapter{},
+		&model.KnowledgePoint{},
+		&model.LearningActivity{},
+		&model.StudentKPMastery{},
+		&model.StudentSession{},
+		&model.Interaction{},
+		&model.StudentAchievement{},
+		&model.AchievementDefinition{},
+	)
+	if err != nil {
+		b.Fatalf("failed to auto migrate: %v", err)
+	}
+
+	return db
+}
+
+func seedUserBench(b *testing.B, db *gorm.DB, phone, password, name string, status model.UserStatus) model.User {
+	b.Helper()
+	user := model.User{Phone: phone, PasswordHash: password, DisplayName: name, Status: status}
+	if err := db.Create(&user).Error; err != nil {
+		b.Fatalf("failed to seed user: %v", err)
+	}
+	return user
+}
+
+func seedCourseBench(b *testing.B, db *gorm.DB, teacherID uint, title string) model.Course {
+	b.Helper()
+	course := model.Course{TeacherID: teacherID, Title: title, Status: model.CourseStatusPublished}
+	if err := db.Create(&course).Error; err != nil {
+		b.Fatalf("failed to seed course: %v", err)
+	}
+	return course
+}
+
+func seedChapterBench(b *testing.B, db *gorm.DB, courseID uint, title string, order int) model.Chapter {
+	b.Helper()
+	chapter := model.Chapter{CourseID: courseID, Title: title, SortOrder: order}
+	if err := db.Create(&chapter).Error; err != nil {
+		b.Fatalf("failed to seed chapter: %v", err)
+	}
+	return chapter
+}
+
+func seedKPBench(b *testing.B, db *gorm.DB, chapterID uint, title string) model.KnowledgePoint {
+	b.Helper()
+	kp := model.KnowledgePoint{ChapterID: chapterID, Title: title}
+	if err := db.Create(&kp).Error; err != nil {
+		b.Fatalf("failed to seed kp: %v", err)
+	}
+	return kp
+}
+
+func seedActivityBench(b *testing.B, db *gorm.DB, teacherID, courseID uint, title string) model.LearningActivity {
+	b.Helper()
+	act := model.LearningActivity{
+		TeacherID: teacherID, CourseID: courseID,
+		Title: title, Status: model.ActivityStatusPublished,
+	}
+	if err := db.Create(&act).Error; err != nil {
+		b.Fatalf("failed to seed activity: %v", err)
+	}
+	return act
+}
+
+func seedSessionBench(b *testing.B, db *gorm.DB, studentID, actID, kpID uint, status model.SessionStatus) model.StudentSession {
+	b.Helper()
+	sess := model.StudentSession{StudentID: studentID, ActivityID: actID, CurrentKP: kpID, Status: status}
+	if err := db.Create(&sess).Error; err != nil {
+		b.Fatalf("failed to seed session: %v", err)
+	}
+	return sess
+}
