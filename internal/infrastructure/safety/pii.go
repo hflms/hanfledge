@@ -10,7 +10,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var slogPII = logger.L("PIIRedactor")
+var (
+	slogPII         = logger.L("PIIRedactor")
+	logPhonePattern = regexp.MustCompile(`(1[3-9]\d)\d{4}(\d{4})`)
+)
 
 // ============================
 // PII 脱敏处理器
@@ -238,7 +241,6 @@ func RedactForLog(text string, maxLen int) string {
 		text = string([]rune(text)[:maxLen]) + "..."
 	}
 	// 对日志中的手机号进行部分遮蔽
-	phonePattern := regexp.MustCompile(`(1[3-9]\d)\d{4}(\d{4})`)
-	text = phonePattern.ReplaceAllString(text, "${1}****${2}")
+	text = logPhonePattern.ReplaceAllString(text, "${1}****${2}")
 	return fmt.Sprintf("%q", text)
 }
