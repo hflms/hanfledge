@@ -231,3 +231,57 @@ func TestAchievementHandler_EvaluateFallacyHunter(t *testing.T) {
 		}
 	})
 }
+
+// -- Benchmarks ----------------------------------------
+
+func seedAchievementDefsBench(b *testing.B, db *gorm.DB) {
+	b.Helper()
+	defs := []model.AchievementDefinition{
+		{ID: 1, Type: model.AchievementStreakBreaker, Tier: model.TierBronze, Name: "初露锋芒", Description: "连续掌握 3 个知识点", Icon: "🔥", Threshold: 3, SortOrder: 1},
+		{ID: 2, Type: model.AchievementStreakBreaker, Tier: model.TierSilver, Name: "势如破竹", Description: "连续掌握 5 个知识点", Icon: "⚡", Threshold: 5, SortOrder: 2},
+		{ID: 3, Type: model.AchievementStreakBreaker, Tier: model.TierGold, Name: "一往无前", Description: "连续掌握 10 个知识点", Icon: "🌟", Threshold: 10, SortOrder: 3},
+		{ID: 4, Type: model.AchievementStreakBreaker, Tier: model.TierDiamond, Name: "学霸无双", Description: "连续掌握 20 个知识点", Icon: "💎", Threshold: 20, SortOrder: 4},
+		{ID: 5, Type: model.AchievementDeepInquiry, Tier: model.TierBronze, Name: "好奇宝宝", Description: "单次会话中追问 5 轮", Icon: "🔍", Threshold: 5, SortOrder: 5},
+		{ID: 6, Type: model.AchievementDeepInquiry, Tier: model.TierSilver, Name: "刨根问底", Description: "单次会话中追问 10 轮", Icon: "🧐", Threshold: 10, SortOrder: 6},
+		{ID: 7, Type: model.AchievementDeepInquiry, Tier: model.TierGold, Name: "思维深潜", Description: "单次会话中追问 15 轮", Icon: "🧠", Threshold: 15, SortOrder: 7},
+		{ID: 8, Type: model.AchievementDeepInquiry, Tier: model.TierDiamond, Name: "追问大师", Description: "单次会话中追问 20 轮", Icon: "💡", Threshold: 20, SortOrder: 8},
+		{ID: 9, Type: model.AchievementFallacyHunt, Tier: model.TierBronze, Name: "火眼金睛", Description: "累计识别 3 个谬误", Icon: "🎯", Threshold: 3, SortOrder: 9},
+		{ID: 10, Type: model.AchievementFallacyHunt, Tier: model.TierSilver, Name: "明察秋毫", Description: "累计识别 10 个谬误", Icon: "🔎", Threshold: 10, SortOrder: 10},
+		{ID: 11, Type: model.AchievementFallacyHunt, Tier: model.TierGold, Name: "谬误克星", Description: "累计识别 20 个谬误", Icon: "🛡️", Threshold: 20, SortOrder: 11},
+		{ID: 12, Type: model.AchievementFallacyHunt, Tier: model.TierDiamond, Name: "真理守护者", Description: "累计识别 50 个谬误", Icon: "👑", Threshold: 50, SortOrder: 12},
+	}
+	for _, d := range defs {
+		if err := db.Create(&d).Error; err != nil {
+			b.Fatalf("seedAchievementDefs failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkAchievementHandler_EvaluateDeepInquiry(b *testing.B) {
+	db := setupTestDBBench(b)
+	// Suppress logs during benchmark
+	db.Logger = db.Logger.LogMode(1) // Silent
+
+	seedAchievementDefsBench(b, db)
+	student := seedUserBench(b, db, "13800005555", "pass123", "测速学生", model.UserStatusActive)
+	course := seedCourseBench(b, db, 1, "数学")
+	ch := seedChapterBench(b, db, course.ID, "代数", 1)
+	kp := seedKPBench(b, db, ch.ID, "方程")
+	act := seedActivityBench(b, db, 1, course.ID, "方程练习")
+	sess := seedSessionBench(b, db, student.ID, act.ID, kp.ID, model.SessionStatusActive)
+
+	h := NewAchievementHandler(db)
+
+	// Create some interactions
+	for i := 0; i < 15; i++ {
+		db.Create(&model.Interaction{
+			SessionID: sess.ID, Role: "student",
+			Content: "问题", CreatedAt: time.Now(),
+		})
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		h.EvaluateDeepInquiry(student.ID, sess.ID)
+	}
+}
