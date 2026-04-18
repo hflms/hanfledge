@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func setupTestDB(t *testing.T) *gorm.DB {
+func setupTestDBForUserRepo(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
@@ -29,14 +29,14 @@ func setupTestDB(t *testing.T) *gorm.DB {
 }
 
 func TestNewUserRepo(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBForUserRepo(t)
 	repo := NewUserRepo(db)
 	assert.NotNil(t, repo)
 	assert.Equal(t, db, repo.DB)
 }
 
 func TestUserRepo_SchoolOperations(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBForUserRepo(t)
 	repo := NewUserRepo(db)
 	ctx := context.Background()
 
@@ -73,7 +73,7 @@ func TestUserRepo_SchoolOperations(t *testing.T) {
 }
 
 func TestUserRepo_ClassOperations(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBForUserRepo(t)
 	repo := NewUserRepo(db)
 	ctx := context.Background()
 
@@ -116,7 +116,7 @@ func TestUserRepo_ClassOperations(t *testing.T) {
 }
 
 func TestUserRepo_UserOperations(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBForUserRepo(t)
 	repo := NewUserRepo(db)
 	ctx := context.Background()
 
@@ -190,7 +190,7 @@ func TestUserRepo_UserOperations(t *testing.T) {
 }
 
 func TestUserRepo_FindRoleByName(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBForUserRepo(t)
 	repo := NewUserRepo(db)
 	ctx := context.Background()
 
@@ -206,7 +206,7 @@ func TestUserRepo_FindRoleByName(t *testing.T) {
 }
 
 func TestUserRepo_ClassStudentOperations(t *testing.T) {
-	db := setupTestDB(t)
+	db := setupTestDBForUserRepo(t)
 	repo := NewUserRepo(db)
 	ctx := context.Background()
 

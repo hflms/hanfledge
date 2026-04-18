@@ -237,3 +237,11 @@ func TestPIIRedactor_sortByLengthDesc(t *testing.T) {
 	sortByLengthDesc(strs2)
 	assert.Equal(t, []string{"测试中文", "中文", "字"}, strs2)
 }
+
+func BenchmarkRedactForLog(b *testing.B) {
+	text := "User phone is 13812345678 and another phone is 13987654321"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		RedactForLog(text, 100)
+	}
+}
