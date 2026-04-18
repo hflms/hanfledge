@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -17,6 +18,137 @@ import (
 type KnowledgeGraphHandler struct {
 	DB    *gorm.DB
 	Neo4j *neo4jRepo.Client
+}
+
+func (h *KnowledgeGraphHandler) loadCourseWithChapters(courseID uint64) (model.Course, error) {
+	var course model.Course
+	err := h.DB.Preload("Chapters", func(db *gorm.DB) *gorm.DB {
+		return db.Order("sort_order ASC")
+	}).Preload("Chapters.KnowledgePoints").
+		First(&course, courseID).Error
+	return course, err
+}
+
+func collectKPIDs(course model.Course) ([]uint, map[uint]string) {
+	var allKPIDs []uint
+	chapterMap := make(map[uint]string) // chapterID -> title
+	for _, ch := range course.Chapters {
+		chapterMap[ch.ID] = ch.Title
+		for _, kp := range ch.KnowledgePoints {
+			allKPIDs = append(allKPIDs, kp.ID)
+		}
+	}
+	return allKPIDs, chapterMap
+}
+
+func (h *KnowledgeGraphHandler) loadStudentMasteryMap(studentID uint, allKPIDs []uint) map[uint]model.StudentKPMastery {
+	var masteries []model.StudentKPMastery
+	h.DB.Where("student_id = ? AND kp_id IN ?", studentID, allKPIDs).Find(&masteries)
+	masteryMap := make(map[uint]model.StudentKPMastery)
+	for _, m := range masteries {
+		masteryMap[m.KPID] = m
+	}
+	return masteryMap
+}
+
+func buildStudentNodes(course model.Course, masteryMap map[uint]model.StudentKPMastery, allKPIDs []uint) ([]KnowledgeMapNode, float64, int, int) {
+	nodes := make([]KnowledgeMapNode, 0, len(allKPIDs))
+	var totalMastery float64
+	var masteryCount int
+	var masteredCnt, weakCnt int
+
+	for _, ch := range course.Chapters {
+		for _, kp := range ch.KnowledgePoints {
+			node := KnowledgeMapNode{
+				ID:           kp.ID,
+				Neo4jID:      kp.Neo4jNodeID,
+				Title:        kp.Title,
+				Description:  kp.Description,
+				ChapterID:    ch.ID,
+				ChapterTitle: ch.Title,
+				Difficulty:   kp.Difficulty,
+				IsKeyPoint:   kp.IsKeyPoint,
+				Mastery:      -1, // no data
+			}
+			if m, ok := masteryMap[kp.ID]; ok {
+				node.Mastery = m.MasteryScore
+				node.AttemptCount = m.AttemptCount
+				totalMastery += m.MasteryScore
+				masteryCount++
+				if m.MasteryScore >= 0.8 {
+					masteredCnt++
+				}
+				if m.MasteryScore < 0.4 && m.AttemptCount > 0 {
+					weakCnt++
+				}
+			}
+			// If Neo4jNodeID is empty, generate the expected ID
+			if node.Neo4jID == "" {
+				node.Neo4jID = fmt.Sprintf("kp_%d", kp.ID)
+			}
+			nodes = append(nodes, node)
+		}
+	}
+
+	avgMastery := 0.0
+	if masteryCount > 0 {
+		avgMastery = totalMastery / float64(masteryCount)
+	}
+
+	return nodes, avgMastery, masteredCnt, weakCnt
+}
+
+func buildCourseNodes(course model.Course, allKPIDs []uint) []KnowledgeMapNode {
+	nodes := make([]KnowledgeMapNode, 0, len(allKPIDs))
+	for _, ch := range course.Chapters {
+		for _, kp := range ch.KnowledgePoints {
+			node := KnowledgeMapNode{
+				ID:           kp.ID,
+				Neo4jID:      kp.Neo4jNodeID,
+				Title:        kp.Title,
+				Description:  kp.Description,
+				ChapterID:    ch.ID,
+				ChapterTitle: ch.Title,
+				Difficulty:   kp.Difficulty,
+				IsKeyPoint:   kp.IsKeyPoint,
+				Mastery:      -1, // no data for teacher view
+				AttemptCount: 0,
+			}
+			if node.Neo4jID == "" {
+				node.Neo4jID = fmt.Sprintf("kp_%d", kp.ID)
+			}
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
+func (h *KnowledgeGraphHandler) fetchCourseEdges(ctx context.Context, courseID uint64, nodes []KnowledgeMapNode) []KnowledgeMapEdge {
+	var edges []KnowledgeMapEdge
+	if h.Neo4j != nil {
+		graphEdges, err := h.Neo4j.GetCourseGraphEdges(ctx, uint(courseID))
+		if err == nil {
+			// Build a set of valid neo4j IDs for filtering
+			validIDs := make(map[string]bool)
+			for _, n := range nodes {
+				validIDs[n.Neo4jID] = true
+			}
+			for _, ge := range graphEdges {
+				// Only include edges where both endpoints are in our node set
+				if validIDs[ge.FromID] && validIDs[ge.ToID] {
+					edges = append(edges, KnowledgeMapEdge{
+						Source: ge.FromID,
+						Target: ge.ToID,
+						Type:   ge.Type,
+					})
+				}
+			}
+		}
+	}
+	if edges == nil {
+		edges = []KnowledgeMapEdge{}
+	}
+	return edges
 }
 
 // NewKnowledgeGraphHandler creates a new KnowledgeGraphHandler.
@@ -463,25 +595,14 @@ func (h *KnowledgeGraphHandler) GetStudentKnowledgeMap(c *gin.Context) {
 	}
 
 	// 1. Load course with chapters and knowledge points
-	var course model.Course
-	if err := h.DB.Preload("Chapters", func(db *gorm.DB) *gorm.DB {
-		return db.Order("sort_order ASC")
-	}).Preload("Chapters.KnowledgePoints").
-		First(&course, courseID).Error; err != nil {
+	course, err := h.loadCourseWithChapters(courseID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
 		return
 	}
 
 	// 2. Collect all KP IDs and build nodes
-	var allKPIDs []uint
-	chapterMap := make(map[uint]string) // chapterID -> title
-	for _, ch := range course.Chapters {
-		chapterMap[ch.ID] = ch.Title
-		for _, kp := range ch.KnowledgePoints {
-			allKPIDs = append(allKPIDs, kp.ID)
-		}
-	}
-
+	allKPIDs, _ := collectKPIDs(course)
 	if len(allKPIDs) == 0 {
 		c.JSON(http.StatusOK, KnowledgeMapResponse{
 			CourseID:    uint(courseID),
@@ -493,84 +614,13 @@ func (h *KnowledgeGraphHandler) GetStudentKnowledgeMap(c *gin.Context) {
 	}
 
 	// 3. Load student mastery for all KPs in this course
-	var masteries []model.StudentKPMastery
-	h.DB.Where("student_id = ? AND kp_id IN ?", studentID, allKPIDs).Find(&masteries)
-	masteryMap := make(map[uint]model.StudentKPMastery)
-	for _, m := range masteries {
-		masteryMap[m.KPID] = m
-	}
+	masteryMap := h.loadStudentMasteryMap(studentID, allKPIDs)
 
 	// 4. Build graph nodes
-	nodes := make([]KnowledgeMapNode, 0, len(allKPIDs))
-	var totalMastery float64
-	var masteryCount int
-	var masteredCnt, weakCnt int
-
-	for _, ch := range course.Chapters {
-		for _, kp := range ch.KnowledgePoints {
-			node := KnowledgeMapNode{
-				ID:           kp.ID,
-				Neo4jID:      kp.Neo4jNodeID,
-				Title:        kp.Title,
-				Description:  kp.Description,
-				ChapterID:    ch.ID,
-				ChapterTitle: ch.Title,
-				Difficulty:   kp.Difficulty,
-				IsKeyPoint:   kp.IsKeyPoint,
-				Mastery:      -1, // no data
-			}
-			if m, ok := masteryMap[kp.ID]; ok {
-				node.Mastery = m.MasteryScore
-				node.AttemptCount = m.AttemptCount
-				totalMastery += m.MasteryScore
-				masteryCount++
-				if m.MasteryScore >= 0.8 {
-					masteredCnt++
-				}
-				if m.MasteryScore < 0.4 && m.AttemptCount > 0 {
-					weakCnt++
-				}
-			}
-			// If Neo4jNodeID is empty, generate the expected ID
-			if node.Neo4jID == "" {
-				node.Neo4jID = fmt.Sprintf("kp_%d", kp.ID)
-			}
-			nodes = append(nodes, node)
-		}
-	}
+	nodes, avgMastery, masteredCnt, weakCnt := buildStudentNodes(course, masteryMap, allKPIDs)
 
 	// 5. Get graph edges from Neo4j
-	var edges []KnowledgeMapEdge
-	if h.Neo4j != nil {
-		graphEdges, err := h.Neo4j.GetCourseGraphEdges(c.Request.Context(), uint(courseID))
-		if err == nil {
-			// Build a set of valid neo4j IDs for filtering
-			validIDs := make(map[string]bool)
-			for _, n := range nodes {
-				validIDs[n.Neo4jID] = true
-			}
-			for _, ge := range graphEdges {
-				// Only include edges where both endpoints are in our node set
-				if validIDs[ge.FromID] && validIDs[ge.ToID] {
-					edges = append(edges, KnowledgeMapEdge{
-						Source: ge.FromID,
-						Target: ge.ToID,
-						Type:   ge.Type,
-					})
-				}
-			}
-		}
-	}
-
-	// 6. Compute average mastery
-	avgMastery := 0.0
-	if masteryCount > 0 {
-		avgMastery = totalMastery / float64(masteryCount)
-	}
-
-	if edges == nil {
-		edges = []KnowledgeMapEdge{}
-	}
+	edges := h.fetchCourseEdges(c.Request.Context(), courseID, nodes)
 
 	c.JSON(http.StatusOK, KnowledgeMapResponse{
 		CourseID:    uint(courseID),
@@ -606,23 +656,14 @@ func (h *KnowledgeGraphHandler) GetCourseKnowledgeGraph(c *gin.Context) {
 	}
 
 	// 1. Load course with chapters and knowledge points
-	var course model.Course
-	if err := h.DB.Preload("Chapters", func(db *gorm.DB) *gorm.DB {
-		return db.Order("sort_order ASC")
-	}).Preload("Chapters.KnowledgePoints").
-		First(&course, courseID).Error; err != nil {
+	course, err := h.loadCourseWithChapters(uint64(courseID))
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "课程不存在"})
 		return
 	}
 
 	// 2. Build nodes
-	var allKPIDs []uint
-	for _, ch := range course.Chapters {
-		for _, kp := range ch.KnowledgePoints {
-			allKPIDs = append(allKPIDs, kp.ID)
-		}
-	}
-
+	allKPIDs, _ := collectKPIDs(course)
 	if len(allKPIDs) == 0 {
 		c.JSON(http.StatusOK, KnowledgeMapResponse{
 			CourseID:    courseID,
@@ -633,52 +674,10 @@ func (h *KnowledgeGraphHandler) GetCourseKnowledgeGraph(c *gin.Context) {
 		return
 	}
 
-	nodes := make([]KnowledgeMapNode, 0, len(allKPIDs))
-	for _, ch := range course.Chapters {
-		for _, kp := range ch.KnowledgePoints {
-			node := KnowledgeMapNode{
-				ID:           kp.ID,
-				Neo4jID:      kp.Neo4jNodeID,
-				Title:        kp.Title,
-				Description:  kp.Description,
-				ChapterID:    ch.ID,
-				ChapterTitle: ch.Title,
-				Difficulty:   kp.Difficulty,
-				IsKeyPoint:   kp.IsKeyPoint,
-				Mastery:      -1, // no data for teacher view
-				AttemptCount: 0,
-			}
-			if node.Neo4jID == "" {
-				node.Neo4jID = fmt.Sprintf("kp_%d", kp.ID)
-			}
-			nodes = append(nodes, node)
-		}
-	}
+	nodes := buildCourseNodes(course, allKPIDs)
 
 	// 3. Get graph edges from Neo4j
-	var edges []KnowledgeMapEdge
-	if h.Neo4j != nil {
-		graphEdges, err := h.Neo4j.GetCourseGraphEdges(c.Request.Context(), courseID)
-		if err == nil {
-			validIDs := make(map[string]bool)
-			for _, n := range nodes {
-				validIDs[n.Neo4jID] = true
-			}
-			for _, ge := range graphEdges {
-				if validIDs[ge.FromID] && validIDs[ge.ToID] {
-					edges = append(edges, KnowledgeMapEdge{
-						Source: ge.FromID,
-						Target: ge.ToID,
-						Type:   ge.Type,
-					})
-				}
-			}
-		}
-	}
-
-	if edges == nil {
-		edges = []KnowledgeMapEdge{}
-	}
+	edges := h.fetchCourseEdges(c.Request.Context(), uint64(courseID), nodes)
 
 	c.JSON(http.StatusOK, KnowledgeMapResponse{
 		CourseID:    courseID,
