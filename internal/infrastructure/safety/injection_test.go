@@ -243,3 +243,32 @@ func TestInjectionGuard_RegexTruncation(t *testing.T) {
 		t.Errorf("Expected matched length 53, got %v", len(resultSep.Matched))
 	}
 }
+
+func TestInjectionGuard_InvalidRegex(t *testing.T) {
+	guard := NewInjectionGuard()
+
+	// Backup original patterns
+	originalPatterns := guard.regexPatterns
+	originalDescs := guard.regexDescriptions
+
+	// Test an invalid regex pattern to trigger the err != nil block
+	invalidPatterns := []struct {
+		pattern string
+		desc    string
+	}{
+		{`[unclosed-bracket`, "Invalid Pattern"},
+		{`valid-pattern`, "Valid Pattern"},
+	}
+
+	guard.loadRegexPatterns(invalidPatterns)
+
+	// Since the first pattern is invalid, it should be skipped.
+	// The length of patterns should be 1.
+	if len(guard.regexPatterns) != 1 {
+		t.Errorf("Expected 1 valid regex pattern, got %d", len(guard.regexPatterns))
+	}
+
+	// Restore original patterns if we reuse guard (not strictly necessary here as it's a local instance)
+	guard.regexPatterns = originalPatterns
+	guard.regexDescriptions = originalDescs
+}

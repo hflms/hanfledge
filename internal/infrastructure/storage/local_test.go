@@ -339,3 +339,39 @@ func TestLocalStorage_UploadDownloadRoundtrip(t *testing.T) {
 		t.Error("File should not exist after delete")
 	}
 }
+
+func TestLocalStorage_PathTraversal(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, _ := NewLocalStorage(tmpDir)
+	ctx := context.Background()
+
+	badKeys := []string{
+		"../test.txt",
+		"../../etc/passwd",
+		"/etc/passwd",
+		"subdir/../../test.txt", // cleans to ../test.txt
+	}
+
+	for _, key := range badKeys {
+		t.Run(key, func(t *testing.T) {
+			if err := s.Upload(ctx, key, bytes.NewReader([]byte("data")), "text/plain"); err == nil {
+				t.Errorf("Upload() should reject traversal: %s", key)
+			}
+			if _, err := s.Download(ctx, key); err == nil {
+				t.Errorf("Download() should reject traversal: %s", key)
+			}
+			if err := s.Delete(ctx, key); err == nil {
+				t.Errorf("Delete() should reject traversal: %s", key)
+			}
+			if _, err := s.Exists(ctx, key); err == nil {
+				t.Errorf("Exists() should reject traversal: %s", key)
+			}
+			if _, err := s.Info(ctx, key); err == nil {
+				t.Errorf("Info() should reject traversal: %s", key)
+			}
+			if _, err := s.URL(ctx, key); err == nil {
+				t.Errorf("URL() should reject traversal: %s", key)
+			}
+		})
+	}
+}

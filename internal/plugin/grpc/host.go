@@ -15,7 +15,7 @@ import (
 
 	"github.com/hflms/hanfledge/internal/infrastructure/logger"
 	googlegrpc "google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials/local"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -214,7 +214,7 @@ func (h *HostManager) HealthCheck(ctx context.Context, pluginID string) (bool, e
 	h.mu.RUnlock()
 
 	addr := fmt.Sprintf("localhost:%d", port)
-	conn, err := googlegrpc.NewClient(addr, googlegrpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := googlegrpc.NewClient(addr, googlegrpc.WithTransportCredentials(local.NewCredentials()))
 	if err != nil {
 		h.updateHealth(pluginID, false)
 		return false, fmt.Errorf("failed to connect to plugin %s: %w", pluginID, err)

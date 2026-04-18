@@ -1,44 +1,13 @@
 
 > frontend@0.1.0 dev /app/frontend
-> next dev
+> next dev --webpack
 
-▲ Next.js 16.1.6 (Turbopack)
+▲ Next.js 16.1.6 (webpack)
 - Local:         http://localhost:3000
 - Network:       http://192.168.0.2:3000
 
 ✓ Starting...
-Attention: Next.js now collects completely anonymous telemetry regarding usage.
-This information is used to shape Next.js' roadmap and prioritize features.
-You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
-https://nextjs.org/telemetry
-
-✓ Ready in 1224ms
-○ Compiling /teacher/settings ...
-⨯ ./src/app/globals.css:2:2
-Module not found: Can't resolve 'katex/dist/katex.min.css'
-[0m [90m 1 |[39m [33m@[39m[36mimport[39m url([32m'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'[39m)[33m;[39m
-[31m[1m>[22m[39m[90m 2 |[39m [33m@[39m[36mimport[39m url([32m'katex/dist/katex.min.css'[39m)[33m;[39m
- [90m   |[39m  [31m[1m^[22m[39m
- [90m 3 |[39m
- [90m 4 |[39m [33m:[39mroot {
- [90m 5 |[39m   [90m/* === Color System === */[39m[0m
-
-
-
-Import trace:
-  Client Component Browser:
-    ./src/app/globals.css [Client Component Browser]
-    ./src/app/layout.tsx [Server Component]
-
-https://nextjs.org/docs/messages/module-not-found
-
-
- GET /teacher/settings 500 in 10.9s (compile: 10.6s, render: 293ms)
-✓ Compiled in 180ms
- GET /login 200 in 1376ms (compile: 1042ms, render: 334ms)
- GET /login 200 in 81ms (compile: 6ms, render: 75ms)
- GET /login 200 in 67ms (compile: 4ms, render: 63ms)
- GET /login 200 in 71ms (compile: 5ms, render: 66ms)
- GET /teacher/settings 200 in 306ms (compile: 75ms, render: 231ms)
- GET /login 200 in 53ms (compile: 10ms, render: 43ms)
- GET /teacher/settings 200 in 80ms (compile: 7ms, render: 74ms)
+✓ Ready in 1829ms
+○ Compiling /teacher/dashboard ...
+ GET /teacher/dashboard 200 in 16.6s (compile: 16.0s, render: 596ms)
+ GET /login 200 in 1316ms (compile: 12ms, render: 1305ms)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/local"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -20,7 +21,7 @@ func TestHostManager_HealthCheck(t *testing.T) {
 	defer lis.Close()
 
 	port := lis.Addr().(*net.TCPAddr).Port
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.Creds(local.NewCredentials()))
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
