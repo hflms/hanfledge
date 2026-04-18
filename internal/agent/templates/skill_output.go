@@ -7,10 +7,10 @@ import (
 
 // SkillOutput 统一的技能输出结构。
 type SkillOutput struct {
-	SkillID  string                 `json:"skill_id"`
-	Phase    string                 `json:"phase,omitempty"`
-	Data     interface{}            `json:"data"`
-	Metadata *SkillOutputMetadata   `json:"metadata,omitempty"`
+	SkillID  string               `json:"skill_id"`
+	Phase    string               `json:"phase,omitempty"`
+	Data     interface{}          `json:"data"`
+	Metadata *SkillOutputMetadata `json:"metadata,omitempty"`
 }
 
 // SkillOutputMetadata 输出元数据。

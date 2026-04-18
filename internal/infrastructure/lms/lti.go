@@ -81,8 +81,6 @@ func NewLTI13Adapter(cfg LMSConfig) (*LTI13Adapter, error) {
 
 func (a *LTI13Adapter) Type() AdapterType { return AdapterLTI13 }
 
-
-
 func (a *LTI13Adapter) LaunchURL(ctx context.Context, req LaunchRequest) (*LaunchResponse, error) {
 	if a.privateKey == "" {
 		return nil, fmt.Errorf("LTI 1.3 private key is required for JWT signing")

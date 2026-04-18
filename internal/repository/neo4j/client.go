@@ -184,7 +184,7 @@ func (c *Client) GetKPContext(ctx context.Context, kpID uint, maxDepth int) ([]m
 		id, _ := record.Get("id")
 		title, _ := record.Get("title")
 		difficulty, _ := record.Get("difficulty")
-		
+
 		nodes = append(nodes, map[string]interface{}{
 			"id":         id,
 			"title":      title,

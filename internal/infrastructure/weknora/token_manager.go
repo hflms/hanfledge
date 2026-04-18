@@ -40,7 +40,7 @@ func NewTokenManager(client *Client, db *gorm.DB, redisCache *cache.RedisCache, 
 // It follows the cascade: Redis → DB → register+login, with automatic refresh.
 func (m *TokenManager) GetToken(ctx context.Context, userID uint) (string, error) {
 	slog.Debug("TokenManager.GetToken", "user_id", userID, "has_secret", m.secret != "")
-	
+
 	cacheKey := fmt.Sprintf("weknora:token:%d", userID)
 
 	// 1. Try Redis cache

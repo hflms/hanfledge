@@ -143,16 +143,16 @@ func (c *Client) SearchKnowledge(ctx context.Context, kbID string, query string,
 		"query": query,
 		"top_k": topK,
 	}
-	
+
 	var resp struct {
 		Data []SearchResult `json:"data"`
 	}
-	
+
 	path := fmt.Sprintf("/knowledge-bases/%s/search", kbID)
 	if err := c.doPost(ctx, path, req, &resp); err != nil {
 		return nil, fmt.Errorf("search kb %s: %w", kbID, err)
 	}
-	
+
 	return resp.Data, nil
 }
 

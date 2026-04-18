@@ -498,8 +498,8 @@ func (a *StrategistAgent) loadDesignerStrategy(designerID, configJSON string) *D
 	return &DesignerStrategy{
 		ID:                 designer.ID,
 		Name:               designer.Name,
-		SkillCoordination:  "adaptive",                        // 默认自适应协调
-		ScaffoldPreference: "dynamic",                         // 默认动态支架
+		SkillCoordination:  "adaptive", // 默认自适应协调
+		ScaffoldPreference: "dynamic",  // 默认动态支架
 		InterventionStyle:  string(designer.InterventionStyle),
 		Config:             config,
 	}

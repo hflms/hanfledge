@@ -17,31 +17,31 @@ func (a *CoachAgent) GenerateQuizProgressive(ctx context.Context, tc *TurnContex
 	if tc.OnTokenDelta != nil {
 		tc.OnTokenDelta("正在生成题目大纲...")
 	}
-	
+
 	outlinePrompt := fmt.Sprintf(`请为知识点"%s"生成 5 道测验题的大纲。
 只需要题干，不需要选项和答案。
 输出格式：
 1. 题干1
 2. 题干2
 ...`, kp.Title)
-	
+
 	outline, err := a.llm.Chat(ctx, []llm.ChatMessage{
 		{Role: "user", Content: outlinePrompt},
 	}, nil)
 	if err != nil {
 		return fmt.Errorf("generate outline: %w", err)
 	}
-	
+
 	stems := parseStems(outline)
-	
+
 	// Step 2: 逐题生成详细内容
 	questions := make([]map[string]interface{}, 0, len(stems))
-	
+
 	for i, stem := range stems {
 		if tc.OnTokenDelta != nil {
 			tc.OnTokenDelta(fmt.Sprintf("正在生成第 %d 题...", i+1))
 		}
-		
+
 		detailPrompt := fmt.Sprintf(`请为以下题干生成完整的选择题：
 题干：%s
 知识点：%s
@@ -52,7 +52,7 @@ func (a *CoachAgent) GenerateQuizProgressive(ctx context.Context, tc *TurnContex
 - 1个正确答案
 - 详细解析
 - 输出 JSON 格式`, stem, kp.Title, getDifficultyLabel(mastery))
-		
+
 		detail, err := a.llm.Chat(ctx, []llm.ChatMessage{
 			{Role: "user", Content: detailPrompt},
 		}, nil)
@@ -60,7 +60,7 @@ func (a *CoachAgent) GenerateQuizProgressive(ctx context.Context, tc *TurnContex
 			slogCoach.Warn("generate question detail failed", "index", i, "err", err)
 			continue
 		}
-		
+
 		// 解析并添加到题目列表
 		question := parseQuestionJSON(detail)
 		if question != nil {
@@ -68,12 +68,12 @@ func (a *CoachAgent) GenerateQuizProgressive(ctx context.Context, tc *TurnContex
 			questions = append(questions, question)
 		}
 	}
-	
+
 	// Step 3: 包装完整输出
 	quizData := map[string]interface{}{
 		"questions": questions,
 	}
-	
+
 	output := templates.WrapSkillOutput(
 		"general_assessment_quiz",
 		"generating",
@@ -83,7 +83,7 @@ func (a *CoachAgent) GenerateQuizProgressive(ctx context.Context, tc *TurnContex
 			Reasoning:  fmt.Sprintf("基于掌握度 %.2f 生成题目", mastery),
 		},
 	)
-	
+
 	if tc.OnTokenDelta != nil {
 		tc.OnTokenDelta(output)
 	}
@@ -96,7 +96,7 @@ func (a *CoachAgent) GeneratePresentationProgressive(ctx context.Context, tc *Tu
 	if tc.OnTokenDelta != nil {
 		tc.OnTokenDelta("正在生成演示文稿大纲...")
 	}
-	
+
 	outlinePrompt := fmt.Sprintf(`请为知识点"%s"生成演示文稿大纲。
 包含：
 1. 标题
@@ -106,19 +106,19 @@ func (a *CoachAgent) GeneratePresentationProgressive(ctx context.Context, tc *Tu
 5. 总结
 
 只需要大纲，不需要详细内容。`, kp.Title)
-	
+
 	outline, err := a.llm.Chat(ctx, []llm.ChatMessage{
 		{Role: "user", Content: outlinePrompt},
 	}, nil)
 	if err != nil {
 		return fmt.Errorf("generate outline: %w", err)
 	}
-	
+
 	// Step 2: 逐张生成幻灯片
 	if tc.OnTokenDelta != nil {
 		tc.OnTokenDelta("正在生成幻灯片内容...")
 	}
-	
+
 	slidePrompt := fmt.Sprintf(`基于以下大纲，生成 Reveal.js Markdown 格式的幻灯片：
 
 %s
@@ -128,23 +128,23 @@ func (a *CoachAgent) GeneratePresentationProgressive(ctx context.Context, tc *Tu
 - 使用 Markdown 格式
 - 包含标题、要点、示例
 - 适当使用列表和强调`, outline)
-	
+
 	slides, err := a.llm.Chat(ctx, []llm.ChatMessage{
 		{Role: "user", Content: slidePrompt},
 	}, nil)
 	if err != nil {
 		return fmt.Errorf("generate slides: %w", err)
 	}
-	
+
 	// Step 3: 完善细节
 	if tc.OnTokenDelta != nil {
 		tc.OnTokenDelta("正在完善细节...")
 	}
-	
+
 	slideData := map[string]interface{}{
 		"slides": slides,
 	}
-	
+
 	output := templates.WrapSkillOutput(
 		"presentation_generator",
 		"generating",
@@ -153,7 +153,7 @@ func (a *CoachAgent) GeneratePresentationProgressive(ctx context.Context, tc *Tu
 			Confidence: 0.88,
 		},
 	)
-	
+
 	if tc.OnTokenDelta != nil {
 		tc.OnTokenDelta(output)
 	}
@@ -165,7 +165,7 @@ func (a *CoachAgent) GeneratePresentationProgressive(ctx context.Context, tc *Tu
 func parseStems(text string) []string {
 	lines := strings.Split(text, "\n")
 	stems := make([]string, 0)
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if len(line) == 0 {
@@ -179,7 +179,7 @@ func parseStems(text string) []string {
 			stems = append(stems, line)
 		}
 	}
-	
+
 	return stems
 }
 
