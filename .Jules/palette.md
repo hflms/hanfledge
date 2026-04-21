@@ -24,3 +24,6 @@
 **Learning:** Dropdowns and popovers need proper keyboard dismissability (the ESC key) and click-outside handling to be fully accessible and intuitive. Without these, users can get trapped or struggle to close the UI, and screen readers lack semantic linkage between the trigger button and the popup.
 **Action:** Always implement a `keydown` listener for 'Escape' and a `mousedown` listener for outside clicks in a `useEffect`. Additionally, use `React.useId()` to dynamically link the trigger button's `aria-controls` attribute to the popup container's `id`.
 
+## 2024-04-21 - Survey Block Native Button Accessibility Refactor
+**Learning:** Replacing manually constructed accessible elements (`<span>` and `<li>` with `role="button"` and `tabIndex`) with native `<button type="button">` elements is superior. Native buttons implicitly handle keyboard events like "Enter" and "Space" reducing boilerplate (e.g. `onKeyDown`) and ensuring correct semantic interactions without extra Javascript overhead.
+**Action:** When implementing new clickable options or items in lists/grids, strictly utilize `<button>` tags and apply CSS to style them as block or inline components, instead of adding ARIA button roles to non-interactive elements.
