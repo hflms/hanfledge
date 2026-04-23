@@ -384,19 +384,27 @@ func (e *KARAGEngine) parseAndStoreOutline(ctx context.Context, courseID uint, l
 			}
 
 			// Store Misconceptions
-			for _, trapData := range kpData.Misconceptions {
-				trap := model.Misconception{
-					KPID:        kp.ID,
-					Description: trapData.Description,
-					TrapType:    model.TrapType(trapData.TrapType),
-					Severity:    trapData.Severity,
+			if len(kpData.Misconceptions) > 0 {
+				var traps []model.Misconception
+				for _, trapData := range kpData.Misconceptions {
+					traps = append(traps, model.Misconception{
+						KPID:        kp.ID,
+						Description: trapData.Description,
+						TrapType:    model.TrapType(trapData.TrapType),
+						Severity:    trapData.Severity,
+					})
 				}
-				e.DB.Create(&trap)
-				trapNeo4jID := fmt.Sprintf("misconception_%d", trap.ID)
-				e.DB.Model(&trap).Update("neo4j_node_id", trapNeo4jID)
 
-				if e.Neo4j != nil {
-					e.Neo4j.CreateMisconceptionNode(ctx, kp.ID, trap.ID, trapData.Description, trapData.TrapType)
+				e.DB.Create(&traps)
+
+				for i := range traps {
+					trap := &traps[i]
+					trapNeo4jID := fmt.Sprintf("misconception_%d", trap.ID)
+					e.DB.Model(trap).Update("neo4j_node_id", trapNeo4jID)
+
+					if e.Neo4j != nil {
+						e.Neo4j.CreateMisconceptionNode(ctx, kp.ID, trap.ID, trap.Description, string(trap.TrapType))
+					}
 				}
 			}
 
