@@ -36,6 +36,14 @@
     gap: 8px;
     padding: 0 16px 16px;
     background: transparent;
+    transition: all 0.2s ease;
+}
+
+.inputArea:focus-within {
+    background: var(--bg-surface);
+    border-radius: 12px;
+    outline: 2px solid var(--accent-glow);
+    outline-offset: 4px;
 }
 
 .chatInput {

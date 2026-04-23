@@ -1,1 +1,1 @@
-Frontend visual verification skipped because Docker compose fails and the backend cannot be started, resulting in 'Failed to fetch' during login. The logic for click-outside and escape-key dismissal in NotificationBell.tsx has been implemented correctly, tested with linters, and unit tested.
+Bypassing frontend verification because we cannot skip the login screen without more backend/db context.
