@@ -14,7 +14,9 @@ export function setToken(token: string): void {
 }
 
 export function clearToken(): void {
-  localStorage.removeItem('hanfledge_token');
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('hanfledge_token');
+  }
 }
 
 export async function apiFetch<T>(
