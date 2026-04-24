@@ -27,3 +27,7 @@
 ## 2024-04-21 - Survey Block Native Button Accessibility Refactor
 **Learning:** Replacing manually constructed accessible elements (`<span>` and `<li>` with `role="button"` and `tabIndex`) with native `<button type="button">` elements is superior. Native buttons implicitly handle keyboard events like "Enter" and "Space" reducing boilerplate (e.g. `onKeyDown`) and ensuring correct semantic interactions without extra Javascript overhead.
 **Action:** When implementing new clickable options or items in lists/grids, strictly utilize `<button>` tags and apply CSS to style them as block or inline components, instead of adding ARIA button roles to non-interactive elements.
+
+## 2026-04-24 - Proper ARIA Attributes for Dialogs
+**Learning:** Overlays that act as custom modals without standard dialog semantics are challenging for assistive technologies. Adding ARIA dialog attributes is a low-effort, high-impact accessibility fix.
+**Action:** Always add `role="dialog"`, `aria-modal="true"`, and use `React.useId()` to link the modal's title to the container via `aria-labelledby` to improve screen reader accessibility.
