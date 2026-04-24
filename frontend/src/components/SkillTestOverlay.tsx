@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import styles from './SkillTestOverlay.module.css';
 
 interface SkillTestOverlayProps {
@@ -9,6 +9,7 @@ interface SkillTestOverlayProps {
 
 export default function SkillTestOverlay({ question, onClose, onSubmit }: SkillTestOverlayProps) {
     const [answer, setAnswer] = useState('');
+    const titleId = useId();
 
     const handleSubmit = () => {
         if (!answer.trim()) return;
@@ -17,8 +18,13 @@ export default function SkillTestOverlay({ question, onClose, onSubmit }: SkillT
 
     return (
         <div className={styles.overlay}>
-            <div className={styles.card}>
-                <div className={styles.header}>🎓 阶段性能力测试</div>
+            <div
+                className={styles.card}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+            >
+                <div className={styles.header} id={titleId}>🎓 阶段性能力测试</div>
                 <div className={styles.body}>
                     <p className={styles.questionText}>{question}</p>
                     <textarea 
