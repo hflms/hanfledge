@@ -27,3 +27,7 @@
 ## 2024-04-21 - Survey Block Native Button Accessibility Refactor
 **Learning:** Replacing manually constructed accessible elements (`<span>` and `<li>` with `role="button"` and `tabIndex`) with native `<button type="button">` elements is superior. Native buttons implicitly handle keyboard events like "Enter" and "Space" reducing boilerplate (e.g. `onKeyDown`) and ensuring correct semantic interactions without extra Javascript overhead.
 **Action:** When implementing new clickable options or items in lists/grids, strictly utilize `<button>` tags and apply CSS to style them as block or inline components, instead of adding ARIA button roles to non-interactive elements.
+
+## 2026-04-28 - Accessible Close Buttons with Icon Text
+**Learning:** When using text characters like "✕" or "X" as the inner text for close buttons, screen readers may read them literally as "multiply" or "X", which provides no context on what the button does to users utilizing assistive technologies. Simply adding an `onClick` is not sufficient for a fully accessible interaction.
+**Action:** Always add an explicit `aria-label="关闭"` or similar descriptive label to the `<button>` element. Furthermore, wrap the visual text character in `<span aria-hidden="true">` to explicitly hide it from screen readers, ensuring the clean, context-rich label is the only thing announced.
