@@ -19,7 +19,11 @@ interface LoadingSpinnerProps {
 export default function LoadingSpinner({ size = 'medium' }: LoadingSpinnerProps) {
     return (
         <div className={`${styles.wrapper} ${styles[size]}`}>
-            <div className={styles.spinner} />
+            <div
+                className={styles.spinner}
+                role="status"
+                aria-label="加载中..."
+            />
         </div>
     );
 }
