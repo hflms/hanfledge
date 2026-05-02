@@ -15,7 +15,7 @@ export default function LoadingState({
   children,
 }: LoadingStateProps) {
   return (
-    <div className={styles.container}>
+    <div className={styles.container} role="status" aria-live="polite">
       <div className={styles.spinner} />
       <p className={styles.message}>{message}</p>
       
