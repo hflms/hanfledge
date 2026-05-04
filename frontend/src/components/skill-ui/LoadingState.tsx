@@ -15,12 +15,18 @@ export default function LoadingState({
   children,
 }: LoadingStateProps) {
   return (
-    <div className={styles.container}>
-      <div className={styles.spinner} />
+    <div className={styles.container} role="status" aria-label={message}>
+      <div className={styles.spinner} aria-hidden="true" />
       <p className={styles.message}>{message}</p>
       
       {progress !== undefined && (
-        <div className={styles.progressBar}>
+        <div
+          className={styles.progressBar}
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div 
             className={styles.progressFill} 
             style={{ width: `${progress}%` }}
