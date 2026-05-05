@@ -720,7 +720,7 @@ export default function OutlinePage() {
                         <div className={styles.configHeader}>
                             <h3 id="skill-config-title" className={styles.configTitle}>技能配置</h3>
                             <span className={styles.configSkillId}>{configMount.mount.skill_id}</span>
-                            <button className={styles.configCloseBtn} onClick={closeConfigModal}>✕</button>
+                            <button className={styles.configCloseBtn} onClick={closeConfigModal} aria-label="关闭配置面板"><span aria-hidden="true">✕</span></button>
                         </div>
 
                         <div className={styles.configBody}>
@@ -809,7 +809,7 @@ export default function OutlinePage() {
                     <div className={styles.configModal} style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
                         <div className={styles.configHeader}>
                             <h3 className={styles.configTitle}>🤖 AI 技能挂载建议</h3>
-                            <button className={styles.configCloseBtn} onClick={() => setRecommendations(null)}>✕</button>
+                            <button className={styles.configCloseBtn} onClick={() => setRecommendations(null)} aria-label="关闭建议面板"><span aria-hidden="true">✕</span></button>
                         </div>
 
                         <div className={styles.configBody} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
