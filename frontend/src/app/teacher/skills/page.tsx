@@ -541,7 +541,7 @@ export default function SkillStorePage() {
                                     {' · '}{selectedSkill.metadata.author}
                                 </div>
                             </div>
-                            <button className={styles.closeBtn} onClick={closeBuiltinModal}>✕</button>
+                            <button className={styles.closeBtn} onClick={closeBuiltinModal} aria-label="关闭对话框"><span aria-hidden="true">✕</span></button>
                         </div>
 
                         <div className={styles.modalBody}>
@@ -671,7 +671,7 @@ export default function SkillStorePage() {
                                     {' · '}{CUSTOM_SKILL_STATUS_LABELS[selectedCustomSkill.status]}
                                 </div>
                             </div>
-                            <button className={styles.closeBtn} onClick={closeCustomModal}>✕</button>
+                            <button className={styles.closeBtn} onClick={closeCustomModal} aria-label="关闭对话框"><span aria-hidden="true">✕</span></button>
                         </div>
 
                         <div className={styles.modalBody}>
