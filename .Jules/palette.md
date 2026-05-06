@@ -27,3 +27,7 @@
 ## 2024-04-21 - Survey Block Native Button Accessibility Refactor
 **Learning:** Replacing manually constructed accessible elements (`<span>` and `<li>` with `role="button"` and `tabIndex`) with native `<button type="button">` elements is superior. Native buttons implicitly handle keyboard events like "Enter" and "Space" reducing boilerplate (e.g. `onKeyDown`) and ensuring correct semantic interactions without extra Javascript overhead.
 **Action:** When implementing new clickable options or items in lists/grids, strictly utilize `<button>` tags and apply CSS to style them as block or inline components, instead of adding ARIA button roles to non-interactive elements.
+
+## 2024-05-20 - Accessible Visual Loading Indicators
+**Learning:** Custom visual loading indicators (like spinning CSS circles) are completely invisible to screen readers unless proper ARIA roles and labels are applied. Users relying on assistive technologies won't know the application is processing a request or loading data.
+**Action:** Always add `role="status"` and a descriptive `aria-label` (e.g., "Loading...") to the container of custom loading spinners so that screen readers announce the loading state as soon as it appears in the DOM. Additionally, apply `aria-hidden="true"` to any purely visual inner elements (like the animated shape) to prevent confusing or empty announcements.
