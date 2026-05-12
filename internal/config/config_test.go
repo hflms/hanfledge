@@ -42,6 +42,18 @@ func TestConfig_Validate(t *testing.T) {
 		}
 	})
 
+	t.Run("release mode empty neo4j password", func(t *testing.T) {
+		cfg := &Config{
+			Server:   ServerConfig{GinMode: "release"},
+			JWT:      JWTConfig{Secret: "secure-secret-123"},
+			Database: DatabaseConfig{Password: "secure-db-pass"},
+			Neo4j:    Neo4jConfig{Password: ""},
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Error("expected error for empty Neo4j password in release mode")
+		}
+	})
+
 	t.Run("release mode secure", func(t *testing.T) {
 		cfg := &Config{
 			Server:   ServerConfig{GinMode: "release"},

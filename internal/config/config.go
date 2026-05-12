@@ -153,7 +153,7 @@ func Load() *Config {
 		Neo4j: Neo4jConfig{
 			URI:      getEnv("NEO4J_URI", "bolt://localhost:7687"),
 			User:     getEnv("NEO4J_USER", "neo4j"),
-			Password: getEnv("NEO4J_PASSWORD", "neo4j_secret"),
+			Password: getEnv("NEO4J_PASSWORD", ""),
 		},
 		Redis: RedisConfig{
 			URL: getEnv("REDIS_URL", "redis://localhost:6379/0"),
@@ -215,7 +215,6 @@ func Load() *Config {
 var insecureDefaults = map[string]struct{}{
 	"dev-secret-change-me": {},
 	"hanfledge_secret":     {},
-	"neo4j_secret":         {},
 }
 
 // Validate checks that security-sensitive configuration values are safe for
@@ -232,7 +231,6 @@ func (cfg *Config) Validate() error {
 	}{
 		{"JWT_SECRET", cfg.JWT.Secret},
 		{"DB_PASSWORD", cfg.Database.Password},
-		{"NEO4J_PASSWORD", cfg.Neo4j.Password},
 	}
 
 	for _, c := range checks {
@@ -242,6 +240,10 @@ func (cfg *Config) Validate() error {
 				c.name, c.value,
 			)
 		}
+	}
+
+	if cfg.Neo4j.Password == "" {
+		return fmt.Errorf("SECURITY: NEO4J_PASSWORD cannot be empty in production")
 	}
 
 	return nil
