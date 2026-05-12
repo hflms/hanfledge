@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -867,178 +868,23 @@ func (h *DashboardHandler) GetActivityLiveDetail(c *gin.Context) {
 		return
 	}
 
-	// Parse KP sequence from activity.KPIDS (JSONB array of ints)
-	var kpIDs []uint
-	if activity.KPIDS != "" {
-		var rawIDs []int
-		if err := json.Unmarshal([]byte(activity.KPIDS), &rawIDs); err != nil {
-			slogDash.Warn("failed to parse kp_ids", "activity_id", activityID, "err", err)
-		} else {
-			for _, id := range rawIDs {
-				kpIDs = append(kpIDs, uint(id))
-			}
-		}
-	}
+	// 1. Load KP sequence
+	kpIDs, kpSequence, kpIndexMap := h.loadKPSequence(ctx, activity)
 
-	// Load KP titles
-	kpTitleMap := make(map[uint]string)
-	if len(kpIDs) > 0 {
-		kps, err := h.KPs.FindByIDs(ctx, kpIDs)
-		if err != nil {
-			slogDash.Warn("failed to load KPs", "err", err)
-		}
-		for _, kp := range kps {
-			kpTitleMap[kp.ID] = kp.Title
-		}
-	}
-
-	// Build ordered KP sequence
-	kpSequence := make([]KPSequenceItem, 0, len(kpIDs))
-	kpIndexMap := make(map[uint]int) // kpID -> step index
-	for i, kpID := range kpIDs {
-		kpSequence = append(kpSequence, KPSequenceItem{
-			KPID:    kpID,
-			KPTitle: kpTitleMap[kpID],
-		})
-		kpIndexMap[kpID] = i
-	}
-
-	// Get all non-sandbox sessions for this activity
+	// 2. Get sessions
 	sessions, err := h.Sessions.ListByActivityID(ctx, uint(activityID), true)
 	if err != nil {
 		slogDash.Warn("failed to query sessions", "activity_id", activityID, "err", err)
 	}
 
+	// 3. Batch-load student names and mastery data
+	studentIDs, studentNameMap := h.loadStudentNames(ctx, sessions)
+	masteryMap := h.loadStudentMasteryMap(ctx, studentIDs, kpIDs)
+
 	now := time.Now()
 
-	// Batch-load student names
-	studentIDSet := make(map[uint]bool)
-	for _, s := range sessions {
-		studentIDSet[s.StudentID] = true
-	}
-	studentNameMap := make(map[uint]string)
-	if len(studentIDSet) > 0 {
-		idList := make([]uint, 0, len(studentIDSet))
-		for id := range studentIDSet {
-			idList = append(idList, id)
-		}
-		students, err := h.Users.FindByIDs(ctx, idList, "id, display_name")
-		if err != nil {
-			slogDash.Warn("failed to load student names", "err", err)
-		}
-		for _, s := range students {
-			studentNameMap[s.ID] = s.DisplayName
-		}
-	}
-
-	// Batch-load mastery data
-	type masteryKey struct{ StudentID, KPID uint }
-	masteryMap := make(map[masteryKey]float64)
-	if len(studentIDSet) > 0 && len(kpIDs) > 0 {
-		sidList := make([]uint, 0, len(studentIDSet))
-		for id := range studentIDSet {
-			sidList = append(sidList, id)
-		}
-		masteries, err := h.Mastery.FindByStudentsAndKPs(ctx, sidList, kpIDs)
-		if err != nil {
-			slogDash.Warn("failed to load mastery data", "err", err)
-		}
-		for _, m := range masteries {
-			masteryMap[masteryKey{m.StudentID, m.KPID}] = m.MasteryScore
-		}
-	}
-
-	// Initialize step containers (one per KP in sequence)
-	stepStudentsMap := make(map[int][]LiveStudentInfo) // stepIndex -> students
-	var alerts []StudentAlert
-
-	for _, s := range sessions {
-		stepIdx, found := kpIndexMap[s.CurrentKP]
-		if !found {
-			stepIdx = 0 // fallback to first step
-		}
-
-		// Calculate duration
-		endTime := now
-		if s.EndedAt != nil {
-			endTime = *s.EndedAt
-		}
-		durationMin := endTime.Sub(s.StartedAt).Minutes()
-
-		// Count student interactions
-		interactionCount, err := h.Sessions.CountStudentInteractions(ctx, s.ID)
-		if err != nil {
-			slogDash.Warn("failed to count interactions", "session_id", s.ID, "err", err)
-		}
-
-		// Determine last active time by querying the latest interaction
-		lastActiveAt := s.StartedAt.Format(time.RFC3339)
-		var lastInteraction model.Interaction
-		if err := h.DB.WithContext(ctx).
-			Where("session_id = ?", s.ID).
-			Order("created_at DESC").
-			First(&lastInteraction).Error; err == nil {
-			lastActiveAt = lastInteraction.CreatedAt.Format(time.RFC3339)
-		}
-
-		masteryScore := masteryMap[masteryKey{s.StudentID, s.CurrentKP}]
-		studentName := studentNameMap[s.StudentID]
-
-		info := LiveStudentInfo{
-			StudentID:        s.StudentID,
-			StudentName:      studentName,
-			SessionID:        s.ID,
-			Status:           string(s.Status),
-			DurationMin:      durationMin,
-			MasteryScore:     masteryScore,
-			InteractionCount: interactionCount,
-			LastActiveAt:     lastActiveAt,
-			ScaffoldLevel:    string(s.Scaffold),
-		}
-		stepStudentsMap[stepIdx] = append(stepStudentsMap[stepIdx], info)
-
-		// -- Alert Detection (active sessions only) --
-		if s.Status != model.SessionStatusActive {
-			continue
-		}
-
-		// Parse last active time for alert detection
-		lastActive, parseErr := time.Parse(time.RFC3339, lastActiveAt)
-
-		// Alert: idle — no interaction for > 10 minutes
-		if parseErr == nil && now.Sub(lastActive).Minutes() > 10 {
-			idleMins := int(now.Sub(lastActive).Minutes())
-			alerts = append(alerts, StudentAlert{
-				StudentID:   s.StudentID,
-				StudentName: studentName,
-				SessionID:   s.ID,
-				AlertType:   "idle",
-				Message:     "已超过 " + strconv.Itoa(idleMins) + " 分钟无互动",
-			})
-		}
-
-		// Alert: stuck — on same step > 15 min with < 3 interactions
-		if durationMin > 15 && interactionCount < 3 {
-			alerts = append(alerts, StudentAlert{
-				StudentID:   s.StudentID,
-				StudentName: studentName,
-				SessionID:   s.ID,
-				AlertType:   "stuck",
-				Message:     "在当前环节停留超过 15 分钟且互动较少",
-			})
-		}
-
-		// Alert: struggling — mastery < 0.3 after > 5 attempts
-		if masteryScore < 0.3 && interactionCount > 5 {
-			alerts = append(alerts, StudentAlert{
-				StudentID:   s.StudentID,
-				StudentName: studentName,
-				SessionID:   s.ID,
-				AlertType:   "struggling",
-				Message:     "掌握度偏低（" + strconv.Itoa(int(masteryScore*100)) + "%），可能需要教师干预",
-			})
-		}
-	}
+	// 4. Process sessions to generate live info and alerts
+	stepStudentsMap, alerts := h.processLiveSessions(ctx, sessions, kpIndexMap, studentNameMap, masteryMap, now)
 
 	// Build ordered steps response
 	steps := make([]LiveStepInfo, len(kpSequence))
@@ -1067,4 +913,164 @@ func (h *DashboardHandler) GetActivityLiveDetail(c *gin.Context) {
 		Alerts:     alerts,
 		Timestamp:  now.Format(time.RFC3339),
 	})
+}
+
+type masteryKey struct{ StudentID, KPID uint }
+
+func (h *DashboardHandler) loadKPSequence(ctx context.Context, activity *model.LearningActivity) ([]uint, []KPSequenceItem, map[uint]int) {
+	var kpIDs []uint
+	if activity.KPIDS != "" {
+		var rawIDs []int
+		if err := json.Unmarshal([]byte(activity.KPIDS), &rawIDs); err != nil {
+			slogDash.Warn("failed to parse kp_ids", "activity_id", activity.ID, "err", err)
+		} else {
+			for _, id := range rawIDs {
+				kpIDs = append(kpIDs, uint(id))
+			}
+		}
+	}
+
+	kpTitleMap := make(map[uint]string)
+	if len(kpIDs) > 0 {
+		kps, err := h.KPs.FindByIDs(ctx, kpIDs)
+		if err != nil {
+			slogDash.Warn("failed to load KPs", "err", err)
+		}
+		for _, kp := range kps {
+			kpTitleMap[kp.ID] = kp.Title
+		}
+	}
+
+	kpSequence := make([]KPSequenceItem, 0, len(kpIDs))
+	kpIndexMap := make(map[uint]int)
+	for i, kpID := range kpIDs {
+		kpSequence = append(kpSequence, KPSequenceItem{
+			KPID:    kpID,
+			KPTitle: kpTitleMap[kpID],
+		})
+		kpIndexMap[kpID] = i
+	}
+	return kpIDs, kpSequence, kpIndexMap
+}
+
+func (h *DashboardHandler) loadStudentNames(ctx context.Context, sessions []model.StudentSession) ([]uint, map[uint]string) {
+	studentIDSet := make(map[uint]bool)
+	for _, s := range sessions {
+		studentIDSet[s.StudentID] = true
+	}
+	studentNameMap := make(map[uint]string)
+	var idList []uint
+	if len(studentIDSet) > 0 {
+		for id := range studentIDSet {
+			idList = append(idList, id)
+		}
+		students, err := h.Users.FindByIDs(ctx, idList, "id, display_name")
+		if err != nil {
+			slogDash.Warn("failed to load student names", "err", err)
+		}
+		for _, s := range students {
+			studentNameMap[s.ID] = s.DisplayName
+		}
+	}
+	return idList, studentNameMap
+}
+
+func (h *DashboardHandler) loadStudentMasteryMap(ctx context.Context, studentIDs []uint, kpIDs []uint) map[masteryKey]float64 {
+	masteryMap := make(map[masteryKey]float64)
+	if len(studentIDs) > 0 && len(kpIDs) > 0 {
+		masteries, err := h.Mastery.FindByStudentsAndKPs(ctx, studentIDs, kpIDs)
+		if err != nil {
+			slogDash.Warn("failed to load mastery data", "err", err)
+		}
+		for _, m := range masteries {
+			masteryMap[masteryKey{m.StudentID, m.KPID}] = m.MasteryScore
+		}
+	}
+	return masteryMap
+}
+
+func (h *DashboardHandler) processLiveSessions(ctx context.Context, sessions []model.StudentSession, kpIndexMap map[uint]int, studentNameMap map[uint]string, masteryMap map[masteryKey]float64, now time.Time) (map[int][]LiveStudentInfo, []StudentAlert) {
+	stepStudentsMap := make(map[int][]LiveStudentInfo)
+	var alerts []StudentAlert
+
+	for _, s := range sessions {
+		stepIdx, found := kpIndexMap[s.CurrentKP]
+		if !found {
+			stepIdx = 0
+		}
+
+		endTime := now
+		if s.EndedAt != nil {
+			endTime = *s.EndedAt
+		}
+		durationMin := endTime.Sub(s.StartedAt).Minutes()
+
+		interactionCount, err := h.Sessions.CountStudentInteractions(ctx, s.ID)
+		if err != nil {
+			slogDash.Warn("failed to count interactions", "session_id", s.ID, "err", err)
+		}
+
+		lastActiveAt := s.StartedAt.Format(time.RFC3339)
+		var lastInteraction model.Interaction
+		if err := h.DB.WithContext(ctx).
+			Where("session_id = ?", s.ID).
+			Order("created_at DESC").
+			First(&lastInteraction).Error; err == nil {
+			lastActiveAt = lastInteraction.CreatedAt.Format(time.RFC3339)
+		}
+
+		masteryScore := masteryMap[masteryKey{s.StudentID, s.CurrentKP}]
+		studentName := studentNameMap[s.StudentID]
+
+		info := LiveStudentInfo{
+			StudentID:        s.StudentID,
+			StudentName:      studentName,
+			SessionID:        s.ID,
+			Status:           string(s.Status),
+			DurationMin:      durationMin,
+			MasteryScore:     masteryScore,
+			InteractionCount: interactionCount,
+			LastActiveAt:     lastActiveAt,
+			ScaffoldLevel:    string(s.Scaffold),
+		}
+		stepStudentsMap[stepIdx] = append(stepStudentsMap[stepIdx], info)
+
+		if s.Status != model.SessionStatusActive {
+			continue
+		}
+
+		lastActive, parseErr := time.Parse(time.RFC3339, lastActiveAt)
+
+		if parseErr == nil && now.Sub(lastActive).Minutes() > 10 {
+			idleMins := int(now.Sub(lastActive).Minutes())
+			alerts = append(alerts, StudentAlert{
+				StudentID:   s.StudentID,
+				StudentName: studentName,
+				SessionID:   s.ID,
+				AlertType:   "idle",
+				Message:     "已超过 " + strconv.Itoa(idleMins) + " 分钟无互动",
+			})
+		}
+
+		if durationMin > 15 && interactionCount < 3 {
+			alerts = append(alerts, StudentAlert{
+				StudentID:   s.StudentID,
+				StudentName: studentName,
+				SessionID:   s.ID,
+				AlertType:   "stuck",
+				Message:     "在当前环节停留超过 15 分钟且互动较少",
+			})
+		}
+
+		if masteryScore < 0.3 && interactionCount > 5 {
+			alerts = append(alerts, StudentAlert{
+				StudentID:   s.StudentID,
+				StudentName: studentName,
+				SessionID:   s.ID,
+				AlertType:   "struggling",
+				Message:     "掌握度偏低（" + strconv.Itoa(int(masteryScore*100)) + "%），可能需要教师干预",
+			})
+		}
+	}
+	return stepStudentsMap, alerts
 }
