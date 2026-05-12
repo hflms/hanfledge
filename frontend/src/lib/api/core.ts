@@ -61,3 +61,14 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
 }
+
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
+
+/** Appends pagination params to a URLSearchParams object. */
+export function appendPagination(params: URLSearchParams, pg?: PaginationParams): void {
+  if (pg?.page) params.set('page', String(pg.page));
+  if (pg?.limit) params.set('limit', String(pg.limit));
+}
