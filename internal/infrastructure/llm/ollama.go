@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -95,7 +96,7 @@ func (c *OllamaClient) StreamChat(ctx context.Context, messages []ChatMessage, o
 		return "", fmt.Errorf("ollama API error %d: %s", resp.StatusCode, string(body))
 	}
 
-	var fullResponse string
+	var fullResponseBuilder strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	// Increase scanner buffer for potentially large JSON lines
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -104,7 +105,7 @@ func (c *OllamaClient) StreamChat(ctx context.Context, messages []ChatMessage, o
 		// Check context cancellation between lines
 		select {
 		case <-ctx.Done():
-			return fullResponse, ctx.Err()
+			return fullResponseBuilder.String(), ctx.Err()
 		default:
 		}
 
@@ -121,7 +122,7 @@ func (c *OllamaClient) StreamChat(ctx context.Context, messages []ChatMessage, o
 
 		token := chunk.Message.Content
 		if token != "" {
-			fullResponse += token
+			fullResponseBuilder.WriteString(token)
 			if onToken != nil {
 				onToken(token)
 			}
@@ -133,10 +134,10 @@ func (c *OllamaClient) StreamChat(ctx context.Context, messages []ChatMessage, o
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fullResponse, fmt.Errorf("ollama stream read error: %w", err)
+		return fullResponseBuilder.String(), fmt.Errorf("ollama stream read error: %w", err)
 	}
 
-	return fullResponse, nil
+	return fullResponseBuilder.String(), nil
 }
 
 // Chat sends a non-streaming chat request and returns the full response.
