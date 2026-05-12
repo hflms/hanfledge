@@ -10,3 +10,9 @@
 
 export * from './core';
 export * from './auth';
+export * from './admin';
+export * from './course';
+export * from './skill';
+export * from './activity';
+export * from './dashboard';
+export * from './weknora';
